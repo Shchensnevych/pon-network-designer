@@ -483,6 +483,7 @@ let _restoring = false;
 
 export function serializeNetwork() {
   return JSON.stringify({
+    schemaVersion: "1.0",
     nodes: nodes.map((n) => {
       const { marker, inputConn, ...rest } = n;
       return rest;
@@ -511,6 +512,16 @@ function saveState() {
 export function restoreNetwork(json) {
   _restoring = true;
   const d = JSON.parse(json);
+  
+  // Version migration: handle old formats
+  const version = d.schemaVersion || "0.9"; // 0.9 = old monolith format
+  if (version === "0.9") {
+    // Old format: ensure defaults are set
+    if (!d.fobCounter) d.fobCounter = 1;
+    if (!d.onuCounter) d.onuCounter = 1;
+  }
+  // Future: if (version === "1.1") { ... migration logic ... }
+  
   clearSignalPath();
   // Clear existing
   conns.forEach((c) => {

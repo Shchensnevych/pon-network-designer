@@ -422,7 +422,7 @@ input[type="number"]:focus {
 
 .info-pill {
   background: rgba(88, 166, 255, 0.08);
-  border: 1px solid rgba(88, 166, 255, 0.2);
+  border: 1px solid rgba(89, 231, 7, 0.7);
   border-radius: 4px;
   padding: 5px 8px;
   font-size: 10px;
@@ -573,7 +573,8 @@ input[type="number"]:focus {
   justify-content: center;
 }
 
-.modal-overlay.open {
+.modal-overlay.open,
+.modal-overlay[style*="display: flex"] {
   display: flex;
 }
 
@@ -1255,6 +1256,38 @@ path.leaflet-interactive:hover {
 
 .tab-content.active {
   display: block;
+}
+
+/* ── INFO ICONS ── */
+.info-icon {
+  position: absolute;
+  top: 4px;
+  right: 4px;
+  width: 16px;
+  height: 16px;
+  border-radius: 50%;
+  background: rgba(88, 166, 255, 0.2);
+  border: 1px solid #58a6ff;
+  color: #58a6ff;
+  font-size: 11px;
+  font-weight: bold;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  cursor: help;
+  opacity: 0;
+  transition: opacity 0.2s;
+  pointer-events: auto;
+}
+
+.action-btn:hover .info-icon,
+.clear-btn:hover .info-icon {
+  opacity: 1;
+}
+
+.info-icon:hover {
+  background: rgba(88, 166, 255, 0.3);
+  border-color: #79c0ff;
 }
 
 .backup-item {

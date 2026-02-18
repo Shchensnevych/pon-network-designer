@@ -152,17 +152,43 @@ document.addEventListener("DOMContentLoaded", () => {
   // Initialize backups/settings after page load
   window.addEventListener("load", () => {
     initBackups();
+    checkOnboarding();
   });
 
-  // Global ESC handler for closing modals (Report / Help / Settings)
+  // Onboarding: show on first visit
+  function checkOnboarding() {
+    const dontShow = localStorage.getItem("pon_onboarding_dismissed") === "true";
+    if (!dontShow) {
+      setTimeout(() => {
+        const overlay = document.getElementById("onboarding-overlay");
+        if (overlay) overlay.style.display = "flex";
+      }, 500);
+    }
+  }
+
+  window.closeOnboarding = () => {
+    const overlay = document.getElementById("onboarding-overlay");
+    if (overlay) overlay.style.display = "none";
+    const checkbox = document.getElementById("onboarding-dont-show");
+    if (checkbox?.checked) {
+      localStorage.setItem("pon_onboarding_dismissed", "true");
+    }
+  };
+
+  // Global ESC handler for closing modals (Onboarding / Report / Help / Settings)
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
 
+    const onboardingOverlay = document.getElementById("onboarding-overlay");
     const modalOverlay = document.getElementById("modal-overlay");
     const helpOverlay = document.getElementById("help-overlay");
     const settingsOverlay = document.getElementById("settings-overlay");
 
-    // Закриваємо лише те, що відкрите, за пріоритетом: основний звіт → help → settings
+    // Закриваємо лише те, що відкрите, за пріоритетом: onboarding → звіт → help → settings
+    if (onboardingOverlay?.style.display === "flex") {
+      window.closeOnboarding();
+      return;
+    }
     if (modalOverlay?.classList.contains("open")) {
       window.closeModal();
       return;

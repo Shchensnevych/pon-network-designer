@@ -107,51 +107,58 @@
           <button
             class="action-btn btn-green"
             onclick="exportToJSON()"
-            title="Зберегти поточний проєкт як JSON-файл"
+            style="position:relative"
           >
             💾 Зберегти проєкт
+            <span class="info-icon" title="Зберегти поточний проєкт як JSON-файл для подальшого відкриття">?</span>
           </button>
           <button
             class="action-btn btn-purple"
             onclick="loadProject()"
-            title="Відкрити раніше збережений JSON-проєкт"
+            style="position:relative"
           >
             📂 Відкрити проєкт
+            <span class="info-icon" title="Відкрити раніше збережений JSON-проєкт з диску">?</span>
           </button>
           <button
             class="action-btn btn-blue"
             onclick="exportToPNG()"
-            title="Експортувати карту як PNG-зображення"
+            style="position:relative"
           >
             🖼️ Схема PNG
+            <span class="info-icon" title="Експортувати карту як PNG-зображення для документації">?</span>
           </button>
           <button
             class="action-btn btn-blue"
             onclick="openReport()"
-            title="Детальний звіт: кабелі, порти, сигнали та експорт CSV"
+            style="position:relative"
           >
             📊 Звіт / Експорт
+            <span class="info-icon" title="Детальний звіт: кабелі, порти, сигнали та експорт CSV/TXT. Економічна частина для кошторису">?</span>
           </button>
           <button
             class="action-btn btn-orange"
             onclick="showSuggestions()"
-            title="Перевірка мережі: відключені вузли, слабкі сигнали, петлі, перевантаження"
+            style="position:relative"
           >
             🔍 Валідація
+            <span class="info-icon" title="Перевірка мережі: відключені вузли, слабкі сигнали, петлі, перевантаження портів">?</span>
           </button>
           <button
             class="action-btn btn-blue"
             onclick="showTopology()"
-            title="Дерево мережі: OLT → Порти → FOB → ONU з рівнями сигналу"
+            style="position:relative"
           >
             🌳 Топологія
+            <span class="info-icon" title="Дерево мережі: OLT → Порти → FOB → ONU з рівнями сигналу. Клік по елементу фокусує на карті">?</span>
           </button>
           <button
             class="action-btn btn-purple"
             onclick="showScenarioCompare()"
-            title="Порівняння сценаріїв: що буде якщо змінити сплітери?"
+            style="position:relative"
           >
             🔄 Порівняння
+            <span class="info-icon" title="Порівняння сценаріїв: що буде якщо змінити всі сплітери на PLC 1×8?">?</span>
           </button>
           <button
             class="action-btn"
@@ -161,10 +168,11 @@
               background: #1c1c2b;
               border: 1px solid #6e7681;
               color: #8b949e;
+              position:relative;
             "
-            title="Анімовані білі штрихи на кабелях показують напрямок сигналу"
           >
             ⚡ Анімація сигналу
+            <span class="info-icon" title="Анімовані білі штрихи на кабелях показують напрямок сигналу від OLT до ONU">?</span>
           </button>
           <button
             class="action-btn"
@@ -173,10 +181,11 @@
               background: #1c2b1c;
               border: 1px solid #6e7681;
               color: #8b949e;
+              position:relative;
             "
-            title="Таблиця затухань сплітерів, конекторів та зварювань"
           >
             📋 Довідка затухань
+            <span class="info-icon" title="Таблиця затухань сплітерів (FBT/PLC), конекторів та зварювань, пороги ONU/OLT">?</span>
           </button>
           <button
             class="action-btn"
@@ -185,17 +194,19 @@
                 background: #1c1c2b;
                 border: 1px solid #6e7681;
                 color: #8b949e;
+                position:relative;
             "
-            title="Налаштування автозбереження та керування бекапами"
           >
             ⚙️ Бекапи / Налаштування
+            <span class="info-icon" title="Налаштування автозбереження та керування бекапами (зберігаються локально в браузері)">?</span>
           </button>
           <button
             class="clear-btn"
             onclick="clearNetwork()"
-            title="Видалити всі вузли, з'єднання та історію змін"
+            style="position:relative"
           >
             🗑️ Очистити мережу
+            <span class="info-icon" title="Видалити всі вузли, з'єднання та історію змін (Ctrl+Z не спрацює після цього)">?</span>
           </button>
         </div>
       </div>
@@ -624,6 +635,81 @@
               Приклад: 2 − 0.16 − 0.5 = 1.34дБ (IN) → −5.39 − 0.5 = −4.55дБ (X) → −10.7 − 0.5 =
               <strong>−15.75дБм на ONU</strong> ✓
             </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Onboarding Modal (first-time user guide) -->
+    <div id="onboarding-overlay" class="modal-overlay" onclick="closeOnboarding()" style="display:none">
+      <div class="modal" onclick="event.stopPropagation()" style="max-width: 700px">
+        <div class="modal-head">
+          <h2>👋 Ласкаво просимо до PON Designer!</h2>
+          <div class="modal-actions">
+            <button class="modal-btn btn-x" onclick="closeOnboarding()">✕</button>
+          </div>
+        </div>
+        <div class="modal-body" style="padding: 20px; max-height: 75vh; overflow-y: auto">
+          <div class="report-section">
+            <h3>🚀 Швидкий старт</h3>
+            <ol style="line-height:1.8;padding-left:20px">
+              <li><strong>Додавання обладнання:</strong> Виберіть інструмент (OLT/FOB/ONU) зліва або перетягніть на карту</li>
+              <li><strong>З'єднання:</strong> Виберіть "Магістраль" або "Патчкорд", клікніть на початковий вузол, потім на кінцевий</li>
+              <li><strong>Налаштування:</strong> Клікніть на вузол → права панель покаже властивості (потужність, сплітери, гілки)</li>
+              <li><strong>Звіти:</strong> Кнопка "📊 Звіт / Експорт" → технічна частина + економічна для кошторису</li>
+            </ol>
+          </div>
+
+          <div class="report-section">
+            <h3>📐 Основи проектування PON-мереж</h3>
+
+            <p style="margin-bottom:8px"><strong>1. Типи дільників та їх логіка</strong></p>
+            <p style="margin-bottom:12px">Мережа будується на комбінації двох типів сплітерів:</p>
+            <ul style="line-height:1.8;padding-left:20px;margin-bottom:12px">
+              <li><strong>FBT (процентні):</strong> дві нерівні гілки. <strong>Гілка Y</strong> (магістраль, напр. 90%) — мінімальне затухання, передача сигналу на наступний вузол (FOB). <strong>Гілка X</strong> (відвід, напр. 10%) — більше затухання, підключення абонентів у поточному вузлі.</li>
+              <li><strong>PLC (рівномірні):</strong> ділять сигнал порівну між усіма портами (1×4, 1×8, 1×16). Підключаються після гілки X дільника FBT.</li>
+            </ul>
+
+            <p style="margin-bottom:8px"><strong>2. Побудова магістралі (шина)</strong></p>
+            <ul style="line-height:1.8;padding-left:20px;margin-bottom:12px">
+              <li>OLT → кабель → FBT (вхід).</li>
+              <li>FBT (гілка X / Tap) → PLC → кінцеві ONU (абоненти біля вузла).</li>
+              <li>FBT (гілка Y / Pass) → кабель → наступний FOB (вхід наступного FBT).</li>
+            </ul>
+
+            <p style="margin-bottom:8px"><strong>3. Розрахунок бюджету потужності</strong></p>
+            <ul style="line-height:1.8;padding-left:20px;margin-bottom:12px">
+              <li>Система автоматично рахує затухання: сума затухань дільників + втрати в кабелі (напр. 0,4 дБ/км) + втрати на зварках (~0,05 дБ) + втрати на конекторах (~0,3–0,5 дБ).</li>
+              <li><strong>Цільовий сигнал:</strong> від −16 дБ до −25 дБ.</li>
+              <li><strong>Критичний поріг:</strong> нижче −27 дБ — сигнал занадто слабкий, ONU не запрацює.</li>
+            </ul>
+
+            <p style="margin-bottom:8px"><strong>4. Корисна порада</strong></p>
+            <p style="line-height:1.8;padding-left:0">Завжди лишайте експлуатаційний запас (~2 дБ) на випадок майбутніх ремонтів або забруднення патчкордів.</p>
+          </div>
+
+          <div class="info-pill" style="margin-top:12px;margin-bottom:12px">
+            📋 <strong>Детальна технічна інформація:</strong> відкрийте <strong>«📋 Довідка затухань»</strong> (кнопка в лівій панелі) — там таблиці затухань FBT/PLC, механічні втрати, оптичне волокно, пороги ONU/OLT та типова схема розрахунку.
+          </div>
+
+          <div class="report-section">
+            <h3>⚡ Корисні поради</h3>
+            <ul style="line-height:1.8;padding-left:20px">
+              <li><strong>Ctrl+Z / Ctrl+Y:</strong> Скасувати/Повторити дію · <strong>Delete:</strong> Видалити вибраний вузол · <strong>Esc:</strong> Закрити модалки</li>
+              <li><strong>Права панель:</strong> порти OLT з лічильниками ONU, гілки FOB для перепризначення</li>
+              <li><strong>Топологія:</strong> клік по елементу фокусує карту на вузлі</li>
+              <li>Натисніть <strong>?</strong> біля кожної кнопки для підказки</li>
+            </ul>
+          </div>
+
+          <div style="margin-top:20px;text-align:center">
+            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;justify-content:center">
+              <input type="checkbox" id="onboarding-dont-show" />
+              <span>Більше не показувати це повідомлення</span>
+            </label>
+            <button class="action-btn btn-blue" onclick="closeOnboarding()" style="margin-top:12px;width:auto;padding:8px 24px">
+              Розпочати роботу
+            </button>
           </div>
         </div>
       </div>
