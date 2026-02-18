@@ -31,6 +31,7 @@ let tool = "select";
 let selNode = null;
 let connStart = null;
 let pathGlowLayers = [];
+let dragUpdateTimer = null; // Throttle для оновлення під час драгу
 
 /**
  * Initialize Leaflet map and basic interactions.
@@ -71,6 +72,11 @@ export function initNetwork() {
       position: "bottomright",
     })
     .addTo(map);
+
+  // Адаптивне відображення tooltip'ів: при малому zoom показувати тільки при hover
+  map.on("zoomend", () => {
+    updateTooltipsVisibility();
+  });
 
   // Basic Geoman options (if plugin is present)
   if (map.pm) {
@@ -374,6 +380,19 @@ export function addNode(type, latlng) {
 
   n.marker.on("click", (evt) => onNodeClick(n, evt));
   n.marker.on("drag", () => onNodeDrag(n));
+  n.marker.on("dragend", () => {
+    // Після завершення драгу - виконати фінальне оновлення без затримки
+    if (dragUpdateTimer) {
+      clearTimeout(dragUpdateTimer);
+      dragUpdateTimer = null;
+    }
+    // Оновити все одразу після завершення драгу
+    nodes.forEach((x) => updateNodeLabel(x));
+    refreshSignalAnim();
+    if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
+    updateStats();
+    if (selNode === n) showProps(n);
+  });
   // Context menu / advanced actions will be wired later
 
   updateNodeLabel(n);
@@ -572,7 +591,20 @@ export function restoreNetwork(json) {
     n.marker.nodeRef = n;
     n.inputConn = null;
     n.marker.on("click", (e) => onNodeClick(n, e));
-    n.marker.on("drag", (e) => onNodeDrag(n, e));
+    n.marker.on("drag", (e) => onNodeDrag(n));
+    n.marker.on("dragend", () => {
+      // Після завершення драгу - виконати фінальне оновлення без затримки
+      if (dragUpdateTimer) {
+        clearTimeout(dragUpdateTimer);
+        dragUpdateTimer = null;
+      }
+      // Оновити все одразу після завершення драгу
+      nodes.forEach((x) => updateNodeLabel(x));
+      refreshSignalAnim();
+      if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
+      updateStats();
+      if (selNode === n) showProps(n);
+    });
     n.marker.on("contextmenu", (e) => showNodeCtx(e, n));
     updateNodeLabel(n);
     nodes.push(n);
@@ -1201,8 +1233,33 @@ function onNodeDrag(n) {
   const ll = n.marker.getLatLng();
   n.lat = ll.lat;
   n.lng = ll.lng;
-  updateConnections(n);
-  if (selNode === n) showProps(n);
+  
+  // Оновлюємо полілінії одразу (візуально важливо)
+  conns.forEach((c) => {
+    if (c.from === n || c.to === n) {
+      const latlngs = [
+        [c.from.lat, c.from.lng],
+        [c.to.lat, c.to.lng],
+      ];
+      c.polyline.setLatLngs(latlngs);
+      if (c.type === "cable") updateConnLabel(c);
+    }
+  });
+  
+  // Тротлінг для важких операцій (оновлення підписів, статистики, анімації)
+  if (dragUpdateTimer) clearTimeout(dragUpdateTimer);
+  dragUpdateTimer = setTimeout(() => {
+    // Оновити підписи всіх вузлів (відстані могли змінитися)
+    nodes.forEach((x) => updateNodeLabel(x));
+    refreshSignalAnim();
+    // Оновити підсвітку магістралі якщо активна
+    if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
+    // Оновити статистику
+    updateStats();
+    // Оновити панель властивостей якщо це вибраний вузол
+    if (selNode === n) showProps(n);
+    dragUpdateTimer = null;
+  }, 80); // Оновлюємо раз на 80мс під час драгу
 }
 
 function updateNodeLabel(n) {
@@ -1269,13 +1326,8 @@ function updateNodeLabel(n) {
 
   const content = L1 + (L2 ? "<br>" + L2 : "");
 
-  n.marker.unbindTooltip();
-  n.marker.bindTooltip(content, {
-    permanent: true,
-    direction: "bottom",
-    className: "node-label",
-    offset: [0, 5],
-  });
+  // Оновити tooltip з правильним режимом відображення
+  updateNodeTooltip(n, content);
 
   // Rich hover popup
   n.marker.unbindPopup();
@@ -1298,6 +1350,103 @@ function updateNodeLabel(n) {
     if (!connStart) {
       n.marker.closePopup();
     }
+  });
+}
+
+// Адаптивне відображення tooltip'ів: при віддаленні ховаємо тільки ONU (їх багато), FOB та OLT завжди видимі
+function updateNodeTooltip(node, content) {
+  const zoom = map.getZoom();
+  const minZoomForPermanent = 16; // Поріг для ONU
+  
+  node.marker.unbindTooltip();
+  
+  // OLT та FOB завжди показуємо (їх небагато)
+  if (node.type === "OLT" || node.type === "FOB") {
+    node.marker.bindTooltip(content, {
+      permanent: true,
+      direction: "bottom",
+      className: "node-label",
+      offset: [0, 5],
+    });
+  } else if (node.type === "ONU") {
+    // ONU: при віддаленні показуємо тільки при hover, щоб не настакувались
+    if (zoom >= minZoomForPermanent) {
+      // При наближенні - показуємо завжди
+      node.marker.bindTooltip(content, {
+        permanent: true,
+        direction: "bottom",
+        className: "node-label",
+        offset: [0, 5],
+      });
+    } else {
+      // При віддаленні - показуємо тільки при hover
+      node.marker.bindTooltip(content, {
+        permanent: false,
+        direction: "bottom",
+        className: "node-label",
+        offset: [0, 5],
+        sticky: true,
+      });
+    }
+  }
+}
+
+// Оновити видимість tooltip'ів для всіх вузлів при зміні zoom
+function updateTooltipsVisibility() {
+  nodes.forEach((n) => {
+    // Перебудувати tooltip з правильним режимом
+    let L1 = "";
+    let L2 = "";
+    
+    if (n.type === "OLT") {
+      L1 = `<span class="lbl-name lbl-olt">${n.name}</span>`;
+      L2 = `<span class="lbl-dim">${n.outputPower} дБ</span>`;
+      const portInfo = [];
+      for (let i = 0; i < n.ports; i++) {
+        const c = cntONUport(n, i);
+        if (c > 0) portInfo.push(`P${i + 1}: ${c}`);
+      }
+      if (portInfo.length)
+        L2 += `<br><span class="lbl-dim">${portInfo.join(" | ")}</span>`;
+    } else if (n.type === "FOB") {
+      L1 = `<span class="lbl-name lbl-fob">${n.name}</span>`;
+      if (n.inputConn) {
+        const si = sigIn(n);
+        L2 = `<span class="lbl-dim">IN:</span><span class="lbl-sig ${sigColorClass(si)}">${si.toFixed(1)}дБ</span>`;
+      }
+      const pi = fobPortStatus(n);
+      pi.lines.forEach((l) => (L2 += `<br>${l}`));
+      if (n.fbtType && n.inputConn) {
+        const sx = sigFBT(n, "X");
+        const sy = sigFBT(n, "Y");
+        L2 += `<br><span class="${sigColorClass(sx)}">X:${sx.toFixed(1)}дБ</span>`;
+        L2 += ` <span class="${sigColorClass(sy)}">Y:${sy.toFixed(1)}дБ</span>`;
+      }
+      if (n.plcType && n.inputConn) {
+        const so = sigONU(n);
+        L2 += `<br><span class="${sigColorClass(so)}">→ONU:${so.toFixed(1)}дБ</span>`;
+      }
+      if (!n.fbtType && !n.plcType) {
+        L2 += `<br><span class="lbl-transit">→ транзит</span>`;
+      }
+    } else if (n.type === "ONU") {
+      L1 = `<span class="lbl-name lbl-onu">${n.name}</span>`;
+      const s = sigAtONU(n);
+      const conn = conns.find((x) => x.to === n && x.type === "patchcord");
+      if (s !== 0) {
+        L2 = `<span class="lbl-sig ${sigColorClass(s)}">${s.toFixed(1)}дБ</span>`;
+        if (conn && conn.from) {
+          let tag = "";
+          if (conn.branch) tag += `[${conn.branch}]`;
+          if (conn.from.plcType) tag += conn.from.plcType;
+          else if (conn.from.fbtType) tag += conn.from.fbtType;
+          if (tag) L2 += ` <span class="lbl-dim">${tag}</span>`;
+        }
+      }
+    }
+    
+    const content = L1 + (L2 ? "<br>" + L2 : "");
+    updateNodeTooltip(n, content);
   });
 }
 
