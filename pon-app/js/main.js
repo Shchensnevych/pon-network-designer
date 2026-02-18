@@ -153,5 +153,27 @@ document.addEventListener("DOMContentLoaded", () => {
   window.addEventListener("load", () => {
     initBackups();
   });
+
+  // Global ESC handler for closing modals (Report / Help / Settings)
+  document.addEventListener("keydown", (e) => {
+    if (e.key !== "Escape") return;
+
+    const modalOverlay = document.getElementById("modal-overlay");
+    const helpOverlay = document.getElementById("help-overlay");
+    const settingsOverlay = document.getElementById("settings-overlay");
+
+    // Закриваємо лише те, що відкрите, за пріоритетом: основний звіт → help → settings
+    if (modalOverlay?.classList.contains("open")) {
+      window.closeModal();
+      return;
+    }
+    if (helpOverlay?.classList.contains("open")) {
+      window.closeHelp();
+      return;
+    }
+    if (settingsOverlay?.classList.contains("open")) {
+      window.closeSettings();
+    }
+  });
 });
 

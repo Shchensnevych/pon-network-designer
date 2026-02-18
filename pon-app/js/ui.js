@@ -690,16 +690,14 @@ export function focusNode(id) {
   const zoom = Math.max(map.getZoom() || 0, 18);
   map.setView(center, zoom, { animate: false });
 
-  // Visual focus feedback
+  // Visual focus feedback (без зміни позиції іконки)
   setTimeout(() => {
     mapNode.marker.openPopup();
     if (mapNode.marker._icon) {
       const icon = mapNode.marker._icon;
-      icon.style.transition = "transform 0.5s, box-shadow 0.5s";
-      icon.style.transform = "scale(1.5)";
+      icon.style.transition = "box-shadow 0.5s";
       icon.style.boxShadow = "0 0 20px #58a6ff";
       setTimeout(() => {
-        icon.style.transform = "";
         icon.style.boxShadow = "";
       }, 1000);
     }
