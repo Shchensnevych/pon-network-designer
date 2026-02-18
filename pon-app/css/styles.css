@@ -420,6 +420,25 @@ input[type="number"]:focus {
   border-color: #58a6ff;
 }
 
+/* Custom number input spinner styles */
+/* Hide default spinner in Firefox */
+input[type="number"] {
+  -moz-appearance: textfield;
+  appearance: textfield;
+}
+
+/* Hide default spinner in WebKit browsers (Chrome, Edge, Safari) */
+input[type="number"]::-webkit-outer-spin-button,
+input[type="number"]::-webkit-inner-spin-button {
+  -webkit-appearance: none;
+  margin: 0;
+  opacity: 0;
+  height: 0;
+  width: 0;
+}
+
+/* Users can still use keyboard arrows (↑↓) to change values in number inputs */
+
 .info-pill {
   background: rgba(88, 166, 255, 0.08);
   border: 1px solid rgba(89, 231, 7, 0.7);
@@ -664,6 +683,30 @@ input[type="number"]:focus {
   color: #c9d1d9;
 }
 
+/* Reset button for scenario comparison */
+#scenario-reset-btn {
+  background: #21262d;
+  color: #8b949e;
+  border: 1px solid #30363d;
+}
+
+#scenario-reset-btn:hover {
+  background: #30363d;
+  color: #c9d1d9;
+  border-color: #484f58;
+}
+
+/* Scenario comparison group headers */
+.scenario-group-header {
+  position: sticky;
+  top: 0;
+  z-index: 10;
+}
+
+.scenario-group-header td {
+  border-bottom: 1px solid rgba(88, 166, 255, 0.3);
+}
+
 .modal-actions button {
   padding: 5px 12px;
   border-radius: 4px;
@@ -671,6 +714,56 @@ input[type="number"]:focus {
   font-size: 12px;
   font-weight: 600;
   border: none;
+}
+
+/* Subtle pulse for onboarding help button */
+@keyframes pulse-help {
+  0% {
+    box-shadow: 0 0 0 0 rgba(88, 166, 255, 0.3);
+  }
+  70% {
+    box-shadow: 0 0 0 6px rgba(88, 166, 255, 0);
+  }
+  100% {
+    box-shadow: 0 0 0 0 rgba(88, 166, 255, 0);
+  }
+}
+
+/* White pulsing question mark for help button */
+@keyframes pulse-white {
+  0% {
+    opacity: 1;
+    text-shadow: 0 0 0 rgba(255, 255, 255, 0.7);
+  }
+  50% {
+    opacity: 0.8;
+    text-shadow: 0 0 8px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.5);
+  }
+  100% {
+    opacity: 1;
+    text-shadow: 0 0 0 rgba(255, 255, 255, 0.7);
+  }
+}
+
+/* Onboarding button in toolbar */
+#btn-onboarding {
+  transition: all 0.2s;
+}
+
+#btn-onboarding:hover {
+  background: #30363d !important;
+  border-color: #484f58 !important;
+  transform: translateY(-1px);
+}
+
+/* Help pulse button */
+#btn-help-pulse {
+  transition: all 0.2s;
+}
+
+#btn-help-pulse:hover {
+  opacity: 1 !important;
+  transform: scale(1.1);
 }
 
 .btn-dl-csv {
@@ -1178,6 +1271,18 @@ path.leaflet-interactive:hover {
   background: #30363d;
 }
 
+/* Help pulse button in toolbar - white pulsating question mark */
+#btn-help-pulse {
+  width: 32px !important;
+  height: 32px !important;
+  padding: 0 !important;
+  font-size: 20px !important;
+  font-weight: bold !important;
+  line-height: 1 !important;
+  color: #fff !important;
+  animation: pulse-white 1.5s infinite !important;
+}
+
 .leaflet-toolbar-group button.active {
   background: #58a6ff;
   color: #fff;
@@ -1324,5 +1429,3 @@ path.leaflet-interactive:hover {
   display: flex;
   gap: 8px;
 }
-
-

@@ -225,6 +225,9 @@ export function initNetwork() {
               <button onclick="setLayer('hyb')" id="btn-layer-hyb">🛰️🏷️ Гібрид</button>
             </div>
           </div>
+          <button onclick="openOnboarding()" id="btn-help-pulse" title="Онбординг: основи роботи, типи сплітерів, поради">
+            ?
+          </button>
         </div>
       </div>`;
     L.DomEvent.disableClickPropagation(div);
@@ -274,9 +277,14 @@ export function setLayer(type) {
 
 export function toggleEditMode() {
   if (!map?.pm) return;
+  const wasEditing = map.pm.globalEditModeEnabled();
   map.pm.toggleGlobalEditMode();
   const btn = document.getElementById("btn-edit");
   if (btn) btn.classList.toggle("active", map.pm.globalEditModeEnabled());
+  // Після виходу з режиму згинання — оновити підсвітку магістралі по нових координатах
+  if (wasEditing && selNode) {
+    highlightSignalPath(selNode);
+  }
 }
 
 /**
@@ -289,6 +297,11 @@ export function selectTool(t) {
 
   tool = t;
   connStart = null;
+
+  // When entering cable/patchcord mode, close all node popups so they don't block the view
+  if (["cable", "patchcord"].includes(t)) {
+    nodes.forEach((node) => node.marker?.closePopup?.());
+  }
 
   document
     .querySelectorAll(".tool-btn")
@@ -774,12 +787,16 @@ function createConnection(from, to, type, color, props = {}) {
     if (c.type === "cable") updateConnLabel(c);
     nodes.forEach((x) => updateNodeLabel(x));
     if (selNode === c.to || selNode === c.from) showProps(selNode);
+    // Оновити підсвітку магістралі після зміни форми лінії
+    if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
   });
   polyline.on("pm:markerdragend", () => {
     updateStats();
     if (c.type === "cable") updateConnLabel(c);
     nodes.forEach((x) => updateNodeLabel(x));
     if (selNode === c.to || selNode === c.from) showProps(selNode);
+    // Оновити підсвітку магістралі після перетягування вершини
+    if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
   });
 
   polyline.on("click", (e) => {
@@ -1162,7 +1179,16 @@ function onNodeClick(n, e) {
   } else if (["cable", "patchcord"].includes(tool)) {
     if (!connStart) {
       connStart = n;
+      // Close this marker's popup immediately so it doesn't block ONU when dragging
       n.marker.closePopup?.();
+      // Close all other markers' popups too
+      nodes.forEach((node) => {
+        if (node !== n) node.marker?.closePopup?.();
+      });
+      // Leaflet may open popup on marker click by default; close again after a tick
+      requestAnimationFrame(() => {
+        if (connStart === n) n.marker?.closePopup?.();
+      });
     } else {
       addConn(connStart, n, tool);
       connStart = null;
@@ -1259,12 +1285,20 @@ function updateNodeLabel(n) {
     autoPan: false,
     offset: [0, -10],
   });
-  // Show/hide popup on hover
+  // Show/hide popup on hover (but not during cable/patchcord drawing)
   n.marker.off("mouseover.popup mouseout.popup");
   n.marker.on("mouseover.popup", () => {
-    if (!["cable", "patchcord"].includes(tool)) n.marker.openPopup();
+    // Don't show popup if we're drawing a connection or if connection is already started
+    if (!["cable", "patchcord"].includes(tool) && !connStart) {
+      n.marker.openPopup();
+    }
   });
-  n.marker.on("mouseout.popup", () => n.marker.closePopup());
+  n.marker.on("mouseout.popup", () => {
+    // Close popup on mouseout, but keep it closed if we're drawing
+    if (!connStart) {
+      n.marker.closePopup();
+    }
+  });
 }
 
 // updateStats() is defined below (ported from monolith)

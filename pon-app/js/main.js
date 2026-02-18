@@ -166,12 +166,23 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   }
 
+  // Manual onboarding opener from toolbar (ignores "don't show" flag)
+  window.openOnboarding = () => {
+    const overlay = document.getElementById("onboarding-overlay");
+    const checkbox = document.getElementById("onboarding-dont-show");
+    if (checkbox) checkbox.checked = localStorage.getItem("pon_onboarding_dismissed") === "true";
+    if (overlay) overlay.style.display = "flex";
+  };
+
   window.closeOnboarding = () => {
     const overlay = document.getElementById("onboarding-overlay");
     if (overlay) overlay.style.display = "none";
     const checkbox = document.getElementById("onboarding-dont-show");
     if (checkbox?.checked) {
       localStorage.setItem("pon_onboarding_dismissed", "true");
+    } else {
+      // Якщо галочку знято — при наступному запуску знову показати онбординг
+      localStorage.removeItem("pon_onboarding_dismissed");
     }
   };
 
