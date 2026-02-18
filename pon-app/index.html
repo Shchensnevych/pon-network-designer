@@ -1,0 +1,636 @@
+<!doctype html>
+<html lang="uk">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>PON Designer (Modular)</title>
+
+    <!-- Leaflet core -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/leaflet@1.9.4/dist/leaflet.css"
+    />
+    <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
+
+    <!-- html2canvas for PNG export -->
+    <script src="https://html2canvas.hertzen.com/dist/html2canvas.min.js"></script>
+
+    <!-- Geoman (Leaflet-PM) for Editing/Bending -->
+    <link
+      rel="stylesheet"
+      href="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.css"
+    />
+    <script src="https://unpkg.com/@geoman-io/leaflet-geoman-free@latest/dist/leaflet-geoman.min.js"></script>
+
+    <!-- App styles -->
+    <link rel="stylesheet" href="./css/styles.css" />
+  </head>
+
+  <body>
+    <div class="app">
+      <!-- ══ LEFT ══ -->
+      <div class="left">
+        <div class="left-header">⚡ PON Designer</div>
+        <div class="left-body">
+          <div class="config-box">
+            <label>Затухання волокна (дБ/км):</label>
+            <input
+              type="number"
+              id="fiber-loss"
+              value="0.4"
+              min="0.1"
+              max="1"
+              step="0.05"
+              onchange="updateFiberLoss(this.value)"
+            />
+            <div class="config-hint">1310нм: 0.4 | 1550нм: 0.25</div>
+          </div>
+
+          <div class="section-label">Режим</div>
+          <button
+            class="tool-btn active"
+            data-tool="select"
+            onclick="selectTool('select')"
+          >
+            <span class="icon">👆</span>Вказівник
+          </button>
+          <button class="tool-btn" data-tool="pan" onclick="selectTool('pan')">
+            <span class="icon">✋</span>Панорамування
+          </button>
+
+          <div class="section-label">Компоненти</div>
+          <button
+            class="tool-btn"
+            data-tool="olt"
+            onclick="selectTool('olt')"
+            draggable="true"
+            data-type="olt"
+          >
+            <span class="icon">🔷</span>Додати OLT
+          </button>
+          <button
+            class="tool-btn"
+            data-tool="fob"
+            onclick="selectTool('fob')"
+            draggable="true"
+            data-type="fob"
+          >
+            <span class="icon">📦</span>Додати FOB
+          </button>
+          <button
+            class="tool-btn"
+            data-tool="onu"
+            onclick="selectTool('onu')"
+            draggable="true"
+            data-type="onu"
+          >
+            <span class="icon">🏠</span>Додати ONU
+          </button>
+
+          <div class="section-label">З'єднання</div>
+          <button
+            class="tool-btn"
+            data-tool="cable"
+            onclick="selectTool('cable')"
+          >
+            <span class="icon">━</span>Магістраль
+          </button>
+          <button
+            class="tool-btn"
+            data-tool="patchcord"
+            onclick="selectTool('patchcord')"
+          >
+            <span class="icon">╌</span>Патчкорд
+          </button>
+
+          <div class="section-label">Дії</div>
+          <button
+            class="action-btn btn-green"
+            onclick="exportToJSON()"
+            title="Зберегти поточний проєкт як JSON-файл"
+          >
+            💾 Зберегти проєкт
+          </button>
+          <button
+            class="action-btn btn-purple"
+            onclick="loadProject()"
+            title="Відкрити раніше збережений JSON-проєкт"
+          >
+            📂 Відкрити проєкт
+          </button>
+          <button
+            class="action-btn btn-blue"
+            onclick="exportToPNG()"
+            title="Експортувати карту як PNG-зображення"
+          >
+            🖼️ Схема PNG
+          </button>
+          <button
+            class="action-btn btn-blue"
+            onclick="openReport()"
+            title="Детальний звіт: кабелі, порти, сигнали та експорт CSV"
+          >
+            📊 Звіт / Експорт
+          </button>
+          <button
+            class="action-btn btn-orange"
+            onclick="showSuggestions()"
+            title="Перевірка мережі: відключені вузли, слабкі сигнали, петлі, перевантаження"
+          >
+            🔍 Валідація
+          </button>
+          <button
+            class="action-btn btn-blue"
+            onclick="showTopology()"
+            title="Дерево мережі: OLT → Порти → FOB → ONU з рівнями сигналу"
+          >
+            🌳 Топологія
+          </button>
+          <button
+            class="action-btn btn-purple"
+            onclick="showScenarioCompare()"
+            title="Порівняння сценаріїв: що буде якщо змінити сплітери?"
+          >
+            🔄 Порівняння
+          </button>
+          <button
+            class="action-btn"
+            id="btn-anim"
+            onclick="toggleSignalAnim()"
+            style="
+              background: #1c1c2b;
+              border: 1px solid #6e7681;
+              color: #8b949e;
+            "
+            title="Анімовані білі штрихи на кабелях показують напрямок сигналу"
+          >
+            ⚡ Анімація сигналу
+          </button>
+          <button
+            class="action-btn"
+            onclick="openHelp()"
+            style="
+              background: #1c2b1c;
+              border: 1px solid #6e7681;
+              color: #8b949e;
+            "
+            title="Таблиця затухань сплітерів, конекторів та зварювань"
+          >
+            📋 Довідка затухань
+          </button>
+          <button
+            class="action-btn"
+            onclick="openSettings()"
+            style="
+                background: #1c1c2b;
+                border: 1px solid #6e7681;
+                color: #8b949e;
+            "
+            title="Налаштування автозбереження та керування бекапами"
+          >
+            ⚙️ Бекапи / Налаштування
+          </button>
+          <button
+            class="clear-btn"
+            onclick="clearNetwork()"
+            title="Видалити всі вузли, з'єднання та історію змін"
+          >
+            🗑️ Очистити мережу
+          </button>
+        </div>
+      </div>
+
+      <!-- ══ MAP ══ -->
+      <div class="canvas-wrap">
+        <div id="map"></div>
+      </div>
+
+      <!-- ══ RIGHT ══ -->
+      <div class="right">
+        <div class="right-header">⚙️ Властивості</div>
+        <div class="right-body">
+          <div class="stats-row">
+            <div class="stat-chip">
+              <div class="val" id="s-olt">0</div>
+              <div class="lbl">OLT</div>
+            </div>
+            <div class="stat-chip">
+              <div class="val" id="s-fob">0</div>
+              <div class="lbl">FOB</div>
+            </div>
+            <div class="stat-chip">
+              <div class="val" id="s-onu">0</div>
+              <div class="lbl">ONU</div>
+            </div>
+            <div class="stat-chip">
+              <div class="val" id="s-conn">0</div>
+              <div class="lbl">З'єдн.</div>
+            </div>
+          </div>
+          <div id="props">
+            <div
+              style="
+                color: #484f58;
+                text-align: center;
+                padding: 30px 10px;
+                font-size: 12px;
+              "
+            >
+              <div style="font-size: 32px; margin-bottom: 8px">👆</div>
+              Виберіть компонент
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+    <!-- .app -->
+
+    <!-- Context menu -->
+    <div class="ctx-menu" id="ctx-menu"></div>
+    <!-- Tooltip -->
+    <div
+      id="tooltip"
+      style="
+        position: absolute;
+        display: none;
+        pointer-events: none;
+        background: rgba(13, 17, 23, 0.95);
+        border: 1px solid #30363d;
+        border-radius: 6px;
+        padding: 8px 12px;
+        font-size: 11px;
+        color: #c9d1d9;
+        z-index: 500;
+        max-width: 220px;
+        line-height: 1.6;
+        box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+      "
+    ></div>
+
+    <!-- Report Modal -->
+    <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+      <div class="modal" onclick="event.stopPropagation()">
+        <div class="modal-head">
+          <h2>📊 Звіт по PON мережі</h2>
+          <div class="modal-actions">
+            <button class="modal-btn btn-csv" onclick="downloadCSV()">
+              ⬇ CSV
+            </button>
+            <button class="modal-btn btn-txt" onclick="downloadTXT()">
+              ⬇ TXT
+            </button>
+            <div
+              style="
+                width: 1px;
+                height: 24px;
+                background: #30363d;
+                margin: 0 4px;
+              "
+            ></div>
+            <button class="modal-btn btn-x" onclick="closeModal()">✕</button>
+          </div>
+        </div>
+        <div class="modal-body" id="modal-body"></div>
+      </div>
+    </div>
+
+    <!-- Settings & Backups Modal -->
+    <div id="settings-overlay" class="modal-overlay" onclick="closeSettings()">
+      <div class="modal" onclick="event.stopPropagation()" style="max-width: 600px; height: 70vh;">
+        <div class="modal-head">
+          <h2>⚙️ Налаштування та Бекапи</h2>
+          <div class="modal-actions">
+            <button class="modal-btn btn-x" onclick="closeSettings()">✕</button>
+          </div>
+        </div>
+        <div class="modal-body" id="settings-body" style="padding: 0; display: flex; flex-direction: column;">
+          <div style="display: flex; border-bottom: 1px solid #30363d;">
+            <button
+              class="tab-btn active"
+              onclick="switchTab('tab-settings')"
+              id="btn-tab-settings"
+            >
+              Налаштування
+            </button>
+            <button class="tab-btn" onclick="switchTab('tab-backups')" id="btn-tab-backups">
+              Бекапи
+            </button>
+          </div>
+
+          <div id="tab-settings" class="tab-content active" style="padding: 16px">
+            <div class="config-box">
+              <label>Назва проєкту:</label>
+              <input
+                type="text"
+                id="project-name"
+                value="Мій проєкт"
+                onchange="updateProjectName(this.value)"
+                placeholder="Введіть назву..."
+              />
+            </div>
+            <div class="config-box" style="margin-top: 10px">
+              <label
+                style="display: flex; align-items: center; gap: 8px; cursor: pointer"
+              >
+                <input
+                  type="checkbox"
+                  id="autosave-toggle"
+                  onchange="toggleAutoSave(this.checked)"
+                  style="width: auto"
+                />
+                Увімкнути автозбереження
+              </label>
+            </div>
+            <div class="config-box" style="margin-top: 10px">
+              <label>Інтервал автозбереження (хв):</label>
+              <select
+                id="autosave-interval"
+                onchange="updateAutoSaveInterval(this.value)"
+              >
+                <option value="1">1 хв</option>
+                <option value="5" selected>5 хв</option>
+                <option value="10">10 хв</option>
+                <option value="30">30 хв</option>
+              </select>
+            </div>
+            <div class="config-box" style="margin-top: 10px">
+              <label>Макс. кількість бекапів:</label>
+              <input
+                type="number"
+                id="max-backups"
+                value="20"
+                min="5"
+                max="100"
+                onchange="updateMaxBackups(this.value)"
+              />
+            </div>
+            <div class="info-pill" style="margin-top: 15px">
+              ℹ️ Бекапи зберігаються локально у вашому браузері (IndexedDB).
+            </div>
+          </div>
+
+          <div id="tab-backups" class="tab-content" style="padding: 0">
+            <div id="backup-list" style="overflow-y: auto; height: 100%">
+              <div
+                style="
+                  padding: 20px;
+                  text-align: center;
+                  color: #6e7681;
+                "
+              >
+                Завантаження...
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Help Modal (затухання) -->
+    <div id="help-overlay" class="modal-overlay" onclick="closeHelp()">
+      <div class="modal" onclick="event.stopPropagation()" style="max-width: 720px">
+        <div class="modal-head">
+          <h2>📋 Довідка — Затухання обладнання PON</h2>
+          <div class="modal-actions">
+            <button class="modal-btn btn-x" onclick="closeHelp()">✕</button>
+          </div>
+        </div>
+        <div class="modal-body" id="help-body" style="padding: 20px">
+          <div class="report-section">
+            <h3>FBT Дільники (Fused Biconical Taper)</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Тип</th>
+                  <th>Гілка X (%)</th>
+                  <th>Затух. X (дБ)</th>
+                  <th>Гілка Y (%)</th>
+                  <th>Затух. Y (дБ)</th>
+                  <th>Застосування</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="td-name">FBT 5/95</td>
+                  <td>5%</td>
+                  <td class="td-warn">13.70</td>
+                  <td>95%</td>
+                  <td class="td-ok">0.32</td>
+                  <td>Малий відгалужувач, далека магістраль</td>
+                </tr>
+                <tr>
+                  <td class="td-name">FBT 10/90</td>
+                  <td>10%</td>
+                  <td class="td-warn">10.08</td>
+                  <td>90%</td>
+                  <td class="td-ok">0.49</td>
+                  <td>Живлення ближнього FOB</td>
+                </tr>
+                <tr>
+                  <td class="td-name">FBT 20/80</td>
+                  <td>20%</td>
+                  <td class="td-warn">7.11</td>
+                  <td>80%</td>
+                  <td class="td-ok">1.06</td>
+                  <td>Рівномірніший розподіл</td>
+                </tr>
+                <tr>
+                  <td class="td-name">FBT 30/70</td>
+                  <td>30%</td>
+                  <td class="td-warn">5.39</td>
+                  <td>70%</td>
+                  <td class="td-ok">1.56</td>
+                  <td>Близькі відстані між FOB</td>
+                </tr>
+                <tr>
+                  <td class="td-name">FBT 50/50</td>
+                  <td>50%</td>
+                  <td>3.17</td>
+                  <td>50%</td>
+                  <td>3.19</td>
+                  <td>Рівний розподіл між двома гілками</td>
+                </tr>
+              </tbody>
+            </table>
+            <div class="info-pill" style="margin-top: 8px">
+              💡 X — менша частка сигналу (більше затухання), Y — більша частка
+              (менше затухання). Підключайте PLC до гілки Y для кращого сигналу
+              на абонентах.
+            </div>
+          </div>
+
+          <div class="report-section">
+            <h3>PLC Сплітери (Planar Lightwave Circuit)</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Тип</th>
+                  <th>Портів</th>
+                  <th>Затухання (дБ)</th>
+                  <th>Макс. ONU</th>
+                  <th>Рекомендовано для</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td class="td-name">PLC 1×2</td>
+                  <td>2</td>
+                  <td class="td-ok">4.30</td>
+                  <td>2</td>
+                  <td>Малі об'єкти, 2 абоненти</td>
+                </tr>
+                <tr>
+                  <td class="td-name">PLC 1×4</td>
+                  <td>4</td>
+                  <td class="td-ok">7.40</td>
+                  <td>4</td>
+                  <td>Квартирний під'їзд, малий будинок</td>
+                </tr>
+                <tr>
+                  <td class="td-name">PLC 1×8</td>
+                  <td>8</td>
+                  <td class="td-ok">10.70</td>
+                  <td>8</td>
+                  <td>Стандартний під'їзд 8-16 квартир</td>
+                </tr>
+                <tr>
+                  <td class="td-name">PLC 1×16</td>
+                  <td>16</td>
+                  <td class="td-warn">13.90</td>
+                  <td>16</td>
+                  <td>Середній будинок</td>
+                </tr>
+                <tr>
+                  <td class="td-name">PLC 1×32</td>
+                  <td>32</td>
+                  <td class="td-warn">17.20</td>
+                  <td>32</td>
+                  <td>Великий будинок, квартал</td>
+                </tr>
+                <tr>
+                  <td class="td-name">PLC 1×64</td>
+                  <td>64</td>
+                  <td class="td-err">21.50</td>
+                  <td>64</td>
+                  <td>Тільки при великій потужності OLT</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="report-section">
+            <h3>Механічні втрати</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Тип з'єднання</th>
+                  <th>Втрати (дБ)</th>
+                  <th>Де застосовується</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Зварне з'єднання</td>
+                  <td class="td-ok">0.1 – 0.2</td>
+                  <td>Зрощення кабелів</td>
+                </tr>
+                <tr>
+                  <td>Механічний роз'єм (SC/APC)</td>
+                  <td class="td-ok">0.3 – 0.5</td>
+                  <td>Патч-панелі, ONU, OLT</td>
+                </tr>
+                <tr>
+                  <td>В даній програмі (типове)</td>
+                  <td class="td-ok">0.5</td>
+                  <td>На кожне з'єднання</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="report-section">
+            <h3>Оптичне волокно — затухання</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Довжина хвилі</th>
+                  <th>Затухання (дБ/км)</th>
+                  <th>Застосування в PON</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>1310 нм</td>
+                  <td class="td-ok">0.35 – 0.40</td>
+                  <td>Висхідний канал (upstream) GPON</td>
+                </tr>
+                <tr>
+                  <td>1490 нм</td>
+                  <td class="td-ok">0.25 – 0.35</td>
+                  <td>Низхідний канал (downstream) GPON</td>
+                </tr>
+                <tr>
+                  <td>1550 нм</td>
+                  <td class="td-ok">0.20 – 0.25</td>
+                  <td>XGS-PON, відеооверлей</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="report-section">
+            <h3>Поріг чутливості ONU / OLT</h3>
+            <table>
+              <thead>
+                <tr>
+                  <th>Параметр</th>
+                  <th>Значення</th>
+                  <th>Пояснення</th>
+                </tr>
+              </thead>
+              <tbody>
+                <tr>
+                  <td>Мінімальний сигнал ONU</td>
+                  <td class="td-warn">−26 дБм</td>
+                  <td>Нижче — ONU не синхронізується</td>
+                </tr>
+                <tr>
+                  <td>Нормальний діапазон ONU</td>
+                  <td class="td-ok">−8 … −26 дБм</td>
+                  <td>Рекомендований робочий діапазон</td>
+                </tr>
+                <tr>
+                  <td>Типова потужність OLT порту</td>
+                  <td class="td-ok">+2 … +5 дБм</td>
+                  <td>Залежить від класу OLT (B+, C+)</td>
+                </tr>
+                <tr>
+                  <td>Максимальний бюджет GPON</td>
+                  <td class="td-ok">28 дБ (B+)</td>
+                  <td>OLT +2дБм → ONU −26дБм</td>
+                </tr>
+              </tbody>
+            </table>
+          </div>
+
+          <div class="report-section">
+            <h3>Типова схема розрахунку</h3>
+            <div class="info-pill">
+              <strong>OLT (2дБ)</strong> → кабель (0.4дБ/км × відстань км + 0.5дБ мех.) →
+              <strong>FOB IN</strong><br />
+              → FBT гілка Y (1.56дБ) → кабель → наступний FOB<br />
+              → FBT гілка X (5.39дБ) + PLC 1×8 (10.7дБ) + 0.5дБ мех. →
+              <strong>ONU</strong><br /><br />
+              Приклад: 2 − 0.16 − 0.5 = 1.34дБ (IN) → −5.39 − 0.5 = −4.55дБ (X) → −10.7 − 0.5 =
+              <strong>−15.75дБм на ONU</strong> ✓
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Main application module -->
+    <script type="module" src="./js/main.js"></script>
+  </body>
+</html>
+
