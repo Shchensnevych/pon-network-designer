@@ -198,7 +198,9 @@
         cursor: pointer;
         font-size: 12px;
         font-weight: 500;
-        margin-top: 4px;
+        text-align: left;
+        align-items: center;
+        margin-top: 20px;
         transition: all 0.15s;
       }
 
@@ -1703,6 +1705,16 @@
                                 <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fff">
                                     <path d="M15 14l5-5-5-5"/>
                                     <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/>
+                                </svg>
+                            </button>
+                            <button onclick="fitNetwork()" title="Показати всю мережу (Fit All)">
+                                <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fff">
+                                    <circle cx="12" cy="12" r="10"></circle>
+                                    <line x1="22" y1="12" x2="18" y2="12"></line>
+                                    <line x1="6" y1="12" x2="2" y2="12"></line>
+                                    <line x1="12" y1="6" x2="12" y2="2"></line>
+                                    <line x1="12" y1="22" x2="12" y2="18"></line>
+                                    <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
                                 </svg>
                             </button>
                             <button onclick="toggleEditMode()" id="btn-edit" title="Редагувати (вигини)">
@@ -3743,8 +3755,40 @@
       // ═══════════════════════════════════════════════
       //  TOPOLOGY DIAGRAM
       // ═══════════════════════════════════════════════
+      function fitNetwork() {
+        if (nodes.length === 0) {
+          alert("Мережа порожня / Network is empty");
+          return;
+        }
+        const bounds = L.latLngBounds(nodes.map((n) => [n.lat, n.lng]));
+        map.fitBounds(bounds, { padding: [50, 50], maxZoom: 18 });
+      }
+
+      function focusNode(id) {
+        const n = nodes.find((x) => x.id === id);
+        if (!n) return;
+        closeModal();
+        map.flyTo([n.lat, n.lng], 18, { duration: 1.5 });
+        setTimeout(() => {
+          n.marker.openPopup();
+          if (n.marker._icon) {
+             const icon = n.marker._icon;
+             icon.style.transition = "transform 0.5s, box-shadow 0.5s";
+             icon.style.transform = "scale(1.5)";
+             icon.style.boxShadow = "0 0 20px #58a6ff";
+             setTimeout(() => {
+                icon.style.transform = "";
+                icon.style.boxShadow = "";
+             }, 1000);
+          }
+        }, 1500);
+      }
+
+      // ═══════════════════════════════════════════════
+      //  TOPOLOGY DIAGRAM
+      // ═══════════════════════════════════════════════
       function showTopology() {
-        let html = `<div class="report-section"><h3>🌳 Топологія мережі</h3>`;
+        let html = `<div class="report-section"><h3>🌳 Топологія мережі (Натисніть на елемент для переходу)</h3>`;
 
         // Recursive FOB tree builder - returns HTML string
         function renderFobTree(fob, cable) {
@@ -3768,7 +3812,7 @@
             splParts.length > 0 ? splParts.join(" + ") : "Транзит";
 
           h += `<div class="topo-branch">`;
-          h += `<div class="topo-node topo-fob">📦 ${fob.name} <span class="topo-info">(${splitterInfo}, ${dist}м, <span class="${cls}">${sigStr} дБ</span>)</span></div>`;
+          h += `<div class="topo-node topo-fob" style="cursor:pointer" onclick="focusNode('${fob.id}')" title="Показати на карті">📦 ${fob.name} <span class="topo-info">(${splitterInfo}, ${dist}м, <span class="${cls}">${sigStr} дБ</span>)</span></div>`;
 
           // Downstream FOBs (cascade cables from this FOB)
           const downCables = conns.filter(
@@ -3796,7 +3840,7 @@
                       ? "sig-warn"
                       : "sig-err"
                   : "";
-              h += `<div class="topo-node topo-onu">🏠 ${onu.name} <span class="${onuCls}">(${onuSigStr} дБ)</span></div>`;
+              h += `<div class="topo-node topo-onu" style="cursor:pointer" onclick="focusNode('${onu.id}')" title="Показати на карті">🏠 ${onu.name} <span class="${onuCls}">(${onuSigStr} дБ)</span></div>`;
             });
             h += `</div>`;
           }
@@ -3810,7 +3854,7 @@
         } else {
           olts.forEach((olt) => {
             html += `<div class="topo-tree">`;
-            html += `<div class="topo-node topo-olt">🔷 ${olt.name} <span class="topo-info">(${olt.outputPower} дБ, ${olt.ports} порт${olt.ports > 1 ? "ів" : ""})</span></div>`;
+            html += `<div class="topo-node topo-olt" style="cursor:pointer" onclick="focusNode('${olt.id}')" title="Показати на карті">🔷 ${olt.name} <span class="topo-info">(${olt.outputPower} дБ, ${olt.ports} порт${olt.ports > 1 ? "ів" : ""})</span></div>`;
 
             for (let p = 0; p < olt.ports; p++) {
               const portCables = conns.filter(
