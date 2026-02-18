@@ -1,0 +1,2540 @@
+<!DOCTYPE html>
+<html lang="uk">
+
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>PON Designer</title>
+  <style>
+    * {
+      margin: 0;
+      padding: 0;
+      box-sizing: border-box
+    }
+
+    body {
+      font-family: 'Segoe UI', sans-serif;
+      background: #0d1117;
+      color: #e6edf3;
+      overflow: hidden;
+      height: 100vh
+    }
+
+    /* ── LAYOUT ── */
+    .app {
+      display: grid;
+      grid-template-columns: 200px 1fr 260px;
+      height: 100vh
+    }
+
+    /* ── LEFT PANEL ── */
+    .left {
+      background: #161b22;
+      border-right: 1px solid #30363d;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden
+    }
+
+    .left-header {
+      padding: 10px 12px;
+      border-bottom: 1px solid #30363d;
+      font-size: 11px;
+      font-weight: 700;
+      color: #58a6ff;
+      text-transform: uppercase;
+      letter-spacing: 1px
+    }
+
+    .left-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px
+    }
+
+    .left-body::-webkit-scrollbar {
+      width: 4px
+    }
+
+    .left-body::-webkit-scrollbar-track {
+      background: transparent
+    }
+
+    .left-body::-webkit-scrollbar-thumb {
+      background: #30363d;
+      border-radius: 2px
+    }
+
+    .section-label {
+      font-size: 10px;
+      color: #6e7681;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      padding: 8px 4px 4px;
+      font-weight: 600
+    }
+
+    .tool-btn {
+      width: 100%;
+      padding: 7px 10px;
+      margin-bottom: 3px;
+      background: transparent;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      text-align: left;
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      transition: all 0.15s
+    }
+
+    .tool-btn:hover {
+      background: #21262d;
+      border-color: #58a6ff;
+      color: #58a6ff
+    }
+
+    .tool-btn.active {
+      background: #1f3a5f;
+      border-color: #58a6ff;
+      color: #58a6ff
+    }
+
+    .tool-btn .icon {
+      font-size: 13px;
+      width: 16px;
+      text-align: center
+    }
+
+    .config-box {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 8px;
+      margin-bottom: 6px
+    }
+
+    .config-box label {
+      display: block;
+      font-size: 10px;
+      color: #6e7681;
+      margin-bottom: 3px
+    }
+
+    .config-box input {
+      width: 100%;
+      padding: 5px 8px;
+      background: #161b22;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      border-radius: 4px;
+      font-size: 12px
+    }
+
+    .config-box input:focus {
+      outline: none;
+      border-color: #58a6ff
+    }
+
+    .config-hint {
+      font-size: 10px;
+      color: #484f58;
+      margin-top: 3px
+    }
+
+    input[type="file"] {
+      display: none
+    }
+
+    .upload-btn {
+      width: 100%;
+      padding: 7px;
+      background: #21262d;
+      border: 1px dashed #2eb920;
+      color: #8b949e;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 11px;
+      text-align: center;
+      display: block;
+      margin-bottom: 6px;
+      transition: all 0.15s
+    }
+
+    .upload-btn:hover {
+      border-color: #58a6ff;
+      color: #58a6ff
+    }
+
+    .clear-btn {
+      width: 100%;
+      padding: 7px;
+      background: transparent;
+      border: 1px solid #f85149;
+      color: #f85149;
+      border-radius: 6px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 500;
+      margin-top: 4px;
+      transition: all 0.15s
+    }
+
+    .clear-btn:hover {
+      background: #3d1c1c
+    }
+
+    /* ── CANVAS ── */
+    .canvas-wrap {
+      position: relative;
+      overflow: hidden;
+      background: #0d1117
+    }
+
+    #canvas {
+      display: block;
+      width: 100%;
+      height: 100%
+    }
+
+    .canvas-hint {
+      position: absolute;
+      top: 8px;
+      left: 8px;
+      background: rgba(22, 27, 34, 0.92);
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 6px 10px;
+      font-size: 11px;
+      color: #58a6ff;
+      max-width: 380px;
+      line-height: 1.4;
+      pointer-events: none
+    }
+
+    .zoom-bar {
+      position: absolute;
+      bottom: 12px;
+      left: 12px;
+      background: rgba(22, 27, 34, 0.92);
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 6px;
+      display: flex;
+      align-items: center;
+      gap: 4px
+    }
+
+    .zoom-bar button {
+      width: 28px;
+      height: 28px;
+      background: #21262d;
+      border: 1px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 14px;
+      font-weight: 700;
+      line-height: 1
+    }
+
+    .zoom-bar button:hover {
+      border-color: #58a6ff;
+      color: #58a6ff
+    }
+
+    .zoom-label {
+      font-size: 11px;
+      color: #58a6ff;
+      min-width: 36px;
+      text-align: center
+    }
+
+    /* ── RIGHT PANEL ── */
+    .right {
+      background: #161b22;
+      border-left: 1px solid #30363d;
+      display: flex;
+      flex-direction: column;
+      overflow: hidden
+    }
+
+    .right-header {
+      padding: 10px 12px;
+      border-bottom: 1px solid #30363d;
+      font-size: 11px;
+      font-weight: 700;
+      color: #58a6ff;
+      text-transform: uppercase;
+      letter-spacing: 1px
+    }
+
+    .right-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 8px
+    }
+
+    .right-body::-webkit-scrollbar {
+      width: 4px
+    }
+
+    .right-body::-webkit-scrollbar-thumb {
+      background: #30363d;
+      border-radius: 2px
+    }
+
+    /* Stats row */
+    .stats-row {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin-bottom: 8px
+    }
+
+    .stat-chip {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 6px 8px;
+      text-align: center
+    }
+
+    .stat-chip .val {
+      font-size: 18px;
+      font-weight: 700;
+      color: #58a6ff;
+      line-height: 1
+    }
+
+    .stat-chip .lbl {
+      font-size: 9px;
+      color: #6e7681;
+      text-transform: uppercase;
+      letter-spacing: 0.5px
+    }
+
+    /* Node card */
+    .node-card {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px;
+      margin-bottom: 6px
+    }
+
+    .node-card h3 {
+      font-size: 13px;
+      color: #58a6ff;
+      margin-bottom: 8px;
+      display: flex;
+      align-items: center;
+      gap: 6px
+    }
+
+    .prop-row {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      padding: 4px 0;
+      border-bottom: 1px solid #21262d;
+      font-size: 11px
+    }
+
+    .prop-row:last-child {
+      border-bottom: none
+    }
+
+    .prop-label {
+      color: #8b949e
+    }
+
+    .prop-value {
+      color: #58a6ff;
+      font-weight: 600
+    }
+
+    .prop-value.ok {
+      color: #3fb950
+    }
+
+    .prop-value.warn {
+      color: #d29922
+    }
+
+    .prop-value.err {
+      color: #f85149
+    }
+
+    .dot {
+      display: inline-block;
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      margin-right: 4px
+    }
+
+    .dot.ok {
+      background: #3fb950
+    }
+
+    .dot.warn {
+      background: #d29922
+    }
+
+    .dot.err {
+      background: #f85149
+    }
+
+    .form-label {
+      font-size: 10px;
+      color: #58a6ff;
+      font-weight: 600;
+      margin-top: 8px;
+      margin-bottom: 3px;
+      display: block
+    }
+
+    select,
+    input[type="number"] {
+      width: 100%;
+      padding: 5px 8px;
+      background: #0d1117;
+      border: 1px solid #30363d;
+      color: #e6edf3;
+      border-radius: 4px;
+      font-size: 12px;
+      margin-bottom: 4px
+    }
+
+    select:focus,
+    input[type="number"]:focus {
+      outline: none;
+      border-color: #58a6ff
+    }
+
+    .info-pill {
+      background: rgba(88, 166, 255, 0.08);
+      border: 1px solid rgba(88, 166, 255, 0.2);
+      border-radius: 4px;
+      padding: 5px 8px;
+      font-size: 10px;
+      color: #8b949e;
+      margin-top: 4px
+    }
+
+    .warn-pill {
+      background: rgba(248, 81, 73, 0.08);
+      border: 1px solid rgba(248, 81, 73, 0.3);
+      border-radius: 4px;
+      padding: 6px 8px;
+      font-size: 11px;
+      color: #f85149;
+      text-align: center;
+      margin-bottom: 6px
+    }
+
+    /* Buttons */
+    .del-btn {
+      width: 100%;
+      padding: 6px;
+      background: transparent;
+      border: 1px solid #f85149;
+      color: #f85149;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      margin-top: 8px
+    }
+
+    .del-btn:hover {
+      background: #3d1c1c
+    }
+
+    .action-btn {
+      width: 100%;
+      padding: 7px;
+      border: none;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      font-weight: 600;
+      text-align: left;
+      align-items: center;
+      margin-bottom: 4px;
+      transition: all 0.15s
+    }
+
+    .action-btn:hover {
+      filter: brightness(1.1)
+    }
+
+    .btn-green {
+      background: #1a4731;
+      border: 1px solid #3fb950;
+      color: #3fb950
+    }
+
+    .btn-blue {
+      background: #1f3a5f;
+      border: 1px solid #58a6ff;
+      color: #58a6ff
+    }
+
+    .btn-purple {
+      background: #2d1b69;
+      border: 1px solid #a371f7;
+      color: #a371f7
+    }
+
+    .btn-orange {
+      background: #3d2200;
+      border: 1px solid #f0883e;
+      color: #f0883e
+    }
+
+    /* Port selector */
+    .port-grid {
+      display: grid;
+      grid-template-columns: 1fr 1fr;
+      gap: 4px;
+      margin: 6px 0
+    }
+
+    .port-btn {
+      padding: 8px 4px;
+      background: #0d1117;
+      border: 2px solid #30363d;
+      color: #c9d1d9;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 11px;
+      text-align: center
+    }
+
+    .port-btn:hover {
+      border-color: #58a6ff;
+      color: #58a6ff
+    }
+
+    /* Context menu */
+    .ctx-menu {
+      position: absolute;
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 4px;
+      display: none;
+      z-index: 1000;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      min-width: 160px
+    }
+
+    .ctx-item {
+      padding: 7px 12px;
+      cursor: pointer;
+      font-size: 12px;
+      color: #c9d1d9;
+      border-radius: 4px;
+      display: flex;
+      align-items: center;
+      gap: 8px
+    }
+
+    .ctx-item:hover {
+      background: #21262d;
+      color: #58a6ff
+    }
+
+    .ctx-item.danger {
+      color: #f85149
+    }
+
+    .ctx-item.danger:hover {
+      background: #3d1c1c
+    }
+
+    /* ── MODAL (звіт) ── */
+    .modal-overlay {
+      position: fixed;
+      inset: 0;
+      background: rgba(0, 0, 0, 0.8);
+      z-index: 2000;
+      display: none;
+      align-items: center;
+      justify-content: center
+    }
+
+    .modal-overlay.open {
+      display: flex
+    }
+
+    .modal {
+      background: #161b22;
+      border: 1px solid #30363d;
+      border-radius: 10px;
+      width: 90vw;
+      max-width: 900px;
+      max-height: 88vh;
+      display: flex;
+      flex-direction: column;
+      box-shadow: 0 20px 60px rgba(0, 0, 0, 0.7)
+    }
+
+    .modal-head {
+      padding: 14px 18px;
+      border-bottom: 1px solid #30363d;
+      display: flex;
+      align-items: center;
+      justify-content: space-between
+    }
+
+    .modal-head h2 {
+      font-size: 15px;
+      color: #58a6ff;
+      margin: 0
+    }
+
+    .modal-actions {
+      display: flex;
+      align-items: center;
+      gap: 10px
+    }
+
+    .modal-btn {
+      display: inline-flex;
+      align-items: center;
+      gap: 6px;
+      padding: 6px 12px;
+      border-radius: 6px;
+      font-size: 12px;
+      font-weight: 600;
+      cursor: pointer;
+      line-height: normal;
+      transition: all 0.2s;
+      border: 1px solid transparent
+    }
+
+    .modal-btn:hover {
+      filter: brightness(1.1);
+      transform: translateY(-1px)
+    }
+
+    .btn-csv {
+      background: rgba(46, 160, 67, 0.15);
+      border-color: #3fb950;
+      color: #3fb950
+    }
+
+    .btn-csv:hover {
+      background: rgba(46, 160, 67, 0.25)
+    }
+
+    .btn-txt {
+      background: rgba(88, 166, 255, 0.15);
+      border-color: #58a6ff;
+      color: #58a6ff
+    }
+
+    .btn-txt:hover {
+      background: rgba(88, 166, 255, 0.25)
+    }
+
+    .btn-x {
+      background: transparent;
+      color: #8b949e;
+      font-size: 14px;
+      padding: 6px 10px
+    }
+
+    .btn-x:hover {
+      background: #21262d;
+      color: #c9d1d9
+    }
+
+    .modal-actions {
+      display: flex;
+      gap: 6px
+    }
+
+    .modal-actions button {
+      padding: 5px 12px;
+      border-radius: 4px;
+      cursor: pointer;
+      font-size: 12px;
+      font-weight: 600;
+      border: none
+    }
+
+    .btn-dl-csv {
+      background: #1a4731;
+      border: 1px solid #3fb950 !important;
+      color: #3fb950
+    }
+
+    .btn-dl-txt {
+      background: #1f3a5f;
+      border: 1px solid #58a6ff !important;
+      color: #58a6ff
+    }
+
+    .btn-close {
+      background: #21262d;
+      color: #8b949e
+    }
+
+    .modal-body {
+      flex: 1;
+      overflow-y: auto;
+      padding: 16px
+    }
+
+    .modal-body::-webkit-scrollbar {
+      width: 6px
+    }
+
+    .modal-body::-webkit-scrollbar-thumb {
+      background: #30363d;
+      border-radius: 3px
+    }
+
+    /* Report tables */
+    .report-section {
+      margin-bottom: 20px
+    }
+
+    .report-section h3 {
+      font-size: 12px;
+      color: #58a6ff;
+      text-transform: uppercase;
+      letter-spacing: 1px;
+      margin-bottom: 8px;
+      padding-bottom: 4px;
+      border-bottom: 1px solid #21262d
+    }
+
+    table {
+      width: 100%;
+      border-collapse: collapse;
+      font-size: 12px
+    }
+
+    th {
+      background: #21262d;
+      color: #8b949e;
+      font-size: 10px;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 6px 10px;
+      text-align: left;
+      font-weight: 600
+    }
+
+    td {
+      padding: 6px 10px;
+      border-bottom: 1px solid #21262d;
+      color: #c9d1d9
+    }
+
+    tr:last-child td {
+      border-bottom: none
+    }
+
+    tr:hover td {
+      background: #1c2128
+    }
+
+    .td-ok {
+      color: #3fb950;
+      font-weight: 600
+    }
+
+    .td-warn {
+      color: #d29922;
+      font-weight: 600
+    }
+
+    .td-err {
+      color: #f85149;
+      font-weight: 600
+    }
+
+    .td-name {
+      color: #58a6ff;
+      font-weight: 600
+    }
+
+    .summary-grid {
+      display: grid;
+      grid-template-columns: repeat(4, 1fr);
+      gap: 8px;
+      margin-bottom: 16px
+    }
+
+    .summary-card {
+      background: #0d1117;
+      border: 1px solid #30363d;
+      border-radius: 6px;
+      padding: 10px;
+      text-align: center
+    }
+
+    .summary-card .n {
+      font-size: 22px;
+      font-weight: 700;
+      color: #58a6ff
+    }
+
+    .summary-card .t {
+      font-size: 10px;
+      color: #6e7681;
+      text-transform: uppercase;
+      margin-top: 2px
+    }
+  </style>
+</head>
+
+<body>
+  <div class="app">
+
+    <!-- ══ LEFT ══ -->
+    <div class="left">
+      <div class="left-header">⚡ PON Designer</div>
+      <div class="left-body">
+
+        <div class="section-label">Карта</div>
+        <label for="map-upload" class="upload-btn">📁 Завантажити карту (PNG/JPG)</label>
+        <input type="file" id="map-upload" accept="image/*">
+
+        <div class="config-box">
+          <label>Масштаб (м у 100px):</label>
+          <input type="number" id="scale-meters" value="50" min="1" max="1000" onchange="updateScale(this.value)">
+          <div class="config-hint" id="scale-info">1px = 0.50 м</div>
+          <label style="margin-top:6px">Затухання волокна (дБ/км):</label>
+          <input type="number" id="fiber-loss" value="0.4" min="0.1" max="1" step="0.05"
+            onchange="updateFiberLoss(this.value)">
+          <div class="config-hint">1310нм: 0.35–0.4 | 1550нм: 0.2–0.25</div>
+        </div>
+
+        <div class="section-label">Режим</div>
+        <button class="tool-btn active" data-tool="select" onclick="selectTool('select')"><span
+            class="icon">👆</span>Вказівник</button>
+        <button class="tool-btn" data-tool="pan" onclick="selectTool('pan')"><span
+            class="icon">✋</span>Панорамування</button>
+
+        <div class="section-label">Компоненти</div>
+        <button class="tool-btn" data-tool="olt" onclick="selectTool('olt')"><span class="icon">🔷</span>Додати
+          OLT</button>
+        <button class="tool-btn" data-tool="fob" onclick="selectTool('fob')"><span class="icon">📦</span>Додати
+          FOB</button>
+        <button class="tool-btn" data-tool="onu" onclick="selectTool('onu')"><span class="icon">🏠</span>Додати
+          ONU</button>
+
+        <div class="section-label">З'єднання</div>
+        <button class="tool-btn" data-tool="cable" onclick="selectTool('cable')"><span
+            class="icon">━</span>Магістраль</button>
+        <button class="tool-btn" data-tool="patchcord" onclick="selectTool('patchcord')"><span
+            class="icon">╌</span>Патчкорд</button>
+
+        <div class="section-label">Дії</div>
+        <button class="action-btn btn-green" onclick="exportToJSON()">💾 Зберегти проєкт</button>
+        <button class="action-btn btn-purple" onclick="loadProjectFromJSON()">📂 Відкрити проєкт</button>
+        <button class="action-btn btn-blue" onclick="exportToPNG()">🖼️ Схема PNG</button>
+        <button class="action-btn btn-blue" onclick="openReport()">📊 Звіт / Експорт</button>
+        <button class="action-btn btn-orange" onclick="showSuggestions()">🔍 Аналіз мережі</button>
+        <button class="action-btn" onclick="openHelp()"
+          style="background:#1c2b1c;border:1px solid #6e7681;color:#8b949e">📋 Довідка затухань</button>
+        <button class="clear-btn" onclick="clearNetwork()">🗑️ Очистити мережу</button>
+      </div>
+    </div>
+
+    <!-- ══ CANVAS ══ -->
+    <div class="canvas-wrap">
+      <canvas id="canvas"></canvas>
+      <div class="canvas-hint" id="canvas-hint">👆 Вказівник — клік: вибрати, drag: перемістити, Del: видалити</div>
+      <div class="zoom-bar">
+        <button onclick="zoomIn()">+</button>
+        <button onclick="zoomOut()">−</button>
+        <button onclick="resetView()">⊙</button>
+        <span class="zoom-label" id="zoom-label">100%</span>
+      </div>
+    </div>
+
+    <!-- ══ RIGHT ══ -->
+    <div class="right">
+      <div class="right-header">⚙️ Властивості</div>
+      <div class="right-body">
+        <div class="stats-row">
+          <div class="stat-chip">
+            <div class="val" id="s-olt">0</div>
+            <div class="lbl">OLT</div>
+          </div>
+          <div class="stat-chip">
+            <div class="val" id="s-fob">0</div>
+            <div class="lbl">FOB</div>
+          </div>
+          <div class="stat-chip">
+            <div class="val" id="s-onu">0</div>
+            <div class="lbl">ONU</div>
+          </div>
+          <div class="stat-chip">
+            <div class="val" id="s-conn">0</div>
+            <div class="lbl">З'єдн.</div>
+          </div>
+        </div>
+        <div id="props">
+          <div style="color:#484f58;text-align:center;padding:30px 10px;font-size:12px">
+            <div style="font-size:32px;margin-bottom:8px">👆</div>
+            Виберіть компонент
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </div><!-- .app -->
+
+  <!-- Context menu -->
+  <div class="ctx-menu" id="ctx-menu"></div>
+  <!-- Tooltip -->
+  <div id="tooltip"
+    style="position:absolute;display:none;pointer-events:none;background:rgba(13,17,23,0.95);border:1px solid #30363d;border-radius:6px;padding:8px 12px;font-size:11px;color:#c9d1d9;z-index:500;max-width:220px;line-height:1.6;box-shadow:0 4px 12px rgba(0,0,0,0.5)">
+  </div>
+
+  <!-- Report Modal -->
+  <div class="modal-overlay" id="modal-overlay" onclick="closeModal(event)">
+    <div class="modal" onclick="event.stopPropagation()">
+      <div class="modal-head">
+        <h2>📊 Звіт по PON мережі</h2>
+        <div class="modal-actions">
+          <button class="modal-btn btn-csv" onclick="downloadCSV()">⬇ CSV</button>
+          <button class="modal-btn btn-txt" onclick="downloadTXT()">⬇ TXT</button>
+          <div style="width:1px;height:24px;background:#30363d;margin:0 4px"></div>
+          <button class="modal-btn btn-x" onclick="closeModal()">✕</button>
+        </div>
+      </div>
+      <div class="modal-body" id="modal-body"></div>
+    </div>
+  </div>
+
+  <script>
+    // ═══════════════════════════════════════════════
+    //  КОНСТАНТИ
+    // ═══════════════════════════════════════════════
+    const FBT_LOSSES = {
+      '5/95': { x: 13.7, y: 0.32 },
+      '10/90': { x: 10.08, y: 0.49 },
+      '20/80': { x: 7.11, y: 1.06 },
+      '30/70': { x: 5.39, y: 1.56 },
+      '50/50': { x: 3.17, y: 3.19 }
+    };
+    const PLC_LOSSES = { '1x2': 4.3, '1x4': 7.4, '1x8': 10.7, '1x16': 13.9, '1x32': 17.2, '1x64': 21.5 };
+    const MECH = 0.5;
+    const ONU_MIN = -26;
+    let FIBER_DB_KM = 0.4;
+    let fobCounter = 1, onuCounter = 1;
+
+    // ═══════════════════════════════════════════════
+    //  СТАН
+    // ═══════════════════════════════════════════════
+    const canvas = document.getElementById('canvas');
+    const ctx = canvas.getContext('2d');
+    let tool = 'select', bgImage = null;
+    let nodes = [], conns = [], selNode = null;
+    let dragging = false, dragOX = 0, dragOY = 0;
+    let panDragX = 0, panDragY = 0;
+    let offX = 0, offY = 0, sc = 1;
+    let connStart = null;
+    let mpp = 50; // meters per 100px
+
+    // ═══════════════════════════════════════════════
+    //  CANVAS RESIZE
+    // ═══════════════════════════════════════════════
+    function resize() {
+      const c = canvas.parentElement;
+      canvas.width = c.clientWidth;
+      canvas.height = c.clientHeight;
+      draw();
+    }
+    window.addEventListener('resize', resize);
+    resize();
+
+    // ═══════════════════════════════════════════════
+    //  MAP UPLOAD
+    // ═══════════════════════════════════════════════
+    document.getElementById('map-upload').addEventListener('change', e => {
+      const f = e.target.files[0];
+      if (!f) return;
+      const r = new FileReader();
+      r.onload = ev => {
+        bgImage = new Image();
+        bgImage.onload = () => draw();
+        bgImage.src = ev.target.result;
+      };
+      r.readAsDataURL(f);
+    });
+
+    // ═══════════════════════════════════════════════
+    //  МАСШТАБ
+    // ═══════════════════════════════════════════════
+    function updateScale(v) {
+      mpp = parseFloat(v) || 50;
+      document.getElementById('scale-info').textContent = `1px = ${(mpp / 100).toFixed(2)} м`;
+      draw();
+    }
+    function updateFiberLoss(v) { FIBER_DB_KM = parseFloat(v) || 0.4; draw(); }
+    function px2m(px) { return (px * mpp / 100).toFixed(1); }
+    function px2km(px) { return px * mpp / 100 / 1000; }
+    function connKm(c) { return px2km(dist(c.from.x, c.from.y, c.to.x, c.to.y)); }
+
+    // ═══════════════════════════════════════════════
+    //  ІНСТРУМЕНТИ
+    // ═══════════════════════════════════════════════
+    const HINTS = {
+      select: '👆 Вказівник — клік: вибрати, drag: перемістити, Del: видалити',
+      pan: '✋ Панорамування — тягни для переміщення, колесо для зуму',
+      olt: '🔷 Розміщення OLT — клікни на карті',
+      fob: '📦 Розміщення FOB — клікни на карті',
+      onu: '🏠 Розміщення ONU — клікні на карті',
+      cable: '━ Магістраль — клікни початок → кінець',
+      patchcord: '╌ Патчкорд — клікни FOB → ONU'
+    };
+    function selectTool(t) {
+      tool = t; connStart = null;
+      document.querySelectorAll('.tool-btn').forEach(b => b.classList.remove('active'));
+      document.querySelector(`[data-tool="${t}"]`)?.classList.add('active');
+      document.getElementById('canvas-hint').textContent = HINTS[t] || '';
+      canvas.style.cursor = { select: 'default', pan: 'grab', olt: 'crosshair', fob: 'crosshair', onu: 'crosshair', cable: 'crosshair', patchcord: 'crosshair' }[t] || 'default';
+    }
+
+    // ═══════════════════════════════════════════════
+    //  КООРДИНАТИ
+    // ═══════════════════════════════════════════════
+    function s2w(sx, sy) {
+      const r = canvas.getBoundingClientRect();
+      return { x: (sx - r.left - offX) / sc, y: (sy - r.top - offY) / sc };
+    }
+
+    // ═══════════════════════════════════════════════
+    //  MOUSE EVENTS
+    // ═══════════════════════════════════════════════
+    canvas.addEventListener('mousedown', e => {
+      const p = s2w(e.clientX, e.clientY);
+      if (tool === 'select') {
+        selNode = nodeAt(p.x, p.y);
+        if (selNode) { dragging = true; dragOX = p.x - selNode.x; dragOY = p.y - selNode.y; showProps(selNode); }
+        else showProps(null);
+        draw();
+      } else if (tool === 'pan') {
+        dragging = true; panDragX = e.clientX; panDragY = e.clientY;
+        canvas.style.cursor = 'grabbing';
+      } else if (['olt', 'fob', 'onu'].includes(tool)) {
+        addNode(tool, p.x, p.y);
+        selectTool('select');
+      } else if (['cable', 'patchcord'].includes(tool)) {
+        const n = nodeAt(p.x, p.y);
+        if (n) {
+          if (!connStart) { connStart = n; document.getElementById('canvas-hint').textContent += ` ✓ ${n.name || n.type} → оберіть кінець`; }
+          else { addConn(connStart, n, tool); connStart = null; selectTool('select'); }
+        }
+      }
+    });
+
+    canvas.addEventListener('mousemove', e => {
+      if (!dragging) return;
+      if (tool === 'select' && selNode) {
+        const p = s2w(e.clientX, e.clientY);
+        selNode.x = p.x - dragOX; selNode.y = p.y - dragOY;
+        draw();
+      } else if (tool === 'pan') {
+        offX += e.clientX - panDragX; offY += e.clientY - panDragY;
+        panDragX = e.clientX; panDragY = e.clientY;
+        draw();
+      }
+    });
+
+    canvas.addEventListener('mouseup', () => {
+      dragging = false;
+      if (tool === 'pan') canvas.style.cursor = 'grab';
+    });
+
+    // ── TOOLTIP ──
+    const tooltip = document.getElementById('tooltip');
+    let tooltipTimer = null;
+
+    function buildTooltip(n) {
+      if (n.type === 'OLT') {
+        let t = `<strong style='color:#58a6ff'>${n.name}</strong><br>`;
+        t += `⚡ Потужність: ${n.outputPower} дБ<br>`;
+        for (let i = 0; i < n.ports; i++) {
+          const c = cntONUport(n, i);
+          if (c > 0) t += `P${i + 1}: <span style='color:${portColor(i)}'>${c} ONU${c > 32 ? ' ⚠' : ''}</span><br>`;
+        }
+        return t;
+      } else if (n.type === 'FOB') {
+        let t = `<strong style='color:#ff6b6b'>${n.name}</strong><br>`;
+        if (n.inputConn) {
+          const si = sigIn(n);
+          t += `📥 IN: <span style='color:${sigClass(si) === 'ok' ? '#3fb950' : sigClass(si) === 'warn' ? '#d29922' : '#f85149'}'>${si.toFixed(2)} дБ</span><br>`;
+          t += `📡 Від: ${n.inputConn.from.name || n.inputConn.from.type}<br>`;
+        } else { t += `⚠️ Не підключений<br>`; }
+        if (n.fbtType) t += `🔀 FBT: ${n.fbtType}<br>`;
+        if (n.plcType) {
+          const so = sigONU(n);
+          t += `📊 PLC: ${n.plcType}<br>`;
+          t += `→ONU: <span style='color:${sigClass(so) === 'ok' ? '#3fb950' : '#f85149'}'>${so.toFixed(2)} дБ</span><br>`;
+        }
+        const used = usedOutputs(n), max = maxOutputs(n);
+        const fC = freeCablePorts(n), fP = freePatchPorts(n);
+        t += `🔌 Виходи: ${used}/${max || '—'} (кабель: ${fC} вільно, ONU: ${fP} вільно)`;
+        return t;
+      } else if (n.type === 'ONU') {
+        const s = sigAtONU(n);
+        const conn = conns.find(c => c.to === n && c.type === 'patchcord');
+        let t = `<strong style='color:#4ade80'>${n.name}</strong><br>`;
+        if (s !== 0) {
+          t += `📶 Сигнал: <span style='color:${sigClass(s) === 'ok' ? '#3fb950' : '#f85149'}'>${s.toFixed(2)} дБ</span><br>`;
+          if (conn?.from) t += `📦 FOB: ${conn.from.name}<br>`;
+          if (conn?.branch) t += `🔀 Гілка: ${conn.branch}<br>`;
+          if (conn?.from?.plcType) t += `📊 PLC: ${conn.from.plcType}`;
+        } else { t += `⚠️ Не підключений`; }
+        return t;
+      }
+      return '';
+    }
+
+    canvas.addEventListener('mousemove', e => {
+      if (dragging) return;
+      const p = s2w(e.clientX, e.clientY);
+      const n = nodeAt(p.x, p.y);
+      clearTimeout(tooltipTimer);
+      if (n && tool === 'select') {
+        tooltipTimer = setTimeout(() => {
+          tooltip.innerHTML = buildTooltip(n);
+          const r = canvas.getBoundingClientRect();
+          let tx = e.clientX + 14, ty = e.clientY - 10;
+          if (tx + 230 > r.right) tx = e.clientX - 235;
+          if (ty + 140 > r.bottom) ty = e.clientY - 145;
+          tooltip.style.left = tx + 'px'; tooltip.style.top = ty + 'px';
+          tooltip.style.display = 'block';
+        }, 400);
+      } else {
+        tooltip.style.display = 'none';
+      }
+    });
+
+    canvas.addEventListener('mouseleave', () => {
+      clearTimeout(tooltipTimer);
+      tooltip.style.display = 'none';
+    });
+
+    // Подвійний клік — фокус на поле перейменування
+    canvas.addEventListener('dblclick', e => {
+      const p = s2w(e.clientX, e.clientY);
+      const n = nodeAt(p.x, p.y);
+      if (n) {
+        selNode = n; showProps(n); draw();
+        setTimeout(() => {
+          const inp = document.getElementById('rename-input');
+          if (inp) { inp.focus(); inp.select(); }
+        }, 50);
+      }
+    });
+
+    canvas.addEventListener('wheel', e => {
+      e.preventDefault();
+      const r = canvas.getBoundingClientRect();
+      const mx = e.clientX - r.left, my = e.clientY - r.top;
+      const wx = (mx - offX) / sc, wy = (my - offY) / sc;
+      const f = e.deltaY > 0 ? 0.9 : 1.1;
+      sc = Math.max(0.1, Math.min(5, sc * f));
+      offX = mx - wx * sc; offY = my - wy * sc;
+      document.getElementById('zoom-label').textContent = Math.round(sc * 100) + '%';
+      draw();
+    }, { passive: false });
+
+    document.addEventListener('keydown', e => {
+      if (e.key === 'Delete' && selNode) { deleteNode(selNode); selNode = null; showProps(null); }
+      else if (e.key === 'Escape') { connStart = null; selectTool('select'); }
+    });
+
+    canvas.addEventListener('contextmenu', e => {
+      e.preventDefault();
+      const p = s2w(e.clientX, e.clientY);
+      const c = connAt(p.x, p.y);
+      const n = nodeAt(p.x, p.y);
+      if (c) showConnCtx(e.clientX, e.clientY, c);
+      else if (n) showNodeCtx(e.clientX, e.clientY, n);
+    });
+
+    document.addEventListener('click', () => { document.getElementById('ctx-menu').style.display = 'none'; });
+
+    // ═══════════════════════════════════════════════
+    //  ZOOM
+    // ═══════════════════════════════════════════════
+    function zoomIn() { sc = Math.min(5, sc * 1.2); document.getElementById('zoom-label').textContent = Math.round(sc * 100) + '%'; draw(); }
+    function zoomOut() { sc = Math.max(0.1, sc * 0.8); document.getElementById('zoom-label').textContent = Math.round(sc * 100) + '%'; draw(); }
+    function resetView() { sc = 1; offX = 0; offY = 0; document.getElementById('zoom-label').textContent = '100%'; draw(); }
+
+    // ═══════════════════════════════════════════════
+    //  ДОДАВАННЯ ВУЗЛА
+    // ═══════════════════════════════════════════════
+    function addNode(type, x, y) {
+      const n = { id: 'n' + Date.now(), type: type.toUpperCase(), x, y };
+      if (type === 'olt') { n.ports = 4; n.outputPower = 2; n.name = 'OLT'; }
+      else if (type === 'fob') { n.number = fobCounter++; n.name = 'FOB-' + n.number; n.fbtType = ''; n.plcType = ''; n.plcBranch = ''; n.inputConn = null; }
+      else if (type === 'onu') { n.number = onuCounter++; n.name = 'ONU-' + n.number; }
+      nodes.push(n);
+      selNode = n; showProps(n); draw(); updateStats();
+    }
+
+    // ═══════════════════════════════════════════════
+    //  МОДЕЛЬ З'ЄДНАНЬ — ПРАВИЛА PON ТОПОЛОГІЇ
+    // ═══════════════════════════════════════════════
+    //
+    // FOB БЕЗ ОБЛАДНАННЯ: транзитна муфта
+    //   - прийом: 1 вхідний кабель
+    //   - передача: 1 вихідний кабель (спайка 1:1)
+    //   - ONU: не можна (немає сплітера)
+    //
+    // FOB + PLC (без FBT):
+    //   - прийом: 1 вхідний кабель
+    //   - виходи: N портів PLC (кабелі до FOB + патчкорди до ONU разом = N)
+    //
+    // FOB + FBT (без PLC):
+    //   - прийом: 1 вхідний кабель
+    //   - виходи: 2 гілки X і Y (незалежно — кожна або кабель або патчкорд)
+    //
+    // FOB + FBT + PLC:
+    //   - прийом: 1 вхідний кабель
+    //   - кабелі: тільки через вільну гілку FBT (не ту де PLC)
+    //   - патчкорди ONU: через PLC (N портів)
+
+    function usedCables(fob) {
+      return conns.filter(c => c.from === fob && c.type === 'cable').length;
+    }
+    function usedPatches(fob) {
+      return conns.filter(c => c.from === fob && c.type === 'patchcord').length;
+    }
+    function usedOutputs(fob) {
+      return usedCables(fob) + usedPatches(fob);
+    }
+
+    // Максимальна кількість виходів (порти PLC або гілки FBT)
+    function maxOutputs(fob) {
+      if (!fob.plcType && !fob.fbtType) return 1; // Транзит (спайка)
+
+      if (fob.plcType && !fob.fbtType) {
+        // Тільки PLC: N портів (спільні для кабелів і ONU)
+        return parseInt(fob.plcType.split('x')[1]);
+      }
+
+      if (fob.fbtType && !fob.plcType) {
+        // Тільки FBT: 2 гілки
+        return 2;
+      }
+
+      if (fob.fbtType && fob.plcType) {
+        // FBT + PLC:
+        // 1 гілка вільна (для кабелю)
+        // 1 гілка зайнята PLC (N портів для ONU/кабелів)
+        // Разом: 1 + N
+        return 1 + parseInt(fob.plcType.split('x')[1]);
+      }
+      return 1;
+    }
+
+    // Вільні порти для МАГІСТРАЛІ (Cable)
+    function freeCablePorts(fob) {
+      if (!fob.plcType && !fob.fbtType) {
+        // Транзит: 1 вихід (спайка)
+        return usedCables(fob) === 0 ? 1 : 0;
+      }
+
+      if (fob.plcType && !fob.fbtType) {
+        // PLC: будь-який вільний порт PLC можна використати під магістраль
+        // (хоча зазвичай це для ONU, але технічно можна варити далі)
+        const max = parseInt(fob.plcType.split('x')[1]);
+        return Math.max(0, max - usedOutputs(fob));
+      }
+
+      if (fob.fbtType && !fob.plcType) {
+        // FBT: 2 гілки. Кожна може бути магістраллю.
+        const usedX = conns.some(c => c.from === fob && c.branch === 'X');
+        const usedY = conns.some(c => c.from === fob && c.branch === 'Y');
+        return (usedX ? 0 : 1) + (usedY ? 0 : 1);
+      }
+
+      if (fob.fbtType && fob.plcType) {
+        // FBT+PLC:
+        // 1. Вільна гілка FBT (не та, де PLC) — може бути магістраллю
+        // 2. Порти PLC — теж можуть бути магістраллю? Зазвичай ні, але технічно так.
+        // За ТЗ користувача: "магістраль від FOB 1 PLC 1х4 до зварного дільника в FOB 9"
+
+        let free = 0;
+        // Вільна гілка FBT
+        const freeBranch = fob.plcBranch === 'X' ? 'Y' : 'X';
+        const usedFreeBranch = conns.some(c => c.from === fob && c.branch === freeBranch);
+        if (!usedFreeBranch) free++;
+
+        // Вільні порти PLC
+        const maxPLC = parseInt(fob.plcType.split('x')[1]);
+        // Рахуємо скільки всього підключено до PLC (патчкорди + кабелі, що йдуть через гілку PLC)
+        // Але у нас кабелі явно мають branch. Якщо cable.branch == plcBranch -> він через PLC?
+        // Ні, логіка така:
+        // Якщо кабель підключений до гілки FBT — він займає гілку.
+        // Якщо кабель підключений до порту PLC — він займає порт PLC.
+
+        // Спрощення: дозволимо підключати кабель до вільної гілки FBT.
+        // А до PLC? Користувач казав: "FOB 1 PLC 1x4... дотягнути магістраль до FOB 9"
+        // Значить, з PLC теж можна тягнути магістраль.
+
+        const usedOnPLC = conns.filter(c => c.from === fob && c.branch === fob.plcBranch).length;
+        // АЛЕ: у нас зараз структура даних така, що branch вказує на FBT гілку. 
+        // Якщо ми підключаємось до PLC, то технічно ми на гілці PLC.
+        // Давай зробімо так:
+        // Кабелі можуть бути на "чистій" гілці FBT.
+        // Або на портах PLC.
+
+        const plcPortsUsed = usedOutputs(fob) - (usedFreeBranch ? 1 : 0); // Всі виходи мінус та, що на вільній гілці
+        // Це не зовсім точно. Треба перевіряти branch кожного з'єднання.
+
+        return free; // Поки повернемо тільки вільну гілку FBT для ясності, 
+        // або треба дозволити і з PLC виходити.
+        // Згідно "Reference to user logic": "магістраль від PLC 1x4... до FOB 9" -> ТАК, МОЖНА.
+
+        // Тоді:
+        const usedPLC = conns.filter(c => c.from === fob &&
+          (c.branch === fob.plcBranch || (!c.branch && fob.plcType && !fob.fbtType)) // логіка складніша
+        ).length;
+
+        // Давай простіше:
+        // 1. Check free FBT branch
+        // 2. Check free PLC ports
+        return (usedFreeBranch ? 0 : 1) + Math.max(0, maxPLC - usedPLC);
+      }
+      return 0;
+    }
+
+    // Вільні порти для ONU (Patchcord)
+    function freePatchPorts(fob) {
+      if (!fob.plcType && !fob.fbtType) return 0; // Транзит не для ONU
+
+      if (fob.plcType && !fob.fbtType) {
+        const max = parseInt(fob.plcType.split('x')[1]);
+        return Math.max(0, max - usedOutputs(fob));
+      }
+
+      if (fob.fbtType && !fob.plcType) {
+        // FBT: 2 гілки
+        const usedX = conns.some(c => c.from === fob && c.branch === 'X');
+        const usedY = conns.some(c => c.from === fob && c.branch === 'Y');
+        return (usedX ? 0 : 1) + (usedY ? 0 : 1);
+      }
+
+      if (fob.fbtType && fob.plcType) {
+        // ONU підключаються ТІЛЬКИ до PLC (зазвичай). 
+        // Чи можна ONU підключити до вільної гілки FBT? Технічно так, але зазвичай там магістраль.
+        // Припустимо, що ONU тільки в PLC.
+        const max = parseInt(fob.plcType.split('x')[1]);
+        // Скільки зайнято портів на PLC?
+        // Це всі з'єднання, які 'сидять' на гілці де PLC.
+        const plcBranch = fob.plcBranch || 'Y'; // default
+        const usedOnPLC = conns.filter(c => c.from === fob && c.branch === plcBranch).length;
+        return Math.max(0, max - usedOnPLC);
+      }
+      return 0;
+    }
+
+    function addConn(from, to, type) {
+      // ── КАБЕЛЬ (МАГІСТРАЛЬ) ──────────────────────
+      if (type === 'cable') {
+        if (!['OLT', 'FOB'].includes(from.type)) { alert('Магістраль: OLT/FOB → FOB'); return; }
+        if (to.type !== 'FOB') { alert('Магістраль має йти до FOB!'); return; }
+        if (from === to) { alert('Не можна з\u2019єднати елемент сам із собою!'); return; }
+
+        if (to.inputConn) {
+          alert(`Box ${to.name} вже має вхід! Видаліть старий кабель.`);
+          return;
+        }
+
+        // OLT
+        if (from.type === 'OLT') { showOLTPortSel(from, to); return; }
+
+        // FOB -> FOB Logic
+        // 1. Транзит (Empty)
+        if (!from.fbtType && !from.plcType) {
+          if (usedOutputs(from) >= 1) {
+            alert(`${from.name} (Транзит) вже має вихідний кабель!`); return;
+          }
+          // OK -> Connect
+          const c = { from, to, type, id: 'c' + Date.now(), color: '#f97316' }; // Orange
+          conns.push(c); to.inputConn = c;
+          draw(); updateStats(); return;
+        }
+
+        // 2. PLC Only
+        if (from.plcType && !from.fbtType) {
+          const max = parseInt(from.plcType.split('x')[1]);
+          if (usedOutputs(from) >= max) {
+            alert(`${from.name}: PLC ${from.plcType} повністю зайнятий (${max}/${max})!`); return;
+          }
+          // OK
+          const c = { from, to, type, id: 'c' + Date.now(), color: '#38bdf8' }; // Blue
+          conns.push(c); to.inputConn = c;
+          draw(); updateStats(); return;
+        }
+
+        // 3. FBT Only
+        if (from.fbtType && !from.plcType) {
+          showFOBBranchSel(from, to);
+          return;
+        }
+
+        // 4. FBT + PLC
+        if (from.fbtType && from.plcType) {
+          // Можемо підключитись до вільної гілки FBT АБО до порту PLC
+          showFOBBranchSel_Combo(from, to);
+          return;
+        }
+      }
+
+      // ── ПАТЧКОРД (ONU) ───────────────────────────
+      else if (type === 'patchcord') {
+        if (from.type !== 'FOB' || to.type !== 'ONU') { alert('Патчкорд: FOB → ONU'); return; }
+
+        if (!from.plcType && !from.fbtType) {
+          alert('Транзитний FOB (без сплітера) не може підключати ONU!'); return;
+        }
+
+        // PLC Only
+        if (from.plcType && !from.fbtType) {
+          const max = parseInt(from.plcType.split('x')[1]);
+          if (usedOutputs(from) >= max) { alert(`PLC ${from.plcType} зайнятий!`); return; }
+          conns.push({ from, to, type, id: 'c' + Date.now(), color: '#f5d020' });
+          draw(); updateStats(); return;
+        }
+
+        // FBT Only
+        if (from.fbtType && !from.plcType) {
+          // Авто-вибір вільної гілки або запит?
+          // Давайте автоматично: X else Y else Error
+          const usedX = conns.some(c => c.from === from && c.branch === 'X');
+          const usedY = conns.some(c => c.from === from && c.branch === 'Y');
+          let br = '';
+          if (!usedX) br = 'X';
+          else if (!usedY) br = 'Y';
+          else { alert(`FBT ${from.fbtType} повністю зайнятий!`); return; }
+
+          conns.push({ from, to, type, id: 'c' + Date.now(), branch: br, color: br === 'X' ? '#ff4444' : '#3fb950' });
+          draw(); updateStats(); return;
+        }
+
+        // FBT + PLC
+        if (from.fbtType && from.plcType) {
+          // ONU йде в PLC (який на гілці plcBranch)
+          const plcBr = from.plcBranch || 'Y';
+          const max = parseInt(from.plcType.split('x')[1]);
+          const usedOnPLC = conns.filter(c => c.from === from && c.branch === plcBr).length;
+
+          if (usedOnPLC >= max) { alert(`PLC (на гілці ${plcBr}) повністю зайнятий!`); return; }
+
+          // Підключаємо до гілки де PLC
+          conns.push({ from, to, type, id: 'c' + Date.now(), branch: plcBr, color: '#f5d020' });
+          draw(); updateStats(); return;
+        }
+      }
+    }
+
+    function portColor(i) { return ['#ff4444', '#3fb950', '#58a6ff', '#f0883e'][i % 4]; }
+
+    function showOLTPortSel(olt, fob) {
+      const panel = document.getElementById('props');
+      const orig = panel.innerHTML;
+      let html = `<div class="node-card"><h3>🔷 Оберіть порт OLT</h3><div class="port-grid">`;
+      for (let i = 0; i < olt.ports; i++) {
+        const c = cntONUport(olt, i);
+        html += `<button class="port-btn" onclick="confirmOLTPort(${i})" style="border-color:${portColor(i)}"><strong>Порт ${i + 1}</strong><br><span style="font-size:10px;color:#6e7681">${c} ONU</span></button>`;
+      }
+      html += `</div><button class="del-btn" onclick="cancelSel()">Скасувати</button></div>`;
+      panel.innerHTML = html;
+      window.confirmOLTPort = port => {
+        const c = { from: olt, to: fob, type: 'cable', id: 'c' + Date.now(), fromPort: port, color: portColor(port) };
+        conns.push(c); fob.inputConn = c;
+        panel.innerHTML = orig; draw(); updateStats();
+        delete window.confirmOLTPort; delete window.cancelSel;
+      };
+      window.cancelSel = () => { panel.innerHTML = orig; connStart = null; selectTool('select'); delete window.confirmOLTPort; delete window.cancelSel; };
+    }
+
+    function showFOBBranchSel(src, tgt) {
+      const panel = document.getElementById('props');
+      const orig = panel.innerHTML;
+      const [xp, yp] = src.fbtType.split('/');
+
+      // Check availability
+      const usedX = conns.some(c => c.from === src && c.branch === 'X');
+      const usedY = conns.some(c => c.from === src && c.branch === 'Y');
+
+      const btnX = usedX
+        ? `<button class="port-btn" disabled style="opacity:0.5;border-color:#555;cursor:not-allowed">
+             <strong style="color:#777">Гілка X (Зайнята)</strong><br><span style="font-size:10px;color:#555">${xp}%</span>
+           </button>`
+        : `<button class="port-btn" onclick="confirmFOBBranch('X')" style="border-color:#ff4444">
+             <strong style="color:#ff4444">Гілка X</strong><br><span style="font-size:10px;color:#aaa">${xp}%</span>
+           </button>`;
+
+      const btnY = usedY
+        ? `<button class="port-btn" disabled style="opacity:0.5;border-color:#555;cursor:not-allowed">
+             <strong style="color:#777">Гілка Y (Зайнята)</strong><br><span style="font-size:10px;color:#555">${yp}%</span>
+           </button>`
+        : `<button class="port-btn" onclick="confirmFOBBranch('Y')" style="border-color:#3fb950">
+             <strong style="color:#3fb950">Гілка Y</strong><br><span style="font-size:10px;color:#aaa">${yp}%</span>
+           </button>`;
+
+      panel.innerHTML = `<div class="node-card"><h3>📦 Оберіть гілку FBT ${src.fbtType}</h3>
+        <div class="port-grid">${btnX}${btnY}</div>
+        <button class="del-btn" onclick="cancelSel()">Скасувати</button></div>`;
+
+      window.confirmFOBBranch = branch => {
+        const c = {
+          from: src, to: tgt, type: 'cable', id: 'c' + Date.now(),
+          branch, color: branch === 'X' ? '#ff4444' : '#3fb950'
+        };
+        conns.push(c); tgt.inputConn = c;
+        panel.innerHTML = orig; draw(); updateStats();
+        cleanup();
+      };
+
+      window.cancelSel = () => { panel.innerHTML = orig; connStart = null; selectTool('select'); cleanup(); };
+      function cleanup() { delete window.confirmFOBBranch; delete window.cancelSel; }
+    }
+
+    function showFOBBranchSel_Combo(src, tgt) {
+      const panel = document.getElementById('props');
+      const orig = panel.innerHTML;
+      const [xp, yp] = src.fbtType.split('/');
+
+      // Determine which branch has PLC
+      const plcBr = src.plcBranch || 'Y';
+      const freeBr = plcBr === 'X' ? 'Y' : 'X';
+
+      // Stats for Free Branch
+      const usedFree = conns.some(c => c.from === src && c.branch === freeBr);
+      const labelFree = freeBr === 'X' ? `Гілка X (${xp}%)` : `Гілка Y (${yp}%)`;
+      const colFree = freeBr === 'X' ? '#ff4444' : '#3fb950';
+
+      // Stats for PLC Branch
+      const maxPLC = parseInt(src.plcType.split('x')[1]);
+      const usedPLC = conns.filter(c => c.from === src && c.branch === plcBr).length;
+      const labelPLC = `${plcBr === 'X' ? 'Гілка X' : 'Гілка Y'} + PLC ${src.plcType}`;
+      const colPLC = '#38bdf8'; // Blue for PLC
+
+      // Button for Free Branch
+      const btnFree = usedFree
+        ? `<button class="port-btn" disabled style="opacity:0.5;border-color:#555"><strong style="color:#777">${labelFree}</strong><br><span style="font-size:10px">ЗАЙНЯТА</span></button>`
+        : `<button class="port-btn" onclick="confirmCombo('FREE')" style="border-color:${colFree}"><strong style="color:${colFree}">${labelFree}</strong><br><span style="font-size:10px">Вільний вихід</span></button>`;
+
+      // Button for PLC Port
+      const btnPLC = (usedPLC >= maxPLC)
+        ? `<button class="port-btn" disabled style="opacity:0.5;border-color:#555"><strong style="color:#777">${labelPLC}</strong><br><span style="font-size:10px">Всі порти зайняті</span></button>`
+        : `<button class="port-btn" onclick="confirmCombo('PLC')" style="border-color:${colPLC}"><strong style="color:${colPLC}">${labelPLC}</strong><br><span style="font-size:10px">Порт ${usedPLC + 1}/${maxPLC}</span></button>`;
+
+      panel.innerHTML = `<div class="node-card"><h3>📦 Підключення до FBT+PLC</h3>
+        <div class="port-grid">${btnFree}${btnPLC}</div>
+        <button class="del-btn" onclick="cancelSel()">Скасувати</button></div>`;
+
+      window.confirmCombo = mode => {
+        let finalBranch, finalColor;
+        if (mode === 'FREE') {
+          finalBranch = freeBr;
+          finalColor = colFree;
+        } else {
+          finalBranch = plcBr;
+          finalColor = colPLC;
+        }
+
+        const c = {
+          from: src, to: tgt, type: 'cable', id: 'c' + Date.now(),
+          branch: finalBranch, color: finalColor
+        };
+        conns.push(c); tgt.inputConn = c;
+        panel.innerHTML = orig; draw(); updateStats();
+        cleanup();
+      };
+
+      window.cancelSel = () => { panel.innerHTML = orig; connStart = null; selectTool('select'); cleanup(); };
+      function cleanup() { delete window.confirmCombo; delete window.cancelSel; }
+    }
+
+    // ═══════════════════════════════════════════════
+    //  ПОШУК
+    // ═══════════════════════════════════════════════
+    function nodeAt(x, y) {
+      for (let i = nodes.length - 1; i >= 0; i--) {
+        const n = nodes[i], sz = n.type === 'OLT' ? 18 : n.type === 'FOB' ? 12 : 9;
+        if (Math.abs(n.x - x) < sz && Math.abs(n.y - y) < sz) return n;
+      }
+      return null;
+    }
+    function connAt(x, y) {
+      const thr = 7 / sc;
+      for (const c of conns) { if (lineDist(x, y, c.from.x, c.from.y, c.to.x, c.to.y) < thr) return c; }
+      return null;
+    }
+    function lineDist(px, py, x1, y1, x2, y2) {
+      const A = px - x1, B = py - y1, C = x2 - x1, D = y2 - y1;
+      const dot = A * C + B * D, len = C * C + D * D;
+      let t = len ? dot / len : -1;
+      let xx, yy;
+      if (t < 0) { xx = x1; yy = y1; } else if (t > 1) { xx = x2; yy = y2; } else { xx = x1 + t * C; yy = y1 + t * D; }
+      return Math.sqrt((px - xx) ** 2 + (py - yy) ** 2);
+    }
+    function dist(x1, y1, x2, y2) { return Math.sqrt((x2 - x1) ** 2 + (y2 - y1) ** 2); }
+
+    // Малювання тексту з темним фоном - добре видно на супутникових знімках
+    function drawLabel(text, x, y, opts = {}) {
+      const fontSize = opts.size || 10;
+      const color = opts.color || '#e6edf3';
+      const bg = opts.bg || 'rgba(13,17,23,0.82)';
+      const pad = opts.pad || 3;
+      const bold = opts.bold !== false;
+      ctx.font = `${bold ? 'bold ' : ''} ${fontSize}px Segoe UI`;
+      const w = ctx.measureText(text).width;
+      ctx.fillStyle = bg;
+      ctx.fillRect(x - w / 2 - pad, y - fontSize - pad + 2, w + pad * 2, fontSize + pad * 2);
+      ctx.fillStyle = color;
+      ctx.textAlign = 'center';
+      ctx.fillText(text, x, y);
+    }
+
+    // ═══════════════════════════════════════════════
+    //  CONTEXT MENUS
+    // ═══════════════════════════════════════════════
+    let ctxTarget = null;
+    function showConnCtx(x, y, c) {
+      ctxTarget = c;
+      const d = dist(c.from.x, c.from.y, c.to.x, c.to.y);
+      const menu = document.getElementById('ctx-menu');
+      menu.innerHTML = `
+    <div class="ctx-item danger" onclick="deleteConn()">🗑️ Видалити з'єднання</div>
+    <div class="ctx-item">📏 ${px2m(d)} м</div>
+    <div class="ctx-item">📉 ${(px2km(d) * FIBER_DB_KM).toFixed(3)} дБ</div>`;
+      menu.style.left = x + 'px'; menu.style.top = y + 'px'; menu.style.display = 'block';
+    }
+    function showNodeCtx(x, y, n) {
+      ctxTarget = n;
+      const menu = document.getElementById('ctx-menu');
+      menu.innerHTML = `
+    <div class="ctx-item" onclick="selectFromCtx()">✏️ Налаштувати</div>
+    <div class="ctx-item danger" onclick="deleteFromCtx()">🗑️ Видалити</div>`;
+      menu.style.left = x + 'px'; menu.style.top = y + 'px'; menu.style.display = 'block';
+    }
+    function selectFromCtx() { if (ctxTarget?.type) { selNode = ctxTarget; showProps(selNode); draw(); } }
+    function deleteFromCtx() { if (ctxTarget?.type) deleteNode(ctxTarget); }
+    function deleteConn() { if (ctxTarget?.from) { conns = conns.filter(c => c !== ctxTarget); draw(); updateStats(); } }
+    function deleteNode(n) {
+      nodes = nodes.filter(x => x !== n);
+      conns = conns.filter(c => c.from !== n && c.to !== n);
+      draw(); updateStats();
+    }
+
+    // ═══════════════════════════════════════════════
+    //  РОЗРАХУНКИ СИГНАЛУ
+    // ═══════════════════════════════════════════════
+
+    // Сигнал на ВХОДІ FOB (до будь-якого обладнання всередині)
+    function sigIn(fob) {
+      if (!fob.inputConn) return 0;
+      const conn = fob.inputConn;
+      const from = conn.from;
+      const cLoss = connKm(conn) * FIBER_DB_KM;
+
+      if (from.type === 'OLT') {
+        // OLT → кабель → FOB: просто потужність мінус втрати
+        return from.outputPower - cLoss - MECH;
+      }
+
+      if (from.type === 'FOB') {
+        // Сигнал на виході попереднього FOB через це конкретне з'єднання
+        const sOut = sigOnOutput(from, conn);
+        return sOut - cLoss - MECH;
+      }
+      return 0;
+    }
+
+    // Сигнал на конкретному виходному з'єднанні FOB (кабель або патчкорд)
+    // conn — з'єднання що ВИХОДИТЬ з fob
+    function sigOnOutput(fob, conn) {
+      const base = sigIn(fob); // сигнал на вході FOB
+
+      if (fob.fbtType && fob.plcType) {
+        // Є і FBT і PLC
+        // PLC підключений до однієї гілки FBT (plcBranch)
+        // Кабелі до інших FOB можуть іти через другу гілку або через PLC
+        if (conn.type === 'patchcord') {
+          // Патчкорд до ONU: через PLC
+          const branchLoss = fob.plcBranch === 'X' ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
+          return base - branchLoss - MECH - PLC_LOSSES[fob.plcType] - MECH;
+        } else {
+          // Кабель до іншого FOB: через іншу гілку FBT (не ту де PLC)
+          const branch = conn.branch || (fob.plcBranch === 'X' ? 'Y' : 'X');
+          const branchLoss = branch === 'X' ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
+          return base - branchLoss - MECH;
+        }
+      }
+
+      if (fob.fbtType && !fob.plcType) {
+        // Тільки FBT — сигнал залежить від гілки з'єднання
+        const branch = conn.branch;
+        if (!branch) return base; // немає гілки — щось не так
+        const loss = branch === 'X' ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
+        return base - loss - MECH;
+      }
+
+      if (!fob.fbtType && fob.plcType) {
+        // Тільки PLC — всі виходи рівноцінні
+        return base - PLC_LOSSES[fob.plcType] - MECH;
+      }
+
+      // FOB транзит (без обладнання) — пряма спайка, тільки механічні втрати
+      // base вже враховує MECH на вході, тут просто передаємо далі
+      return base;
+    }
+
+    // Зручні обгортки для відображення
+    function sigFBT(fob, branch) {
+      // Сигнал на гілці FBT (для відображення на FOB)
+      const base = sigIn(fob);
+      if (!fob.fbtType) return base;
+      const loss = branch === 'X' ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
+      return base - loss - MECH;
+    }
+
+    function sigONU(fob) {
+      // Сигнал до ONU (після всіх дільників)
+      if (fob.fbtType && fob.plcType) {
+        const branchLoss = fob.plcBranch === 'X' ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
+        return sigIn(fob) - branchLoss - MECH - PLC_LOSSES[fob.plcType] - MECH;
+      }
+      if (fob.fbtType && !fob.plcType) {
+        // FBT без PLC — показуємо середнє (для індикатора)
+        return sigIn(fob);
+      }
+      if (fob.plcType) {
+        return sigIn(fob) - PLC_LOSSES[fob.plcType] - MECH;
+      }
+      return sigIn(fob);
+    }
+
+    function sigAtONU(onu) {
+      const c = conns.find(x => x.to === onu && x.type === 'patchcord');
+      if (!c || c.from.type !== 'FOB') return 0;
+      const fob = c.from;
+      return sigOnOutput(fob, c);
+    }
+    function cntONUport(olt, port) {
+      return conns.filter(c => c.from === olt && c.fromPort === port).reduce((a, c) => a + cntDn(c.to), 0);
+    }
+    function cntDn(n) {
+      if (n.type === 'ONU') return 1;
+      if (n.type === 'FOB') {
+        // Прямо підключені ONU
+        const direct = conns.filter(c => c.from === n && c.type === 'patchcord').length;
+        // Через дочірні FOB
+        const downstream = conns.filter(c => c.from === n && c.type === 'cable')
+          .reduce((a, c) => a + cntDn(c.to), 0);
+        return direct + downstream;
+      }
+      return 0;
+    }
+    function sigClass(v) { return v >= ONU_MIN ? 'ok' : v >= ONU_MIN - 3 ? 'warn' : 'err'; }
+
+    // ═══════════════════════════════════════════════
+    //  МАЛЮВАННЯ
+    // ═══════════════════════════════════════════════
+    function draw() {
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+      ctx.setTransform(sc, 0, 0, sc, offX, offY);
+
+      if (bgImage) ctx.drawImage(bgImage, 0, 0);
+      else {
+        ctx.strokeStyle = 'rgba(88,166,255,0.04)'; ctx.lineWidth = 1 / sc;
+        const gs = 100, sx = Math.floor(-offX / sc / gs) * gs, sy = Math.floor(-offY / sc / gs) * gs;
+        const ex = sx + (canvas.width / sc) + gs * 2, ey = sy + (canvas.height / sc) + gs * 2;
+        for (let x = sx; x < ex; x += gs) { ctx.beginPath(); ctx.moveTo(x, sy); ctx.lineTo(x, ey); ctx.stroke(); }
+        for (let y = sy; y < ey; y += gs) { ctx.beginPath(); ctx.moveTo(sx, y); ctx.lineTo(ex, y); ctx.stroke(); }
+      }
+
+      // Connections
+      conns.forEach(c => {
+        ctx.beginPath(); ctx.moveTo(c.from.x, c.from.y); ctx.lineTo(c.to.x, c.to.y);
+        // Патчкорди — яскраво жовті, магістралі — колір порту/гілки
+        const drawColor = c.type === 'patchcord' ? '#f5d020' : (c.color && c.color !== '#888' ? c.color : '#6b7280');
+        ctx.strokeStyle = drawColor;
+        ctx.lineWidth = c.type === 'cable' ? 3.5 : 1.8;
+        ctx.setLineDash(c.type === 'patchcord' ? [5, 3] : []);
+        ctx.stroke(); ctx.setLineDash([]);
+
+        if (c.type === 'cable') {
+          const mx = (c.from.x + c.to.x) / 2, my = (c.from.y + c.to.y) / 2;
+          const d = dist(c.from.x, c.from.y, c.to.x, c.to.y);
+          ctx.fillStyle = 'rgba(13,17,23,0.85)';
+          ctx.fillRect(mx - 28, my - 10, 56, 20);
+          ctx.fillStyle = '#c9d1d9'; ctx.font = 'bold 10px Segoe UI'; ctx.textAlign = 'center';
+          ctx.fillText(px2m(d) + ' м', mx, my + 3);
+          if (c.branch) {
+            ctx.fillStyle = c.color; ctx.font = 'bold 9px Segoe UI';
+            ctx.fillText(c.branch, mx, my - 14);
+          }
+        }
+      });
+
+      // Nodes
+      nodes.forEach(n => {
+        const sel = n === selNode;
+        ctx.textAlign = 'center';
+
+        if (n.type === 'OLT') {
+          const glow = sel ? '#00d9ff' : '#58a6ff';
+          ctx.fillStyle = sel ? '#1f3a5f' : '#0d2241';
+          ctx.strokeStyle = glow; ctx.lineWidth = sel ? 3 : 2;
+          ctx.beginPath(); ctx.roundRect(n.x - 16, n.y - 16, 32, 32, 4); ctx.fill(); ctx.stroke();
+          ctx.fillStyle = '#fff'; ctx.font = 'bold 9px Segoe UI';
+          ctx.fillText('OLT', n.x, n.y + 3);
+          drawLabel(`${n.outputPower} дБ`, n.x, n.y - 22, { color: '#58a6ff', size: 11 });
+          ctx.font = 'bold 8px Segoe UI';
+          for (let i = 0; i < n.ports; i++) {
+            const cnt = cntONUport(n, i);
+            if (cnt > 0) {
+              const oy = 32 + i * 14;
+              const over = cnt > 32;
+              drawLabel(`P${i + 1}: ${cnt}${over ? ' ⚠' : ''}`, n.x, n.y + oy + 8, { color: over ? '#f85149' : portColor(i), size: 9 });
+            }
+          }
+
+        } else if (n.type === 'FOB') {
+          ctx.save(); ctx.translate(n.x, n.y); ctx.rotate(Math.PI / 4);
+          const hasEq = n.fbtType || n.plcType;
+          // Кольори: з обладнанням — фіолетовий, транзит — темно-сірий, без входу — червоний
+          const isTransit = !hasEq && n.inputConn;
+          ctx.fillStyle = sel ? '#2d2d4a' : (hasEq ? '#1a0a2e' : (isTransit ? '#1e2030' : '#3d0000'));
+          ctx.strokeStyle = sel ? '#c084fc' : (hasEq ? '#a855f7' : (isTransit ? '#64748b' : '#f85149'));
+          ctx.lineWidth = sel ? 3 : 2;
+          ctx.fillRect(-11, -11, 22, 22); ctx.strokeRect(-11, -11, 22, 22);
+          ctx.restore();
+          const fobColor = hasEq ? '#c084fc' : (isTransit ? '#94a3b8' : '#f87171');
+          drawLabel(n.name || 'FOB', n.x, n.y - 52, { color: fobColor, size: 10, bg: 'rgba(13,17,23,0.88)' });
+
+          if (n.inputConn) {
+            const si = sigIn(n);
+            const siCls = sigClass(si);
+            drawLabel(`IN:${si.toFixed(1)}дБ`, n.x, n.y - 34, {
+              color: siCls === 'ok' ? '#3fb950' : siCls === 'warn' ? '#d29922' : '#f85149', size: 8
+            });
+
+            if (n.fbtType) {
+              const sx2 = sigFBT(n, 'X'), sy2 = sigFBT(n, 'Y');
+              drawLabel(`X:${sx2.toFixed(1)}дБ`, n.x - 28, n.y + 15, { color: '#ff4444', size: 8 });
+              drawLabel(`Y:${sy2.toFixed(1)}дБ`, n.x + 28, n.y + 15, { color: '#3fb950', size: 8 });
+            }
+            if (n.plcType) {
+              const so = sigONU(n); const cls = sigClass(so);
+              drawLabel(`→ONU:${so.toFixed(1)}дБ`, n.x, n.y + 33, {
+                color: cls === 'ok' ? '#3fb950' : cls === 'warn' ? '#d29922' : '#f85149', size: 8
+              });
+            }
+            if (!n.fbtType && !n.plcType) {
+              // Транзитна муфта — без сплітера, передає сигнал далі
+              drawLabel('↔ транзит', n.x, n.y + 15, { color: '#94a3b8', size: 8 });
+            }
+          }
+          const usedOut = usedOutputs(n), maxOut = maxOutputs(n);
+          const freeOutC = freeCablePorts(n), freeOutP = freePatchPorts(n);
+          if (maxOut > 0 || usedOut > 0) {
+            const over = maxOut > 0 && usedOut > maxOut;
+            const full = usedOut > 0 && usedOut >= maxOut;
+            const badgeColor = over ? 'rgba(248,81,73,0.9)' : full ? 'rgba(234,179,8,0.9)' : 'rgba(63,185,80,0.9)';
+            const label = maxOut > 0 ? `${usedOut}/${maxOut}` : `${usedOut}`;
+            drawLabel(label, n.x + 20, n.y - 14, {
+              color: '#000', bg: badgeColor, size: 8, bold: true, pad: 3
+            });
+          }
+
+        } else if (n.type === 'ONU') {
+          // Яскравий ONU з білим обводом — добре видно на зеленій місцевості
+          ctx.fillStyle = sel ? '#22c55e' : '#16a34a';
+          ctx.strokeStyle = '#ffffff'; ctx.lineWidth = 2;
+          ctx.beginPath(); ctx.arc(n.x, n.y, 8, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+          // Внутрішнє кільце
+          ctx.strokeStyle = sel ? '#86efac' : '#4ade80'; ctx.lineWidth = 1;
+          ctx.beginPath(); ctx.arc(n.x, n.y, 5, 0, Math.PI * 2); ctx.stroke();
+          drawLabel(n.name || 'ONU', n.x, n.y - 14, { color: '#e6edf3', size: 8, bg: 'rgba(13,17,23,0.75)' });
+          const s = sigAtONU(n);
+          if (s !== 0) {
+            const cls = sigClass(s);
+            const conn = conns.find(c => c.to === n && c.type === 'patchcord');
+            // Компактна мітка: гілка і дільник
+            const fob = conn?.from;
+            const brLabel = conn?.branch ? conn.branch : '';
+            const plcLabel = fob?.plcType ? fob.plcType : '';
+            const fbtLabel = fob?.fbtType && !fob?.plcType ? fob.fbtType : '';
+            const parts = [brLabel, plcLabel || fbtLabel].filter(Boolean);
+            const br = parts.length ? ` [${parts.join('|')}]` : '';
+
+            ctx.fillStyle = 'rgba(13,17,23,0.88)'; ctx.fillRect(n.x - 28, n.y + 10, 56, 13);
+            ctx.fillStyle = cls === 'ok' ? '#3fb950' : cls === 'warn' ? '#d29922' : '#f85149';
+            ctx.font = 'bold 8px Segoe UI';
+            ctx.fillText(`${s.toFixed(1)}дБ${br}`, n.x, n.y + 20);
+          }
+        }
+      });
+
+      ctx.setTransform(1, 0, 0, 1, 0, 0);
+    }
+
+    // ═══════════════════════════════════════════════
+    //  ВЛАСТИВОСТІ
+    // ═══════════════════════════════════════════════
+    function showProps(n) {
+      const p = document.getElementById('props');
+      if (!n) { p.innerHTML = `<div style="color:#484f58;text-align:center;padding:30px 10px;font-size:12px"><div style="font-size:32px;margin-bottom:8px">👆</div>Виберіть компонент</div>`; return; }
+
+      let h = `<div class="node-card"><h3>${n.type === 'OLT' ? '🔷' : n.type === 'FOB' ? '📦' : '🏠'} ${n.type}</h3>`;
+
+      // ── RENAME BLOCK ──
+      h += `<div style="display:flex;align-items:center;gap:6px;margin-bottom:8px">
+        <input id="rename-input" type="text" value="${n.name || n.type}" 
+          style="flex:1;padding:4px 8px;background:#0d1117;border:1px solid #30363d;color:#e6edf3;border-radius:4px;font-size:12px;font-weight:600"
+          onchange="renameNode('${n.id}', this.value)">
+        <button onclick="document.getElementById('rename-input').focus()" 
+          style="padding:4px 8px;background:#1f3a5f;border:1px solid #58a6ff;color:#58a6ff;border-radius:4px;cursor:pointer;font-size:11px">✎</button>
+      </div>`;
+
+      // ── OLT ──
+      if (n.type === 'OLT') {
+        h += `<div class="prop-row"><span class="prop-label">Потужність</span><span class="prop-value">${n.outputPower} дБ</span></div>
+        <span class="form-label">Кількість портів</span>
+        <input type="number" value="${n.ports}" min="1" max="8" onchange="upd('${n.id}','ports',parseInt(this.value))">
+        <span class="form-label">Потужність (дБ)</span>
+        <input type="number" value="${n.outputPower}" min="0" max="10" step="0.5" onchange="upd('${n.id}','outputPower',parseFloat(this.value))">`;
+
+        // ── FOB ──
+      } else if (n.type === 'FOB') {
+        const hasEq = n.fbtType || n.plcType;
+
+        // Input Status
+        if (!n.inputConn) {
+          h += `<div class="warn-pill">⚠️ FOB не підключений (Input)</div>`;
+        } else {
+          const si = sigIn(n);
+          const cls = sigClass(si);
+          const c = n.inputConn;
+          const distM = px2m(dist(c.from.x, c.from.y, c.to.x, c.to.y));
+          h += `<div class="info-pill">Від: ${c.from.name} (${distM}м)</div>
+                <div class="prop-row"><span class="prop-label">Вхідний сигнал</span><span class="prop-value ${cls}"><span class="dot ${cls}"></span>${si.toFixed(2)} дБ</span></div>`;
+        }
+
+        // CONFIG
+        h += `<span class="form-label">FBT Дільник (Splice)</span>
+              <select onchange="upd('${n.id}','fbtType',this.value)">
+                <option value="">-- Немає (Транзит/PLC) --</option>
+                ${Object.keys(FBT_LOSSES).map(t => `<option value="${t}" ${n.fbtType === t ? 'selected' : ''}>${t}</option>`).join('')}
+              </select>`;
+
+        h += `<span class="form-label">PLC Сплітер</span>
+              <select onchange="upd('${n.id}','plcType',this.value)">
+                <option value="">-- Немає --</option>
+                ${Object.keys(PLC_LOSSES).map(t => `<option value="${t}" ${n.plcType === t ? 'selected' : ''}>${t}</option>`).join('')}
+              </select>`;
+
+        if (n.fbtType && n.plcType) {
+          h += `<span class="form-label">Гілка для PLC</span>
+                 <select onchange="upd('${n.id}','plcBranch',this.value)">
+                   <option value="X" ${n.plcBranch === 'X' ? 'selected' : ''}>Гілка X (червона)</option>
+                   <option value="Y" ${n.plcBranch !== 'X' ? 'selected' : ''}>Гілка Y (зелена)</option>
+                 </select>`;
+        }
+
+        h += `<div style="margin-top:10px;border-top:1px solid #30363d;padding-top:4px">`;
+
+        // STATUS DETAILS
+        const cables = conns.filter(c => c.from === n && c.type === 'cable').length;
+        const patches = conns.filter(c => c.from === n && c.type === 'patchcord').length;
+
+        // 1. TRANSIT
+        if (!hasEq) {
+          h += `<div class="prop-row"><span class="prop-label">Тип</span><span class="prop-value">Транзит (Спайка)</span></div>`;
+          h += `<div class="prop-row"><span class="prop-label">Вихід (Кабель)</span><span class="prop-value ${cables ? 'warn' : 'ok'}">${cables}/1</span></div>`;
+          if (patches > 0) h += `<div class="warn-pill">⚠️ Помилка: є підключені ONU без сплітера!</div>`;
+        }
+        // 2. PLC ONLY
+        else if (n.plcType && !n.fbtType) {
+          const max = parseInt(n.plcType.split('x')[1]);
+          h += `<div class="prop-row"><span class="prop-label">Тип</span><span class="prop-value">PLC ${n.plcType}</span></div>`;
+          h += `<div class="prop-row"><span class="prop-label">Порти (Всього)</span><span class="prop-value">${cables + patches}/${max}</span></div>`;
+          h += `<div class="prop-row"><span class="prop-label">— Кабелі</span><span class="prop-value">${cables}</span></div>`;
+          h += `<div class="prop-row"><span class="prop-label">— ONU</span><span class="prop-value">${patches}</span></div>`;
+        }
+        // 3. FBT ONLY
+        else if (n.fbtType && !n.plcType) {
+          const usedX = conns.some(c => c.from === n && c.branch === 'X');
+          const usedY = conns.some(c => c.from === n && c.branch === 'Y');
+          h += `<div class="prop-row"><span class="prop-label">Тип</span><span class="prop-value">FBT ${n.fbtType}</span></div>`;
+          h += `<div class="prop-row"><span class="prop-label">Гілка X</span><span class="prop-value ${usedX ? 'warn' : 'ok'}">${usedX ? 'Зайнята' : 'Вільна'}</span></div>`;
+          h += `<div class="prop-row"><span class="prop-label">Гілка Y</span><span class="prop-value ${usedY ? 'warn' : 'ok'}">${usedY ? 'Зайнята' : 'Вільна'}</span></div>`;
+        }
+        // 4. FBT + PLC
+        else if (n.fbtType && n.plcType) {
+          const plcBr = n.plcBranch || 'Y';
+          const freeBr = plcBr === 'X' ? 'Y' : 'X';
+          const usedFree = conns.some(c => c.from === n && c.branch === freeBr);
+          const maxPLC = parseInt(n.plcType.split('x')[1]);
+          // Items on PLC branch
+          const onPLC = conns.filter(c => c.from === n && c.branch === plcBr).length;
+
+          h += `<div class="prop-row"><span class="prop-label">Тип</span><span class="prop-value">FBT + PLC</span></div>`;
+          h += `<div class="prop-row"><span class="prop-label">Гілка ${freeBr} (Вільна)</span><span class="prop-value ${usedFree ? 'warn' : 'ok'}">${usedFree ? 'Зайнята' : 'Вільна'}</span></div>`;
+          h += `<div class="prop-row"><span class="prop-label">Гілка ${plcBr} (PLC)</span><span class="prop-value">${onPLC}/${maxPLC} портів</span></div>`;
+        }
+        h += `</div>`;
+
+        // ── ONU ──
+      } else if (n.type === 'ONU') {
+        const s = sigAtONU(n), cls = sigClass(s);
+        h += `<div class="prop-row"><span class="prop-label">Отриманий сигнал</span><span class="prop-value ${cls}">${s !== 0 ? s.toFixed(2) + ' дБ' : '--'}</span></div>`;
+        if (s !== 0 && s < ONU_MIN) h += `<div class="warn-pill">Слабкий сигнал!</div>`;
+      }
+
+      h += `<button class="del-btn" onclick="delSel()">🗑️ Видалити компонент</button></div>`;
+      p.innerHTML = h;
+    }
+
+    function renameNode(id, val) {
+      const n = nodes.find(x => x.id === id);
+      if (n && val.trim()) {
+        n.name = val.trim();
+        draw();
+        // Don't re-render props here to avoid loss of focus
+      }
+    }
+
+    function upd(id, prop, val) {
+      const n = nodes.find(x => x.id === id);
+      if (!n) return;
+      n[prop] = val;
+      if (prop === 'plcBranch' && n.type === 'FOB') {
+        conns.filter(c => c.from === n && c.type === 'patchcord').forEach(c => {
+          c.branch = val; c.color = val === 'X' ? '#ff4444' : val === 'Y' ? '#3fb950' : '#ffd700';
+        });
+      }
+      showProps(n); draw(); updateStats();
+    }
+
+    function delSel() { if (selNode) { deleteNode(selNode); selNode = null; showProps(null); } }
+
+    // ═══════════════════════════════════════════════
+    //  СТАТИСТИКА
+    // ═══════════════════════════════════════════════
+    function updateStats() {
+      document.getElementById('s-olt').textContent = nodes.filter(n => n.type === 'OLT').length;
+      document.getElementById('s-fob').textContent = nodes.filter(n => n.type === 'FOB').length;
+      document.getElementById('s-onu').textContent = nodes.filter(n => n.type === 'ONU').length;
+      document.getElementById('s-conn').textContent = conns.length;
+    }
+
+    // ═══════════════════════════════════════════════
+    //  ЗВІТ (HTML TABLE)
+    // ═══════════════════════════════════════════════
+    function buildReportData() {
+      const rows = [];
+      nodes.filter(n => n.type === 'FOB').forEach(fob => {
+        if (!fob.inputConn) { rows.push({ name: fob.name, status: 'NOT_CONNECTED' }); return; }
+        const c = fob.inputConn;
+        const dm = parseFloat(px2m(dist(c.from.x, c.from.y, c.to.x, c.to.y)));
+        const cLoss = (dm / 1000) * FIBER_DB_KM;
+        const si = sigIn(fob);
+        // Правильний сигнал: перший патчкорд до ONU або sigONU для загального
+        const firstPatch = conns.find(c => c.from === fob && c.type === 'patchcord');
+        const so = (fob.plcType || fob.fbtType) ? sigONU(fob) : null;
+        rows.push({
+          name: fob.name,
+          from: c.from.name || c.from.type,
+          branch: c.branch || '—',
+          dist: dm,
+          cableLoss: cLoss.toFixed(3),
+          mechLoss: MECH,
+          signalIn: si.toFixed(2),
+          fbt: fob.fbtType || '—',
+          xLoss: fob.fbtType ? FBT_LOSSES[fob.fbtType].x.toFixed(2) : '—',
+          yLoss: fob.fbtType ? FBT_LOSSES[fob.fbtType].y.toFixed(2) : '—',
+          plc: fob.plcType || '—',
+          plcBranch: fob.plcBranch || '—',
+          plcLoss: fob.plcType ? PLC_LOSSES[fob.plcType].toFixed(2) : '—',
+          signalONU: so !== null ? so.toFixed(2) : '—',
+          onuCnt: conns.filter(x => x.from === fob && x.type === 'patchcord').length,
+          status: so !== null ? (so >= ONU_MIN ? 'ok' : so >= ONU_MIN - 3 ? 'warn' : 'err') : 'info'
+        });
+      });
+      return rows;
+    }
+
+    function openReport() {
+      const rows = buildReportData();
+      const oltCount = nodes.filter(n => n.type === 'OLT').length;
+      const fobCount = nodes.filter(n => n.type === 'FOB').length;
+      const onuCount = nodes.filter(n => n.type === 'ONU').length;
+      const totalCableM = conns.filter(c => c.type === 'cable').reduce((a, c) => a + parseFloat(px2m(dist(c.from.x, c.from.y, c.to.x, c.to.y))), 0);
+
+      let html = `
+    <div class="summary-grid">
+    <div class="summary-card"><div class="n">${oltCount}</div><div class="t">OLT</div></div>
+    <div class="summary-card"><div class="n">${fobCount}</div><div class="t">FOB</div></div>
+    <div class="summary-card"><div class="n">${onuCount}</div><div class="t">Абонентів</div></div>
+    <div class="summary-card"><div class="n">${totalCableM.toFixed(0)}</div><div class="t">м кабелю</div></div>
+  </div>
+  <div class="info-pill" style="margin-bottom:12px">⚙️ Затухання волокна: ${FIBER_DB_KM} дБ/км &nbsp;|&nbsp; Мех. втрати: ${MECH} дБ &nbsp;|&nbsp; Поріг ONU: ${ONU_MIN} дБ</div>
+
+  <div class="report-section">
+    <h3>Бюджет оптичних втрат по FOB</h3>
+    <table>
+      <thead><tr>
+        <th>FOB</th><th>Від</th><th>Гілка</th><th>Відст., м</th>
+        <th>Затух. волокна, дБ</th><th>Мех., дБ</th><th>Сигнал IN, дБ</th>
+        <th>FBT</th><th>PLC</th><th>Гілка PLC</th><th>Сигнал ONU, дБ</th>
+        <th>ONU</th><th>Статус</th>
+      </tr></thead><tbody>`;
+
+      rows.forEach(r => {
+        if (r.status === 'NOT_CONNECTED') {
+          html += `<tr><td class="td-name">${r.name}</td><td colspan="12" style="color:#f85149">⚠️ Не підключений</td></tr>`;
+          return;
+        }
+        const sClass = { 'ok': 'td-ok', 'warn': 'td-warn', 'err': 'td-err', 'info': '' }[r.status] || '';
+        const sIcon = { 'ok': '✓', 'warn': '!', 'err': '✗', 'info': '—' }[r.status] || '';
+        html += `<tr>
+      <td class="td-name">${r.name}</td>
+      <td>${r.from}</td><td>${r.branch}</td><td>${r.dist}</td>
+      <td>${r.cableLoss}</td><td>${r.mechLoss}</td>
+      <td><strong>${r.signalIn}</strong></td>
+      <td>${r.fbt}</td><td>${r.plc}</td><td>${r.plcBranch}</td>
+      <td class="${sClass}"><strong>${r.signalONU}</strong></td>
+      <td>${r.onuCnt}</td>
+      <td class="${sClass}"><strong>${sIcon}</strong></td>
+    </tr>`;
+      });
+      html += `</tbody></table></div>`;
+
+      // OLT ports table
+      const olts = nodes.filter(n => n.type === 'OLT');
+      if (olts.length) {
+        html += `<div class="report-section"><h3>Завантаження портів OLT</h3><table>
+    <thead><tr><th>OLT</th><th>Порт</th><th>Потужність, дБ</th><th>Абонентів</th><th>Статус</th></tr></thead><tbody>`;
+        olts.forEach(olt => {
+          for (let i = 0; i < olt.ports; i++) {
+            const cnt = cntONUport(olt, i);
+            if (cnt > 0) {
+              const over = cnt > 32;
+              html += `<tr><td class="td-name">${olt.name}</td><td>Порт ${i + 1}</td><td>${olt.outputPower}</td>
+          <td>${cnt}</td><td class="${over ? 'td-err' : 'td-ok'}">${over ? '⚠️ Перевантаження' : '✓ OK'}</td></tr>`;
+            }
+          }
+        });
+        html += `</tbody></table></div>`;
+      }
+
+      document.getElementById('modal-body').innerHTML = html;
+      document.getElementById('modal-overlay').classList.add('open');
+    }
+
+    function closeModal(e) {
+      if (!e || e.target === document.getElementById('modal-overlay'))
+        document.getElementById('modal-overlay').classList.remove('open');
+    }
+
+    // ═══════════════════════════════════════════════
+    //  DOWNLOAD CSV
+    // ═══════════════════════════════════════════════
+    function downloadCSV() {
+      const rows = buildReportData();
+      const hdr = 'FOB;Від;Гілка;Відстань м;Затух. волокна дБ;Мех. дБ;Сигнал IN дБ;FBT;PLC;Гілка PLC;Сигнал ONU дБ;ONU;Статус\n';
+      const body = rows.map(r => r.status === 'NOT_CONNECTED'
+        ? `${r.name};НЕ ПІДКЛЮЧЕНИЙ;;;;;;;;;;;; `
+        : `${r.name};${r.from};${r.branch};${r.dist};${r.cableLoss};${r.mechLoss};${r.signalIn};${r.fbt};${r.plc};${r.plcBranch};${r.signalONU};${r.onuCnt};${{ 'ok': 'OK', 'warn': 'Межа', 'err': 'СЛАБКИЙ', 'info': '—' }[r.status]} `
+      ).join('\n');
+      const bom = '\uFEFF';
+      const blob = new Blob([bom + hdr + body], { type: 'text/csv;charset=utf-8' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = 'pon-report-' + Date.now() + '.csv'; a.click();
+    }
+
+    // ═══════════════════════════════════════════════
+    //  DOWNLOAD TXT
+    // ═══════════════════════════════════════════════
+    function downloadTXT() {
+      const rows = buildReportData();
+      const d = new Date();
+      let t = `PON NETWORK DESIGNER — ЗВІТ\n`;
+      t += `Дата: ${d.toLocaleDateString('uk-UA')} ${d.toLocaleTimeString('uk-UA')} \n`;
+      t += `${'═'.repeat(70)} \n`;
+      t += `Параметри: затухання ${FIBER_DB_KM} дБ / км | мех.втрати ${MECH} дБ | поріг ONU ${ONU_MIN} дБ\n`;
+      t += `Компоненти: OLT = ${nodes.filter(n => n.type === 'OLT').length} | FOB=${nodes.filter(n => n.type === 'FOB').length} | ONU=${nodes.filter(n => n.type === 'ONU').length} \n`;
+      t += `${'═'.repeat(70)} \n\n`;
+      t += `БЮДЖЕТ ОПТИЧНИХ ВТРАТ\n${'─'.repeat(70)} \n`;
+      const col = (s, w) => String(s).padEnd(w);
+      t += col('FOB', 8) + col('Від', 8) + col('Відст.м', 10) + col('Сигнал IN', 12) + col('FBT', 10) + col('PLC', 8) + col('→ONU дБ', 10) + col('ONU', 5) + 'Статус\n';
+      t += '─'.repeat(70) + '\n';
+      rows.forEach(r => {
+        if (r.status === 'NOT_CONNECTED') { t += `${r.name}: НЕ ПІДКЛЮЧЕНИЙ\n`; return; }
+        const st = { 'ok': '✓ OK', 'warn': '! МЕЖА', 'err': '✗ СЛАБКИЙ', 'info': '—' }[r.status] || '';
+        t += col(r.name, 8) + col(r.from, 8) + col(r.dist, 10) + col(r.signalIn, 12) + col(r.fbt, 10) + col(r.plc, 8) + col(r.signalONU, 10) + col(r.onuCnt, 5) + st + '\n';
+      });
+      const blob = new Blob([t], { type: 'text/plain;charset=utf-8' });
+      const a = document.createElement('a'); a.href = URL.createObjectURL(blob);
+      a.download = 'pon-report-' + Date.now() + '.txt'; a.click();
+    }
+
+    // ═══════════════════════════════════════════════
+    //  АНАЛІЗ
+    // ═══════════════════════════════════════════════
+    function showSuggestions() {
+      const s = [];
+      nodes.filter(n => n.type === 'OLT').forEach(olt => {
+        for (let i = 0; i < olt.ports; i++) {
+          const c = cntONUport(olt, i);
+          if (c > 32) s.push(`⚠️ ${olt.name} Порт ${i + 1}: перевантаження! ${c} абонентів(макс 32)`);
+        }
+      });
+      nodes.filter(n => n.type === 'FOB' && n.inputConn && n.plcType).forEach(fob => {
+        const sig = sigONU(fob);
+        if (sig < ONU_MIN - 3) s.push(`❌ ${fob.name}: критично слабкий сигнал(${sig.toFixed(1)} дБ)`);
+        else if (sig < ONU_MIN) s.push(`⚠️ ${fob.name}: сигнал на межі(${sig.toFixed(1)} дБ)`);
+      });
+      conns.filter(c => c.type === 'cable').forEach(c => {
+        const km = connKm(c);
+        if (km > 5) s.push(`⚠️ Довгий кабель: ${c.from.name}→${c.to.name} (${(km * 1000).toFixed(0)} м)`);
+      });
+      nodes.filter(n => n.type === 'FOB' && n.plcType).forEach(fob => {
+        const oc = conns.filter(c => c.from === fob && c.type === 'patchcord').length;
+        const pp = parseInt(fob.plcType.split('x')[1]);
+        if (oc < pp / 2) s.push(`💡 ${fob.name}: PLC ${fob.plcType} завантажений на ${Math.round(oc / pp * 100)}% (${oc}/${pp})`);
+      });
+      if (!s.length) { alert('✅ Мережа оптимізована — критичних проблем немає!'); return; }
+      alert('📊 АНАЛІЗ МЕРЕЖІ:\n\n' + s.map((x, i) => `${i + 1}. ${x} `).join('\n\n'));
+    }
+
+    // ═══════════════════════════════════════════════
+    //  ЗБЕРЕГТИ / ВІДКРИТИ
+    // ═══════════════════════════════════════════════
+    function exportToJSON() {
+      try {
+        // Усуваємо кругові посилання: inputConn - посилання на об'єкт, зберігаємо тільки id
+        const safeNodes = nodes.map(n => { const cp = { ...n }; if (cp.inputConn) cp.inputConn = cp.inputConn.id; return cp; });
+        const safeConns = conns.map(c => ({ id: c.id, type: c.type, fromPort: c.fromPort || '', branch: c.branch || '', color: c.color || '#888', from: c.from.id, to: c.to.id }));
+        const data = { nodes: safeNodes, connections: safeConns, scale: mpp, fiberLoss: FIBER_DB_KM, fobCounter, onuCounter };
+        const blob = new Blob([JSON.stringify(data, null, 2)], { type: 'application/json' });
+        const a = document.createElement('a');
+        a.href = URL.createObjectURL(blob);
+        a.download = 'pon-project-' + Date.now() + '.json';
+        document.body.appendChild(a); a.click(); document.body.removeChild(a);
+      } catch (err) { alert('Помилка збереження: ' + err.message); console.error(err); }
+    }
+
+    function loadProjectFromJSON() {
+      const inp = document.createElement('input'); inp.type = 'file'; inp.accept = '.json';
+      inp.onchange = e => {
+        const f = e.target.files[0]; if (!f) return;
+        const r = new FileReader();
+        r.onload = ev => {
+          try {
+            const d = JSON.parse(ev.target.result);
+            nodes = []; conns = []; selNode = null;
+            if (d.nodes) nodes = d.nodes;
+            if (d.connections) conns = d.connections.map(c => ({ ...c, from: nodes.find(n => n.id === c.from), to: nodes.find(n => n.id === c.to) }));
+            nodes.filter(n => n.type === 'FOB').forEach(fob => { fob.inputConn = conns.find(c => c.to === fob && c.type === 'cable') || null; });
+            if (d.scale) { mpp = d.scale; document.getElementById('scale-meters').value = d.scale; updateScale(d.scale); }
+            if (d.fiberLoss) { FIBER_DB_KM = d.fiberLoss; document.getElementById('fiber-loss').value = d.fiberLoss; }
+            fobCounter = d.fobCounter || Math.max(0, ...nodes.filter(n => n.type === 'FOB').map(n => n.number || 0)) + 1;
+            onuCounter = d.onuCounter || Math.max(0, ...nodes.filter(n => n.type === 'ONU').map(n => n.number || 0)) + 1;
+            draw(); updateStats(); showProps(null);
+            alert(`✅ Проєкт завантажено: OLT = ${nodes.filter(n => n.type === 'OLT').length} FOB = ${nodes.filter(n => n.type === 'FOB').length} ONU = ${nodes.filter(n => n.type === 'ONU').length}`);
+          } catch (err) { alert('❌ Помилка: ' + err.message); }
+        };
+        r.readAsText(f);
+      };
+      inp.click();
+    }
+
+    function exportToPNG() {
+      const a = document.createElement('a'); a.download = 'pon-' + Date.now() + '.png';
+      a.href = canvas.toDataURL(); a.click();
+    }
+
+    function clearNetwork() {
+      if (confirm('Очистити всю мережу?')) { nodes = []; conns = []; selNode = null; fobCounter = 1; onuCounter = 1; showProps(null); draw(); updateStats(); }
+    }
+
+    // ═══════════════════════════════════════════════
+    //  ДОВІДКА
+    // ═══════════════════════════════════════════════
+    function openHelp() {
+      document.getElementById('help-overlay').classList.add('open');
+    }
+    function closeHelp(e) {
+      if (!e || e.target === document.getElementById('help-overlay'))
+        document.getElementById('help-overlay').classList.remove('open');
+    }
+
+    // ═══════════════════════════════════════════════
+    //  INIT
+    // ═══════════════════════════════════════════════
+    updateStats(); draw();
+  </script>
+
+  <!-- Help Modal -->
+  <div class="modal-overlay" id="help-overlay" onclick="closeHelp(event)">
+    <div class="modal" onclick="event.stopPropagation()" style="max-width:720px">
+      <div class="modal-head">
+        <h2>📋 Довідка — Затухання обладнання PON</h2>
+        <button class="btn-close" onclick="closeHelp()"
+          style="padding:5px 12px;border-radius:4px;font-size:12px;cursor:pointer;background:#21262d;color:#8b949e;border:none">✕</button>
+      </div>
+      <div class="modal-body">
+
+        <div class="report-section">
+          <h3>FBT Дільники (Fused Biconical Taper)</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Тип</th>
+                <th>Гілка X (%)</th>
+                <th>Затух. X (дБ)</th>
+                <th>Гілка Y (%)</th>
+                <th>Затух. Y (дБ)</th>
+                <th>Застосування</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="td-name">FBT 5/95</td>
+                <td>5%</td>
+                <td class="td-warn">13.70</td>
+                <td>95%</td>
+                <td class="td-ok">0.32</td>
+                <td>Малий відгалужувач, далека магістраль</td>
+              </tr>
+              <tr>
+                <td class="td-name">FBT 10/90</td>
+                <td>10%</td>
+                <td class="td-warn">10.08</td>
+                <td>90%</td>
+                <td class="td-ok">0.49</td>
+                <td>Живлення ближнього FOB</td>
+              </tr>
+              <tr>
+                <td class="td-name">FBT 20/80</td>
+                <td>20%</td>
+                <td class="td-warn">7.11</td>
+                <td>80%</td>
+                <td class="td-ok">1.06</td>
+                <td>Рівномірніший розподіл</td>
+              </tr>
+              <tr>
+                <td class="td-name">FBT 30/70</td>
+                <td>30%</td>
+                <td class="td-warn">5.39</td>
+                <td>70%</td>
+                <td class="td-ok">1.56</td>
+                <td>Близькі відстані між FOB</td>
+              </tr>
+              <tr>
+                <td class="td-name">FBT 50/50</td>
+                <td>50%</td>
+                <td>3.17</td>
+                <td>50%</td>
+                <td>3.19</td>
+                <td>Рівний розподіл між двома гілками</td>
+              </tr>
+            </tbody>
+          </table>
+          <div class="info-pill" style="margin-top:8px">💡 X — менша частка сигналу (більше затухання), Y — більша
+            частка (менше затухання). Підключайте PLC до гілки Y для кращого сигналу на абонентах.</div>
+        </div>
+
+        <div class="report-section">
+          <h3>PLC Сплітери (Planar Lightwave Circuit)</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Тип</th>
+                <th>Портів</th>
+                <th>Затухання (дБ)</th>
+                <th>Макс. ONU</th>
+                <th>Рекомендовано для</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td class="td-name">PLC 1×2</td>
+                <td>2</td>
+                <td class="td-ok">4.30</td>
+                <td>2</td>
+                <td>Малі об'єкти, 2 абоненти</td>
+              </tr>
+              <tr>
+                <td class="td-name">PLC 1×4</td>
+                <td>4</td>
+                <td class="td-ok">7.40</td>
+                <td>4</td>
+                <td>Квартирний під'їзд, малий будинок</td>
+              </tr>
+              <tr>
+                <td class="td-name">PLC 1×8</td>
+                <td>8</td>
+                <td class="td-ok">10.70</td>
+                <td>8</td>
+                <td>Стандартний під'їзд 8-16 квартир</td>
+              </tr>
+              <tr>
+                <td class="td-name">PLC 1×16</td>
+                <td>16</td>
+                <td class="td-warn">13.90</td>
+                <td>16</td>
+                <td>Середній будинок</td>
+              </tr>
+              <tr>
+                <td class="td-name">PLC 1×32</td>
+                <td>32</td>
+                <td class="td-warn">17.20</td>
+                <td>32</td>
+                <td>Великий будинок, квартал</td>
+              </tr>
+              <tr>
+                <td class="td-name">PLC 1×64</td>
+                <td>64</td>
+                <td class="td-err">21.50</td>
+                <td>64</td>
+                <td>Тільки при великій потужності OLT</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="report-section">
+          <h3>Механічні втрати</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Тип з'єднання</th>
+                <th>Втрати (дБ)</th>
+                <th>Де застосовується</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Зварне з'єднання</td>
+                <td class="td-ok">0.1 – 0.2</td>
+                <td>Зрощення кабелів</td>
+              </tr>
+              <tr>
+                <td>Механічний роз'єм (SC/APC)</td>
+                <td class="td-ok">0.3 – 0.5</td>
+                <td>Патч-панелі, ONU, OLT</td>
+              </tr>
+              <tr>
+                <td>В даній програмі (типове)</td>
+                <td class="td-ok">0.5</td>
+                <td>На кожне з'єднання</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="report-section">
+          <h3>Оптичне волокно — затухання</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Довжина хвилі</th>
+                <th>Затухання (дБ/км)</th>
+                <th>Застосування в PON</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>1310 нм</td>
+                <td class="td-ok">0.35 – 0.40</td>
+                <td>Висхідний канал (upstream) GPON</td>
+              </tr>
+              <tr>
+                <td>1490 нм</td>
+                <td class="td-ok">0.25 – 0.35</td>
+                <td>Низхідний канал (downstream) GPON</td>
+              </tr>
+              <tr>
+                <td>1550 нм</td>
+                <td class="td-ok">0.20 – 0.25</td>
+                <td>XGS-PON, відеооверлей</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="report-section">
+          <h3>Поріг чутливості ONU / OLT</h3>
+          <table>
+            <thead>
+              <tr>
+                <th>Параметр</th>
+                <th>Значення</th>
+                <th>Пояснення</th>
+              </tr>
+            </thead>
+            <tbody>
+              <tr>
+                <td>Мінімальний сигнал ONU</td>
+                <td class="td-warn">−26 дБм</td>
+                <td>Нижче — ONU не синхронізується</td>
+              </tr>
+              <tr>
+                <td>Нормальний діапазон ONU</td>
+                <td class="td-ok">−8 … −26 дБм</td>
+                <td>Рекомендований робочий діапазон</td>
+              </tr>
+              <tr>
+                <td>Типова потужність OLT порту</td>
+                <td class="td-ok">+2 … +5 дБм</td>
+                <td>Залежить від класу OLT (B+, C+)</td>
+              </tr>
+              <tr>
+                <td>Максимальний бюджет GPON</td>
+                <td class="td-ok">28 дБ (B+)</td>
+                <td>OLT +2дБм → ONU −26дБм</td>
+              </tr>
+            </tbody>
+          </table>
+        </div>
+
+        <div class="report-section">
+          <h3>Типова схема розрахунку</h3>
+          <div class="info-pill">
+            <strong>OLT (2дБ)</strong> → кабель (0.4дБ/км × відстань км + 0.5дБ мех.) → <strong>FOB IN</strong><br>
+            → FBT гілка Y (1.56дБ) → кабель → наступний FOB<br>
+            → FBT гілка X (5.39дБ) + PLC 1×8 (10.7дБ) + 0.5дБ мех. → <strong>ONU</strong><br><br>
+            Приклад: 2 − 0.16 − 0.5 = 1.34дБ (IN) → −5.39 − 0.5 = −4.55дБ (X) → −10.7 − 0.5 = <strong>−15.75дБм на
+              ONU</strong> ✓
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+</body>
+
+</html>
