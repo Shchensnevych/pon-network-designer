@@ -1122,10 +1122,30 @@ export function showScenarioCompare() {
 }
 
 export function openHelp() {
-  document.getElementById("help-overlay").classList.add("open");
+  // Open onboarding modal with Tab 3 (Затухання) active
+  switchOnboardingTab(2);
+  const overlay = document.getElementById("onboarding-overlay");
+  const checkbox = document.getElementById("onboarding-dont-show");
+  if (checkbox) checkbox.checked = localStorage.getItem("pon_onboarding_dismissed") === "true";
+  if (overlay) overlay.style.display = "flex";
 }
 
 export function closeHelp() {
-  document.getElementById("help-overlay").classList.remove("open");
+  // Legacy: close onboarding overlay (help modal no longer exists separately)
+  const overlay = document.getElementById("onboarding-overlay");
+  if (overlay) overlay.style.display = "none";
+}
+
+export function switchOnboardingTab(index) {
+  const overlay = document.getElementById("onboarding-overlay");
+  if (!overlay) return;
+  const tabs = overlay.querySelectorAll(".onboarding-tabs .tab-btn");
+  const contents = overlay.querySelectorAll(".onboarding-tab-content");
+  tabs.forEach((t, i) => {
+    t.classList.toggle("active", i === index);
+  });
+  contents.forEach((c, i) => {
+    c.classList.toggle("active", i === index);
+  });
 }
 

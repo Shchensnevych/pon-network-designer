@@ -26,6 +26,7 @@ import {
   showScenarioCompare,
   openHelp,
   closeHelp,
+  switchOnboardingTab,
   focusNode,
 } from "./ui.js";
 import {
@@ -76,6 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.focusNode = focusNode;
   window.openHelp = openHelp;
   window.closeHelp = closeHelp;
+  window.switchOnboardingTab = switchOnboardingTab;
 
   // Export / Import
   window.exportToJSON = () => {
@@ -171,6 +173,7 @@ document.addEventListener("DOMContentLoaded", () => {
     const overlay = document.getElementById("onboarding-overlay");
     const checkbox = document.getElementById("onboarding-dont-show");
     if (checkbox) checkbox.checked = localStorage.getItem("pon_onboarding_dismissed") === "true";
+    switchOnboardingTab(0);
     if (overlay) overlay.style.display = "flex";
   };
 
@@ -186,26 +189,21 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   };
 
-  // Global ESC handler for closing modals (Onboarding / Report / Help / Settings)
+  // Global ESC handler for closing modals (Onboarding / Report / Settings)
   document.addEventListener("keydown", (e) => {
     if (e.key !== "Escape") return;
 
     const onboardingOverlay = document.getElementById("onboarding-overlay");
     const modalOverlay = document.getElementById("modal-overlay");
-    const helpOverlay = document.getElementById("help-overlay");
     const settingsOverlay = document.getElementById("settings-overlay");
 
-    // Закриваємо лише те, що відкрите, за пріоритетом: onboarding → звіт → help → settings
+    // Закриваємо лише те, що відкрите, за пріоритетом: onboarding → звіт → settings
     if (onboardingOverlay?.style.display === "flex") {
       window.closeOnboarding();
       return;
     }
     if (modalOverlay?.classList.contains("open")) {
       window.closeModal();
-      return;
-    }
-    if (helpOverlay?.classList.contains("open")) {
-      window.closeHelp();
       return;
     }
     if (settingsOverlay?.classList.contains("open")) {

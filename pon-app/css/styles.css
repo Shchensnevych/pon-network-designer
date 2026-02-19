@@ -37,7 +37,7 @@ body {
 }
 
 .left-header {
-  padding: 10px 12px;
+  padding: 6px 12px;
   border-bottom: 1px solid #30363d;
   font-size: 11px;
   font-weight: 700;
@@ -49,7 +49,7 @@ body {
 .left-body {
   flex: 1;
   overflow-y: auto;
-  padding: 8px;
+  padding: 4px 6px;
 }
 
 .left-body::-webkit-scrollbar {
@@ -70,13 +70,13 @@ body {
   color: #6e7681;
   text-transform: uppercase;
   letter-spacing: 1px;
-  padding: 8px 4px 4px;
+  padding: 6px 4px 3px;
   font-weight: 600;
 }
 
 .tool-btn {
   width: 100%;
-  padding: 7px 10px;
+  padding: 6px 10px;
   margin-bottom: 3px;
   background: transparent;
   border: 1px solid #30363d;
@@ -182,7 +182,7 @@ input[type="file"] {
   font-weight: 500;
   text-align: left;
   align-items: center;
-  margin-top: 20px;
+  margin-top: 8px;
   transition: all 0.15s;
 }
 
@@ -480,7 +480,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .action-btn {
   width: 100%;
-  padding: 8px 10px;
+  padding: 6px 8px;
   border-radius: 6px;
   cursor: pointer;
   font-size: 11px;
@@ -488,7 +488,7 @@ input[type="number"]::-webkit-inner-spin-button {
   text-align: left;
   display: flex;
   align-items: center;
-  gap: 8px;
+  gap: 6px;
   margin-bottom: 2px;
   transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
   background: #21262d;
@@ -559,9 +559,8 @@ input[type="number"]::-webkit-inner-spin-button {
   color: #c9d1d9 !important;
 }
 
-/* ── ACTION GROUPS ── */
 .action-group {
-  margin-bottom: 12px;
+  margin-bottom: 8px;
   padding: 4px;
   background: rgba(48, 54, 61, 0.15);
   border-radius: 8px;
@@ -574,8 +573,156 @@ input[type="number"]::-webkit-inner-spin-button {
   color: #8b949e;
   text-transform: uppercase;
   letter-spacing: 0.8px;
-  margin: 6px 0 4px 6px;
+  margin: 2px 0 2px 6px;
   display: block;
+}
+
+/* ── ONBOARDING TABS ── */
+.onboarding-tabs {
+  display: flex;
+  border-bottom: 1px solid #30363d;
+  margin-bottom: 0;
+}
+
+.tab-btn {
+  flex: 1;
+  padding: 10px 6px;
+  background: transparent;
+  border: none;
+  border-bottom: 2px solid transparent;
+  color: #8b949e;
+  cursor: pointer;
+  font-size: 12px;
+  font-weight: 600;
+  transition: all 0.2s;
+  white-space: nowrap;
+}
+
+.tab-btn:hover {
+  color: #e6edf3;
+  background: rgba(255, 255, 255, 0.05);
+}
+
+.tab-btn.active {
+  color: #58a6ff;
+  border-bottom-color: #58a6ff;
+  background: rgba(88, 166, 255, 0.1);
+}
+
+.onboarding-tab-content {
+  display: none;
+  padding: 20px;
+  max-height: 65vh;
+  overflow-y: auto;
+}
+
+.onboarding-tab-content.active {
+  display: block;
+}
+
+.onboarding-footer {
+  padding: 14px 20px;
+  border-top: 1px solid #30363d;
+  text-align: center;
+}
+
+.onboarding-check-wrap {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  gap: 8px;
+  margin-bottom: 10px;
+  font-size: 12px;
+  color: #8b949e;
+  cursor: pointer;
+}
+
+.onboarding-check-wrap input[type="checkbox"] {
+  width: auto;
+  margin: 0;
+}
+
+.onboarding-btn {
+  width: auto;
+  padding: 10px 32px;
+  font-size: 13px;
+  margin: 0 auto;
+  display: inline-flex;
+  justify-content: center;
+}
+
+/* ── GLOBAL SCROLLBAR STYLES ── */
+.onboarding-tab-content::-webkit-scrollbar,
+.modal-body::-webkit-scrollbar,
+.right-body::-webkit-scrollbar {
+  width: 5px;
+}
+
+.onboarding-tab-content::-webkit-scrollbar-track,
+.modal-body::-webkit-scrollbar-track,
+.right-body::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+.onboarding-tab-content::-webkit-scrollbar-thumb,
+.modal-body::-webkit-scrollbar-thumb,
+.right-body::-webkit-scrollbar-thumb {
+  background: #30363d;
+  border-radius: 3px;
+}
+
+.onboarding-tab-content::-webkit-scrollbar-thumb:hover,
+.modal-body::-webkit-scrollbar-thumb:hover,
+.right-body::-webkit-scrollbar-thumb:hover {
+  background: #484f58;
+}
+
+/* ── FA ICON STYLES ── */
+.action-btn i.fa-solid,
+.action-btn i.fa-regular {
+  font-size: 12px;
+  width: 16px;
+  text-align: center;
+}
+
+.group-label i.fa-solid {
+  font-size: 9px;
+  margin-right: 2px;
+}
+
+.tab-btn i.fa-solid {
+  font-size: 12px;
+  margin-right: 3px;
+}
+
+/* ── ONBOARDING TOPOLOGY STYLES ── */
+.onboarding-topology-title {
+  font-size: 15px;
+  font-weight: 700;
+  color: #e6edf3;
+  margin: 12px 0 8px;
+}
+
+.topology-img {
+  width: 100%;
+  max-width: 100%;
+  border-radius: 8px;
+  margin: 8px 0;
+  border: 1px solid #30363d;
+}
+
+.onboarding-sep {
+  border: none;
+  border-top: 1px solid #30363d;
+  margin: 16px 0;
+}
+
+.onboarding-caption {
+  font-size: 12px;
+  color: #8b949e;
+  font-style: italic;
+  margin: 2px 0 10px;
+  text-align: center;
 }
 
 /* Port selector */
