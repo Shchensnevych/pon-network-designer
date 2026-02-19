@@ -518,6 +518,17 @@ input[type="number"]::-webkit-inner-spin-button {
   color: #58a6ff !important;
 }
 
+#btn-anim {
+  opacity: 0.6;
+  transition: all 0.2s ease;
+}
+
+#btn-anim.active {
+  opacity: 1;
+  background: #2b3a4a !important;
+  box-shadow: 0 0 10px rgba(88, 166, 255, 0.4);
+}
+
 .btn-purple {
   background: #2d1b69 !important;
   border-color: #a371f7 !important;
