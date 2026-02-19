@@ -79,6 +79,39 @@ export function initNetwork() {
     updateTooltipsVisibility();
   });
 
+  // Re-layout ONU tooltips after panning (visible nodes change)
+  let _moveLayoutTimer = null;
+  map.on("moveend", () => {
+    // Debounce: don't fire during zoom (zoomend already handles that)
+    if (_moveLayoutTimer) clearTimeout(_moveLayoutTimer);
+    _moveLayoutTimer = setTimeout(() => {
+      const zoom = map.getZoom();
+      if (zoom >= 16) {
+        clearONULeaderLines();
+        // Re-bind ONU tooltips with reset offsets, then re-layout
+        nodes.forEach((n) => {
+          if (n.type === "ONU") {
+            delete n._tooltipDir;
+            delete n._tooltipOffset;
+            delete n._hasLeader;
+            const tooltip = n.marker.getTooltip();
+            if (tooltip) {
+              const content = tooltip.getContent();
+              n.marker.unbindTooltip();
+              n.marker.bindTooltip(content, {
+                permanent: true,
+                direction: "bottom",
+                className: "node-label",
+                offset: [0, 5],
+              });
+            }
+          }
+        });
+        layoutONUTooltips();
+      }
+    }, 150);
+  });
+
   // Basic Geoman options (if plugin is present)
   if (map.pm) {
     map.pm.setGlobalOptions({
@@ -1535,8 +1568,13 @@ function layoutONUTooltips() {
   const onus = nodes.filter((n) => n.type === "ONU");
   if (onus.length === 0) return;
 
+  // Only process nodes visible in the current viewport (with padding)
+  const bounds = map.getBounds().pad(0.15); // 15% padding beyond visible area
+  const visibleOnus = onus.filter((n) => bounds.contains([n.lat, n.lng]));
+  if (visibleOnus.length === 0) return;
+
   // Convert to pixel positions
-  const items = onus.map((n) => ({
+  const items = visibleOnus.map((n) => ({
     node: n,
     pt: map.latLngToContainerPoint([n.lat, n.lng]),
   }));
@@ -1642,59 +1680,47 @@ function layoutONUTooltips() {
       }))
       .sort((a, b) => a.angle - b.angle);
 
-    if (cluster.length <= 4) {
-      // ---- Smart Direction: assign direction per ONU ----
-      sorted.forEach((item, idx) => {
-        const dir = DIRECTIONS[idx % 4];
-        const base = dirOffsetBase[dir];
-        const dist = baseCalloutDistance;
-        items[item.i].node._tooltipDir = dir;
-        items[item.i].node._tooltipOffset = [base[0] * dist, base[1] * dist];
-      });
-    } else {
-      // ---- Leader Lines: radial callout for dense clusters ----
-      // Dynamic radius grows with cluster size, scaled by zoom
-      const radiusGrowth = Math.max(0, cluster.length - 5) * 6;
-      const calloutRadius = baseCalloutDistance + 30 + radiusGrowth;
+    // ---- Radial callout with leader lines for ALL overlapping clusters ----
+    const radiusGrowth = Math.max(0, cluster.length - 3) * 5;
+    const calloutRadius = baseCalloutDistance + 15 + radiusGrowth;
 
-      sorted.forEach((item, idx) => {
-        const n = items[item.i].node;
-        const angle = (2 * Math.PI * idx) / sorted.length - Math.PI / 2;
+    sorted.forEach((item, idx) => {
+      const n = items[item.i].node;
+      const angle = (2 * Math.PI * idx) / sorted.length - Math.PI / 2;
 
-        const offX = Math.cos(angle) * calloutRadius;
-        const offY = Math.sin(angle) * calloutRadius;
+      const offX = Math.cos(angle) * calloutRadius;
+      const offY = Math.sin(angle) * calloutRadius;
 
-        // Choose cardinal direction for tooltip
-        const absX = Math.abs(offX);
-        const absY = Math.abs(offY);
-        let dir;
-        if (absX > absY) {
-          dir = offX > 0 ? "right" : "left";
-        } else {
-          dir = offY > 0 ? "bottom" : "top";
-        }
+      // Choose cardinal direction for tooltip
+      const absX = Math.abs(offX);
+      const absY = Math.abs(offY);
+      let dir;
+      if (absX > absY) {
+        dir = offX > 0 ? "right" : "left";
+      } else {
+        dir = offY > 0 ? "bottom" : "top";
+      }
 
-        n._tooltipDir = dir;
-        n._tooltipOffset = [Math.round(offX), Math.round(offY)];
-        n._hasLeader = true;
+      n._tooltipDir = dir;
+      n._tooltipOffset = [Math.round(offX), Math.round(offY)];
+      n._hasLeader = true;
 
-        // Draw leader line in lat/lng
-        const markerPt = items[item.i].pt;
-        const tooltipPt = L.point(markerPt.x + offX, markerPt.y + offY);
-        const markerLL = map.containerPointToLatLng(markerPt);
-        const tooltipLL = map.containerPointToLatLng(tooltipPt);
+      // Draw leader line in lat/lng
+      const markerPt = items[item.i].pt;
+      const tooltipPt = L.point(markerPt.x + offX, markerPt.y + offY);
+      const markerLL = map.containerPointToLatLng(markerPt);
+      const tooltipLL = map.containerPointToLatLng(tooltipPt);
 
-        const line = L.polyline([markerLL, tooltipLL], {
-          weight: 1.5,
-          color: "#ffffffbb",
-          dashArray: "6,4",
-          interactive: false,
-          className: "onu-leader-line",
-          pmIgnore: true,
-        }).addTo(map);
-        onuLeaderLines.push(line);
-      });
-    }
+      const line = L.polyline([markerLL, tooltipLL], {
+        weight: 1.5,
+        color: "#ffffffbb",
+        dashArray: "6,4",
+        interactive: false,
+        className: "onu-leader-line",
+        pmIgnore: true,
+      }).addTo(map);
+      onuLeaderLines.push(line);
+    });
 
     // Rebind tooltips with computed directions/offsets
     cluster.forEach((i) => {
