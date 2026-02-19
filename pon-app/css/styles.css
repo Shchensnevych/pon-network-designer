@@ -121,7 +121,7 @@ body {
 .config-box label {
   display: block;
   font-size: 10px;
-  color: #6e7681;
+  color: #d5dce5;
   margin-bottom: 3px;
 }
 
@@ -142,7 +142,7 @@ body {
 
 .config-hint {
   font-size: 10px;
-  color: #484f58;
+  color: #d5dce5;
   margin-top: 3px;
 }
 
@@ -316,7 +316,7 @@ input[type="file"] {
 
 .stat-chip .lbl {
   font-size: 9px;
-  color: #6e7681;
+  color: #d5dce5;
   text-transform: uppercase;
   letter-spacing: 0.5px;
 }
@@ -445,7 +445,7 @@ input[type="number"]::-webkit-inner-spin-button {
   border-radius: 4px;
   padding: 5px 8px;
   font-size: 10px;
-  color: #8b949e;
+  color: #e0e3e7;
   margin-top: 4px;
 }
 
@@ -480,44 +480,91 @@ input[type="number"]::-webkit-inner-spin-button {
 
 .action-btn {
   width: 100%;
-  padding: 7px;
-  border: none;
-  border-radius: 4px;
+  padding: 8px 10px;
+  border-radius: 6px;
   cursor: pointer;
   font-size: 11px;
   font-weight: 600;
   text-align: left;
+  display: flex;
   align-items: center;
-  margin-bottom: 4px;
-  transition: all 0.15s;
+  gap: 8px;
+  margin-bottom: 2px;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+  background: #21262d;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
 }
 
 .action-btn:hover {
-  filter: brightness(1.1);
+  filter: brightness(1.2);
+  transform: translateX(2px);
+  border-color: #8b949e;
+}
+
+.action-btn:active {
+  transform: scale(0.98);
 }
 
 .btn-green {
-  background: #1a4731;
-  border: 1px solid #3fb950;
-  color: #3fb950;
+  background: #1a4731 !important;
+  border-color: #3fb950 !important;
+  color: #3fb950 !important;
 }
 
 .btn-blue {
-  background: #1f3a5f;
-  border: 1px solid #58a6ff;
-  color: #58a6ff;
+  background: #1f3a5f !important;
+  border-color: #58a6ff !important;
+  color: #58a6ff !important;
 }
 
 .btn-purple {
-  background: #2d1b69;
-  border: 1px solid #a371f7;
-  color: #a371f7;
+  background: #2d1b69 !important;
+  border-color: #a371f7 !important;
+  color: #a371f7 !important;
 }
 
 .btn-orange {
-  background: #3d2200;
-  border: 1px solid #f0883e;
-  color: #f0883e;
+  background: #3d2200 !important;
+  border-color: #f0883e !important;
+  color: #f0883e !important;
+}
+
+.btn-indigo {
+  background: #1c1c3d !important;
+  border-color: #79c0ff !important;
+  color: #79c0ff !important;
+}
+
+.btn-deep-green {
+  background: #1c2b1c !important;
+  border-color: #3fb950 !important;
+  color: #3fb950 !important;
+}
+
+.btn-gray {
+  background: #161b22 !important;
+  border-color: #6e7681 !important;
+  color: #c9d1d9 !important;
+}
+
+/* ── ACTION GROUPS ── */
+.action-group {
+  margin-bottom: 12px;
+  padding: 4px;
+  background: rgba(48, 54, 61, 0.15);
+  border-radius: 8px;
+  border: 1px solid rgba(48, 54, 61, 0.5);
+}
+
+.group-label {
+  font-size: 9px;
+  font-weight: 700;
+  color: #8b949e;
+  text-transform: uppercase;
+  letter-spacing: 0.8px;
+  margin: 6px 0 4px 6px;
+  display: block;
 }
 
 /* Port selector */
@@ -995,6 +1042,73 @@ tr:hover td {
   border: none !important;
 }
 
+/* ── ONU LEADER LINES (callout connectors for dense clusters) ── */
+.onu-leader-line {
+  pointer-events: none !important;
+  z-index: 399 !important;
+  filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
+}
+
+.leaflet-tooltip.node-label.onu-callout {
+  border-color: rgba(255, 255, 255, 0.3);
+  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 4px rgba(255, 255, 255, 0.1);
+}
+
+/* ── ZOOM INDICATOR ── */
+.zoom-indicator {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+  background: #21262d;
+  padding: 2px 6px;
+  border-radius: 6px;
+  border: 1px solid #30363d;
+  color: #c9d1d9;
+  font-size: 11px;
+  min-width: 170px;
+  user-select: none;
+}
+.zoom-slider-wrap {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  flex: 1;
+  gap: 2px;
+}
+.zoom-indicator span {
+  font-weight: 600;
+  font-family: monospace;
+}
+.zoom-indicator input[type="range"] {
+  width: 100%;
+  height: 4px;
+  cursor: pointer;
+  accent-color: #3fb950;
+  margin: 0;
+}
+.zoom-btn {
+  background: transparent;
+  border: none;
+  color: #8b949e;
+  font-size: 16px;
+  cursor: pointer;
+  width: 24px;
+  height: 24px;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  border-radius: 4px;
+  transition: all 0.2s;
+}
+.zoom-btn:hover {
+  background: #30363d;
+  color: #fff;
+}
+.zoom-btn:active {
+  background: #3fb950;
+  color: #000;
+}
+
 path.leaflet-interactive {
   transition:
     stroke-width 0.15s,
@@ -1393,6 +1507,68 @@ path.leaflet-interactive:hover {
 .info-icon:hover {
   background: rgba(88, 166, 255, 0.3);
   border-color: #79c0ff;
+}
+
+/* ── TOPOLOGY IMAGES IN ONBOARDING ── */
+.topology-img {
+  width: 100%;
+  max-width: 560px;
+  border-radius: 8px;
+  display: block;
+  margin: 0 auto 12px auto;
+  border: 1.5px solid #58a6ff;
+  box-shadow: 0 4px 20px rgba(88, 166, 255, 0.25);
+  transition: transform 0.2s ease;
+}
+.topology-img:hover {
+  transform: scale(1.01);
+  box-shadow: 0 6px 25px rgba(88, 166, 255, 0.35);
+}
+
+/* ── ONBOARDING MODAL UTILITIES ── */
+.onboarding-list {
+  line-height: 1.8;
+  padding-left: 20px;
+  margin-bottom: 14px;
+}
+.onboarding-text {
+  line-height: 1.7;
+  margin-bottom: 8px;
+}
+.onboarding-topology-title {
+  margin-bottom: 12px;
+  text-align: center;
+  color: #58a6ff;
+  font-size: 1.1em;
+  font-weight: bold;
+}
+.onboarding-caption {
+  text-align: center;
+  font-size: 0.9em;
+  color: #61dfd5;
+  margin: 8px 0 16px;
+  font-style: italic;
+}
+.onboarding-sep {
+  border: none;
+  border-top: 1px solid rgba(88, 166, 255, 0.2);
+  margin: 24px 0;
+}
+.onboarding-footer {
+  margin-top: 20px;
+  text-align: center;
+}
+.onboarding-check-wrap {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  cursor: pointer;
+  justify-content: center;
+}
+.onboarding-btn {
+  margin-top: 12px;
+  width: auto;
+  padding: 8px 24px;
 }
 
 .backup-item {

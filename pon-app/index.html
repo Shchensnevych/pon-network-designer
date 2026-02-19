@@ -104,101 +104,66 @@
           </button>
 
           <div class="section-label">Дії</div>
-          <button
-            class="action-btn btn-green"
-            onclick="exportToJSON()"
-            style="position:relative"
-          >
-            💾 Зберегти проєкт
-            <span class="info-icon" title="Зберегти поточний проєкт як JSON-файл для подальшого відкриття">?</span>
-          </button>
-          <button
-            class="action-btn btn-purple"
-            onclick="loadProject()"
-            style="position:relative"
-          >
-            📂 Відкрити проєкт
-            <span class="info-icon" title="Відкрити раніше збережений JSON-проєкт з диску">?</span>
-          </button>
-          <button
-            class="action-btn btn-blue"
-            onclick="openReport()"
-            style="position:relative"
-          >
-            📊 Звіт / Експорт
-            <span class="info-icon" title="Детальний звіт: кабелі, порти, сигнали та експорт CSV/TXT. Економічна частина для кошторису">?</span>
-          </button>
-          <button
-            class="action-btn btn-orange"
-            onclick="showSuggestions()"
-            style="position:relative"
-          >
-            🔍 Валідація
-            <span class="info-icon" title="Перевірка мережі: відключені вузли, слабкі сигнали, петлі, перевантаження портів">?</span>
-          </button>
-          <button
-            class="action-btn btn-blue"
-            onclick="showTopology()"
-            style="position:relative"
-          >
-            🌳 Топологія
-            <span class="info-icon" title="Дерево мережі: OLT → Порти → FOB → ONU з рівнями сигналу. Клік по елементу фокусує на карті">?</span>
-          </button>
-          <button
-            class="action-btn btn-purple"
-            onclick="showScenarioCompare()"
-            style="position:relative"
-          >
-            🔄 Порівняння
-            <span class="info-icon" title="Порівняння сценаріїв: оберіть сплітер для кожного FOB, щоб побачити вплив на сигнал">?</span>
-          </button>
-          <button
-            class="action-btn"
-            id="btn-anim"
-            onclick="toggleSignalAnim()"
-            style="
-              background: #1c1c2b;
-              border: 1px solid #6e7681;
-              color: #8b949e;
-              position:relative;
-            "
-          >
-            ⚡ Анімація сигналу
-            <span class="info-icon" title="Анімовані білі штрихи на кабелях показують напрямок сигналу від OLT до ONU">?</span>
-          </button>
-          <button
-            class="action-btn"
-            onclick="openHelp()"
-            style="
-              background: #1c2b1c;
-              border: 1px solid #6e7681;
-              color: #8b949e;
-              position:relative;
-            "
-          >
-            📋 Довідка затухань
-            <span class="info-icon" title="Таблиця затухань сплітерів (FBT/PLC), конекторів та зварювань, пороги ONU/OLT">?</span>
-          </button>
-          <button
-            class="action-btn"
-            onclick="openSettings()"
-            style="
-                background: #1c1c2b;
-                border: 1px solid #6e7681;
-                color: #8b949e;
-                position:relative;
-            "
-          >
-            ⚙️ Бекапи / Налаштування
-            <span class="info-icon" title="Налаштування автозбереження та керування бекапами (зберігаються локально в браузері)">?</span>
-          </button>
-          <button
-            class="clear-btn"
-            onclick="clearNetwork()"
-            style="position:relative"
-          >
+          
+          <!-- ГРУПА: ПРОЄКТ -->
+          <div class="action-group">
+            <span class="group-label">📂 Проєкт</span>
+            <button class="action-btn btn-green" onclick="exportToJSON()" style="position: relative">
+              💾 Зберегти проєкт
+              <span class="info-icon" title="Зберегти поточний проєкт як JSON-файл">?</span>
+            </button>
+            <button class="action-btn btn-purple" onclick="loadProject()" style="position: relative">
+              📂 Відкрити проєкт
+              <span class="info-icon" title="Відкрити JSON-проєкт з диску">?</span>
+            </button>
+          </div>
+
+          <!-- ГРУПА: АНАЛІЗ -->
+          <div class="action-group">
+            <span class="group-label">📊 Аналіз та Звіти</span>
+            <button class="action-btn btn-blue" onclick="openReport()" style="position: relative">
+              📊 Звіт / Експорт
+              <span class="info-icon" title="Детальний технічний звіт та кошторис">?</span>
+            </button>
+            <button class="action-btn btn-blue" onclick="showTopology()" style="position: relative">
+              🌳 Топологія
+              <span class="info-icon" title="Дерево мережі: OLT → Порти → FOB → ONU">?</span>
+            </button>
+            <button class="action-btn btn-orange" onclick="showSuggestions()" style="position: relative">
+              🔍 Валідація
+              <span class="info-icon" title="Перевірка на слабкі сигнали та помилки">?</span>
+            </button>
+            <button class="action-btn btn-purple" onclick="showScenarioCompare()" style="position: relative">
+              🔄 Порівняння
+              <span class="info-icon" title="Порівняння різних варіантів сплітерів">?</span>
+            </button>
+          </div>
+
+          <!-- ГРУПА: ІНСТРУМЕНТИ -->
+          <div class="action-group">
+            <span class="group-label">🛠️ Інструменти</span>
+            <button class="action-btn btn-indigo" id="btn-anim" onclick="toggleSignalAnim()" style="position: relative">
+              ⚡ Анімація сигналу
+              <span class="info-icon" title="Візуалізація напрямку сигналу на карті">?</span>
+            </button>
+            <button class="action-btn btn-deep-green" onclick="openHelp()" style="position: relative">
+              📋 Довідка затухань
+              <span class="info-icon" title="Довідкові таблиці затухання обладнання">?</span>
+            </button>
+          </div>
+
+          <!-- ГРУПА: СИСТЕМА -->
+          <div class="action-group">
+            <span class="group-label">⚙️ Система</span>
+            <button class="action-btn btn-gray" onclick="openSettings()" style="position: relative">
+              ⚙️ Налаштування / Бекапи
+              <span class="info-icon" title="Налаштування автозбереження та бекапи">?</span>
+            </button>
+          </div>
+
+          <button class="clear-btn" onclick="clearNetwork()" style="position: relative">
             🗑️ Очистити мережу
-            <span class="info-icon" title="Видалити всі вузли, з'єднання та історію змін (Ctrl+Z не спрацює після цього)">?</span>
+            <span class="info-icon" title="Видалити всі вузли та з'єднання">?</span>
           </button>
         </div>
       </div>
@@ -233,7 +198,7 @@
           <div id="props">
             <div
               style="
-                color: #484f58;
+                color: #d5dce5;
                 text-align: center;
                 padding: 30px 10px;
                 font-size: 12px;
@@ -299,15 +264,23 @@
 
     <!-- Settings & Backups Modal -->
     <div id="settings-overlay" class="modal-overlay" onclick="closeSettings()">
-      <div class="modal" onclick="event.stopPropagation()" style="max-width: 600px; height: 70vh;">
+      <div
+        class="modal"
+        onclick="event.stopPropagation()"
+        style="max-width: 600px; height: 70vh"
+      >
         <div class="modal-head">
           <h2>⚙️ Налаштування та Бекапи</h2>
           <div class="modal-actions">
             <button class="modal-btn btn-x" onclick="closeSettings()">✕</button>
           </div>
         </div>
-        <div class="modal-body" id="settings-body" style="padding: 0; display: flex; flex-direction: column;">
-          <div style="display: flex; border-bottom: 1px solid #30363d;">
+        <div
+          class="modal-body"
+          id="settings-body"
+          style="padding: 0; display: flex; flex-direction: column"
+        >
+          <div style="display: flex; border-bottom: 1px solid #30363d">
             <button
               class="tab-btn active"
               onclick="switchTab('tab-settings')"
@@ -315,12 +288,20 @@
             >
               Налаштування
             </button>
-            <button class="tab-btn" onclick="switchTab('tab-backups')" id="btn-tab-backups">
+            <button
+              class="tab-btn"
+              onclick="switchTab('tab-backups')"
+              id="btn-tab-backups"
+            >
               Бекапи
             </button>
           </div>
 
-          <div id="tab-settings" class="tab-content active" style="padding: 16px">
+          <div
+            id="tab-settings"
+            class="tab-content active"
+            style="padding: 16px"
+          >
             <div class="config-box">
               <label>Назва проєкту:</label>
               <input
@@ -333,7 +314,12 @@
             </div>
             <div class="config-box" style="margin-top: 10px">
               <label
-                style="display: flex; align-items: center; gap: 8px; cursor: pointer"
+                style="
+                  display: flex;
+                  align-items: center;
+                  gap: 8px;
+                  cursor: pointer;
+                "
               >
                 <input
                   type="checkbox"
@@ -374,13 +360,7 @@
 
           <div id="tab-backups" class="tab-content" style="padding: 0">
             <div id="backup-list" style="overflow-y: auto; height: 100%">
-              <div
-                style="
-                  padding: 20px;
-                  text-align: center;
-                  color: #6e7681;
-                "
-              >
+              <div style="padding: 20px; text-align: center; color: #6e7681">
                 Завантаження...
               </div>
             </div>
@@ -391,7 +371,11 @@
 
     <!-- Help Modal (затухання) -->
     <div id="help-overlay" class="modal-overlay" onclick="closeHelp()">
-      <div class="modal" onclick="event.stopPropagation()" style="max-width: 720px">
+      <div
+        class="modal"
+        onclick="event.stopPropagation()"
+        style="max-width: 720px"
+      >
         <div class="modal-head">
           <h2>📋 Довідка — Затухання обладнання PON</h2>
           <div class="modal-actions">
@@ -619,12 +603,13 @@
           <div class="report-section">
             <h3>Типова схема розрахунку</h3>
             <div class="info-pill">
-              <strong>OLT (2дБ)</strong> → кабель (0.4дБ/км × відстань км + 0.5дБ мех.) →
-              <strong>FOB IN</strong><br />
+              <strong>OLT (2дБ)</strong> → кабель (0.4дБ/км × відстань км +
+              0.5дБ мех.) → <strong>FOB IN</strong><br />
               → FBT гілка Y (1.56дБ) → кабель → наступний FOB<br />
               → FBT гілка X (5.39дБ) + PLC 1×8 (10.7дБ) + 0.5дБ мех. →
               <strong>ONU</strong><br /><br />
-              Приклад: 2 − 0.16 − 0.5 = 1.34дБ (IN) → −5.39 − 0.5 = −4.55дБ (X) → −10.7 − 0.5 =
+              Приклад: 2 − 0.16 − 0.5 = 1.34дБ (IN) → −5.39 − 0.5 = −4.55дБ (X)
+              → −10.7 − 0.5 =
               <strong>−15.75дБм на ONU</strong> ✓
             </div>
           </div>
@@ -633,73 +618,402 @@
     </div>
 
     <!-- Onboarding Modal (first-time user guide) -->
-    <div id="onboarding-overlay" class="modal-overlay" onclick="closeOnboarding()" style="display:none">
-      <div class="modal" onclick="event.stopPropagation()" style="max-width: 700px">
+    <div
+      id="onboarding-overlay"
+      class="modal-overlay"
+      onclick="closeOnboarding()"
+      style="display: none"
+    >
+      <div
+        class="modal"
+        onclick="event.stopPropagation()"
+        style="max-width: 740px"
+      >
         <div class="modal-head">
           <h2>👋 Ласкаво просимо до PON Designer!</h2>
           <div class="modal-actions">
-            <button class="modal-btn btn-x" onclick="closeOnboarding()">✕</button>
+            <button class="modal-btn btn-x" onclick="closeOnboarding()">
+              ✕
+            </button>
           </div>
         </div>
-        <div class="modal-body" style="padding: 20px; max-height: 75vh; overflow-y: auto">
+
+        <div
+          class="modal-body"
+          style="padding: 20px; max-height: 75vh; overflow-y: auto"
+        >
+          <!-- ===== ШВИДКИЙ СТАРТ ===== -->
           <div class="report-section">
             <h3>🚀 Швидкий старт</h3>
-            <ol style="line-height:1.8;padding-left:20px">
-              <li><strong>Додавання обладнання:</strong> Виберіть інструмент (OLT/FOB/ONU) зліва або перетягніть на карту</li>
-              <li><strong>З'єднання:</strong> Виберіть "Магістраль" або "Патчкорд", клікніть на початковий вузол, потім на кінцевий</li>
-              <li><strong>Налаштування:</strong> Клікніть на вузол → права панель покаже властивості (потужність, сплітери, гілки)</li>
-              <li><strong>Звіти:</strong> Кнопка "📊 Звіт / Експорт" → технічна частина + економічна для кошторису</li>
+            <ol class="onboarding-list">
+              <li>
+                <strong>Додавання обладнання:</strong> оберіть інструмент (OLT /
+                FOB / ONU) на лівій панелі або перетягніть елемент на карту.
+              </li>
+              <li>
+                <strong>З'єднання вузлів:</strong> оберіть тип лінії —
+                «Магістраль» або «Патчкорд», клікніть на початковий вузол, потім
+                — на кінцевий.
+              </li>
+              <li>
+                <strong>Налаштування вузла:</strong> клікніть на будь-який вузол
+                — права панель відобразить його властивості (потужність, тип
+                сплітера, кількість гілок).
+              </li>
+              <li>
+                <strong>Звіти та експорт:</strong> натисніть «📊 Звіт / Експорт»
+                — отримаєте технічну специфікацію та кошторис матеріалів.
+              </li>
             </ol>
           </div>
 
+          <!-- ===== ОСНОВИ ПРОЕКТУВАННЯ ===== -->
           <div class="report-section">
             <h3>📐 Основи проектування PON-мереж</h3>
 
-            <p style="margin-bottom:8px"><strong>1. Типи дільників та їх логіка</strong></p>
-            <p style="margin-bottom:12px">Мережа будується на комбінації двох типів сплітерів:</p>
-            <ul style="line-height:1.8;padding-left:20px;margin-bottom:12px">
-              <li><strong>FBT (процентні):</strong> дві нерівні гілки. <strong>Гілка Y</strong> (магістраль, напр. 90%) — мінімальне затухання, передача сигналу на наступний вузол (FOB). <strong>Гілка X</strong> (відвід, напр. 10%) — більше затухання, підключення абонентів у поточному вузлі.</li>
-              <li><strong>PLC (рівномірні):</strong> ділять сигнал порівну між усіма портами (1×4, 1×8, 1×16). Підключаються після гілки X дільника FBT.</li>
+            <!-- 1. Типи дільників -->
+            <p class="onboarding-text">
+              <strong>1. Типи дільників та їхня логіка</strong>
+            </p>
+            <p class="onboarding-text">
+              Мережа будується на комбінації двох типів сплітерів:
+            </p>
+            <ul class="onboarding-list">
+              <li>
+                <strong>FBT (процентні, зварні):</strong> мають дві нерівні
+                гілки. <strong>Гілка Y (Pass)</strong> — менше затухання,
+                передає сигнал далі по магістралі до наступного FOB.
+                <strong>Гілка X (Tap)</strong> — більше затухання, відводить
+                сигнал до абонентів у поточному вузлі.
+              </li>
+              <li>
+                <strong>PLC (планарні, рівномірні):</strong> ділять сигнал
+                порівну між усіма портами (1×2, 1×4, 1×8, 1×16, 1×32, 1×64).
+                Підключаються після гілки X дільника FBT для розподілу між
+                групою абонентів.
+              </li>
             </ul>
 
-            <p style="margin-bottom:8px"><strong>2. Побудова магістралі (шина)</strong></p>
-            <ul style="line-height:1.8;padding-left:20px;margin-bottom:12px">
+            <!-- 2. Побудова магістралі -->
+            <p class="onboarding-text">
+              <strong>2. Побудова магістралі (топологія «Шина»)</strong>
+            </p>
+            <ul class="onboarding-list">
               <li>OLT → кабель → FBT (вхід).</li>
-              <li>FBT (гілка X / Tap) → PLC → кінцеві ONU (абоненти біля вузла).</li>
-              <li>FBT (гілка Y / Pass) → кабель → наступний FOB (вхід наступного FBT).</li>
+              <li>
+                FBT (гілка X / Tap) → PLC → кінцеві ONU (абонентів поточного
+                вузла).
+              </li>
+              <li>
+                FBT (гілка Y / Pass) → кабель → наступний FOB (вхід наступного
+                FBT).
+              </li>
             </ul>
 
-            <p style="margin-bottom:8px"><strong>3. Розрахунок бюджету потужності</strong></p>
-            <ul style="line-height:1.8;padding-left:20px;margin-bottom:12px">
-              <li>Система автоматично рахує затухання: сума затухань дільників + втрати в кабелі (напр. 0,4 дБ/км) + втрати на зварках (~0,05 дБ) + втрати на конекторах (~0,3–0,5 дБ).</li>
-              <li><strong>Цільовий сигнал:</strong> від −16 дБ до −25 дБ.</li>
-              <li><strong>Критичний поріг:</strong> нижче −27 дБ — сигнал занадто слабкий, ONU не запрацює.</li>
+            <!-- 3. Бюджет потужності -->
+            <p class="onboarding-text">
+              <strong>3. Розрахунок бюджету потужності</strong>
+            </p>
+            <ul class="onboarding-list">
+              <li>
+                Система автоматично підсумовує: затухання на дільниках + втрати
+                в кабелі (~0,4 дБ/км) + втрати на зварках (~0,05 дБ) + втрати на
+                конекторах (~0,3–0,5 дБ).
+              </li>
+              <li>
+                <strong>Цільовий рівень сигналу на ONU:</strong> від −16 дБм до
+                −25 дБм.
+              </li>
+              <li>
+                <strong>Критичний поріг:</strong> нижче −27 дБм — сигнал занадто
+                слабкий, ONU не реєструватиметься.
+              </li>
+              <li>
+                <strong>Порада:</strong> завжди залишайте експлуатаційний запас
+                ~2 дБ на випадок майбутніх ремонтів або забруднення конекторів.
+              </li>
             </ul>
-
-            <p style="margin-bottom:8px"><strong>4. Корисна порада</strong></p>
-            <p style="line-height:1.8;padding-left:0">Завжди лишайте експлуатаційний запас (~2 дБ) на випадок майбутніх ремонтів або забруднення патчкордів.</p>
           </div>
 
-          <div class="info-pill" style="margin-top:12px;margin-bottom:12px">
-            📋 <strong>Детальна технічна інформація:</strong> відкрийте <strong>«📋 Довідка затухань»</strong> (кнопка в лівій панелі) — там таблиці затухань FBT/PLC, механічні втрати, оптичне волокно, пороги ONU/OLT та типова схема розрахунку.
-          </div>
-
+          <!-- ===== ТОПОЛОГІЇ ===== -->
           <div class="report-section">
-            <h3>⚡ Корисні поради</h3>
-            <ul style="line-height:1.8;padding-left:20px">
-              <li><strong>Ctrl+Z / Ctrl+Y:</strong> Скасувати/Повторити дію · <strong>Delete:</strong> Видалити вибраний вузол · <strong>Esc:</strong> Закрити модалки</li>
-              <li><strong>Права панель:</strong> порти OLT з лічильниками ONU, гілки FOB для перепризначення</li>
-              <li><strong>Топологія:</strong> клік по елементу фокусує карту на вузлі</li>
-              <li>Натисніть <strong>?</strong> біля кожної кнопки для підказки</li>
+            <h3>🗺️ Типові топології PON-мереж</h3>
+            <p style="margin-bottom: 14px; line-height: 1.7">
+              Вибір топології визначається географією ділянки, щільністю
+              забудови та кількістю потенційних абонентів. Один PON-порт OLT
+              обслуговує до 64 ONU, а сумарне оптичне затухання від OLT до
+              будь-якої ONU не повинно перевищувати 30 дБ.
+            </p>
+
+            <hr class="onboarding-sep" />
+
+            <!-- Шина -->
+            <div style="margin-bottom: 10px">
+              <p class="onboarding-topology-title">
+                Шина (Bus Topology) — послідовний каскад FBT
+              </p>
+              <img
+                src="assets/topologies/TopologyBus_0.webp"
+                alt="Топологія PON — Шина"
+                class="topology-img"
+              />
+
+              <img
+                src="assets/topologies/TopologyBus_1.webp"
+                alt="Топологія PON — Шина (Включення зварного дільника)"
+                class="topology-img"
+              />
+              <p class="onboarding-caption">
+                Включення зварного дільника в магістральну лінію без
+                використання механічних з'єднувачів
+              </p>
+
+              <p class="onboarding-text">
+                Розгортається на одному волокні з використанням каскаду зварних
+                дільників FBT 1×2 за принципом
+                <strong>«більша потужність — в лінію»</strong>: гілка з більшим
+                рівнем сигналу (Pass / Out2) живить подальший каскад, гілка з
+                меншим рівнем (Tap / Out1) відводиться через планарний дільник
+                PLC до групи абонентів у поточному вузлі.
+              </p>
+              <p class="onboarding-text">
+                Найефективніша комбінація: зварні FBT 1×2 з розподілом
+                потужності 5/95%, 10/90%, 20/80%, 30/70%, 40/60%, 50/50% у
+                поєднанні з планарними PLC 1×4 або 1×8 на відводах. З'єднання
+                між виходом FBT та входом PLC виконується механічним конектором
+                SC/UPC для локалізації можливих завад у пасивній мережі.
+              </p>
+              <ul class="onboarding-list">
+                <li>
+                  <strong>Застосування:</strong> витягнуті вулиці, лінійна
+                  забудова — села та селища, де зірка і дерево нераціональні.
+                </li>
+                <li>
+                  <strong>Перевага:</strong> мінімальна витрата магістрального
+                  кабелю; підключення нового абонента в 3 кроки — прокладка
+                  патч-корду, підключення до PLC, підключення до ONU.
+                </li>
+                <li>
+                  <strong>Недолік:</strong> вставка нового вузла FBT в середину
+                  існуючого каскаду потребує зварних робіт і тимчасово
+                  переривається сигнал для нижчих вузлів.
+                </li>
+              </ul>
+            </div>
+
+            <!-- Зірка -->
+            <div style="margin-bottom: 22px">
+              <p class="onboarding-topology-title">
+                Зірка (Star Topology) — одноточковий розподіл PLC
+              </p>
+              <img
+                src="assets/topologies/TopologyStar.webp"
+                alt="Топологія PON — Зірка"
+                class="topology-img"
+              />
+              <p class="onboarding-text">
+                Від PON-порту OLT прокладається одне волокно до центрального
+                планарного дільника PLC 1×64, розташованого рівновіддалено від
+                усіх абонентів. Існує два варіанти виконання: з дільником
+                <strong>1×64</strong> або каскадом
+                <strong>PLC 1×2 + два PLC 1×32</strong> для покриття витягнутих
+                або овальних ділянок з використанням двоволоконного кабелю.
+              </p>
+              <p class="onboarding-text" style="margin-bottom: 4px">
+                Бюджет втрат для схеми 1×64: затухання на дільнику з урахуванням
+                механічних з'єднань — 22,5 дБ; залишковий оптичний бюджет — 4,5
+                дБ, що відповідає максимальній довжині волокна ~12,5 км.
+              </p>
+              <ul class="onboarding-list">
+                <li>
+                  <strong>Застосування:</strong> щільна одно- та двоповерхова
+                  забудова в радіусі 300–400 м від точки поділу.
+                </li>
+                <li>
+                  <strong>Перевага:</strong> проста схема, легке підключення
+                  нового абонента патч-кордом.
+                </li>
+                <li>
+                  <strong>Недолік:</strong> значна витрата абонентського кабелю
+                  при збільшенні радіусу охоплення; потребує майже ідеальних
+                  географічних умов.
+                </li>
+              </ul>
+            </div>
+
+            <hr class="onboarding-sep" />
+
+            <!-- Дерево -->
+            <div style="margin-bottom: 22px">
+              <p class="onboarding-topology-title">
+                Дерево (Tree Topology) — каскадний розподіл PLC
+              </p>
+              <img
+                src="assets/topologies/TopologyTree.webp"
+                alt="Топологія PON — Дерево"
+                class="topology-img"
+              />
+              <p class="onboarding-text">
+                PON-порт OLT є «коренем» дерева. Відразу за OLT встановлюється
+                дільник (наприклад, PLC 1×8), що підключається до
+                багатоволоконного кабелю — «стовбура» дерева. По мірі
+                необхідності від стовбура відгалужується та розварюється одне
+                волокно, з якого починає розвиватися «гілка» на групу абонентів
+                з дільниками PLC 1×8 або комбінацією 1×2 + 1×4. На базі одного
+                OLT можливо побудувати до 4 незалежних дерев ємністю 64 абоненти
+                кожне.
+              </p>
+              <ul class="onboarding-list">
+                <li>
+                  <strong>Застосування:</strong> невеликі локальні мікрорайони з
+                  нерівномірним розташуванням будинків; один порт OLT — один
+                  географічний напрямок.
+                </li>
+                <li>
+                  <strong>Перевага:</strong> простота розуміння та розгортання;
+                  зручне поетапне освоєння напрямку.
+                </li>
+                <li>
+                  <strong>Недолік:</strong> використовується 4 незалежних
+                  багатоволоконних магістральних кабелі для мережі на 256
+                  абонентів — менш економне рішення порівняно з мультидеревом.
+                </li>
+              </ul>
+            </div>
+
+            <hr class="onboarding-sep" />
+
+            <!-- Мультидерево -->
+            <div style="margin-bottom: 22px">
+              <p class="onboarding-topology-title">
+                Мультидерево (Multi-tree Topology) — квадратно-гніздовий метод
+              </p>
+              <img
+                src="assets/topologies/TopologyMultytree_0.webp"
+                alt="Топологія PON — Мультидерево"
+                class="topology-img"
+              />
+
+              <p class="onboarding-caption">
+                Квадратно-гніздовий спосіб проектування топології PON типу
+                «мультидерево» з використанням планарних дільників 1х4
+              </p>
+
+              <img
+                src="assets/topologies/TopologyMultytree_1.webp"
+                alt="Топологія PON — Мультидерево (вузол ділення)"
+                class="topology-img"
+              />
+              <p class="onboarding-caption">
+                Основний вузол ділення при розвитку топології PON типу
+                «мультидерево»
+              </p>
+
+              <img
+                src="assets/topologies/TopologyMultytree_2.webp"
+                alt="Топологія PON — Мультидерево (способи розгалуження)"
+                class="topology-img"
+              />
+              <p class="onboarding-caption">
+                Основні способи розгалуження пасивного дерева
+              </p>
+
+              <p class="onboarding-text">
+                Класика побудови пасивних деревоподібних мереж. Усі PON-порти
+                OLT «упаковуються» в один спільний багатоволоконний
+                магістральний кабель (кількість волокон кратна 4). Житловий
+                масив розбивається на квадрати (квадратно-гніздовий спосіб), у
+                центрі кожного встановлюється планарний дільник PLC 1×N.
+                Фактично мережа є групою незалежних дерев в одному кабелі, що
+                починається і закінчується в одних і тих же точках.
+              </p>
+              <p class="onboarding-text">
+                Розвиток мережі відбувається поетапно: спочатку задіюється перше
+                волокно кабелю (перше дерево), а у всіх вузлах поділу
+                підключаються необхідні дільники. Як тільки абонентський дільник
+                на певному напрямку заповнюється — в тому ж напрямі починає
+                розвиватися наступне дерево.
+              </p>
+              <p class="onboarding-text">
+                Мультидерево може будуватися на базі будь-якої комбінації
+                дільників PLC 1×2, 1×4, 1×8, 1×16 або зварних FBT 1×2 con
+                урахуванням правила: жодне волокно з PON-порту OLT не ділиться
+                більше ніж на 64 абоненти, а сумарне затухання не перевищує 30
+                дБ.
+              </p>
+
+              <ul class="onboarding-list">
+                <li>
+                  <strong>Застосування:</strong> великі населені пункти з
+                  щільною забудовою та кількістю абонентів 256 і більше.
+                </li>
+                <li>
+                  <strong>Перевага:</strong> максимальна економія волокна;
+                  просте підключення нового абонента без втручання в магістраль.
+                </li>
+                <li>
+                  <strong>Недолік:</strong> складне початкове проектування;
+                  критично важливе правильне планування ємності вузлів поділу.
+                </li>
+              </ul>
+            </div>
+
+            <hr class="onboarding-sep" />
+
+            <div class="info-pill" style="margin-top: 14px">
+              <strong>Два основних правила PON:</strong> «Правило 30 дБ» —
+              сумарне оптичне затухання від OLT до будь-якої ONU не повинно
+              перевищувати 30 дБ. «Правило 64» — жодне волокно з PON-порту OLT
+              не може бути поділено більше ніж на 64 абоненти.
+            </div>
+          </div>
+
+          <!-- ===== ДОВІДКА ===== -->
+          <div class="info-pill" style="margin-top: 12px; margin-bottom: 12px">
+            📋 <strong>Детальні таблиці затухань</strong> FBT/PLC, механічні
+            втрати, пороги ONU/OLT та типова схема розрахунку — у розділі
+            <strong>«📋 Довідка затухань»</strong> (кнопка на лівій панелі).
+          </div>
+
+          <!-- ===== ГАРЯЧІ КЛАВІШІ ===== -->
+          <div class="report-section">
+            <h3>⚡ Гарячі клавіші та підказки</h3>
+            <ul class="onboarding-list">
+              <li>
+                <strong>Ctrl+Z / Ctrl+Y</strong> — скасувати / повторити дію.
+              </li>
+              <li>
+                <strong>Delete</strong> — видалити вибраний вузол або з'єднання.
+              </li>
+              <li>
+                <strong>Esc</strong> — закрити модальне вікно або скасувати
+                поточний інструмент.
+              </li>
+              <li>
+                <strong>Права панель:</strong> відображає порти OLT з
+                лічильниками ONU та гілки FOB для перепризначення.
+              </li>
+              <li>
+                <strong>Дерево топології:</strong> клік на елемент фокусує карту
+                на відповідному вузлі.
+              </li>
+              <li>
+                Натисніть <strong>?</strong> поруч із будь-якою кнопкою для
+                контекстної підказки.
+              </li>
             </ul>
           </div>
 
-          <div style="margin-top:20px;text-align:center">
-            <label style="display:flex;align-items:center;gap:8px;cursor:pointer;justify-content:center">
+          <!-- ===== FOOTER ===== -->
+          <div class="onboarding-footer">
+            <label class="onboarding-check-wrap">
               <input type="checkbox" id="onboarding-dont-show" />
               <span>Більше не показувати це повідомлення</span>
             </label>
-            <button class="action-btn btn-blue" onclick="closeOnboarding()" style="margin-top:12px;width:auto;padding:8px 24px">
+            <button
+              class="action-btn btn-blue onboarding-btn"
+              onclick="closeOnboarding()"
+            >
               Розпочати роботу
             </button>
           </div>
@@ -711,4 +1025,3 @@
     <script type="module" src="./js/main.js"></script>
   </body>
 </html>
-

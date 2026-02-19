@@ -32,6 +32,7 @@ let selNode = null;
 let connStart = null;
 let pathGlowLayers = [];
 let dragUpdateTimer = null; // Throttle для оновлення під час драгу
+let onuLeaderLines = []; // Leader lines for dense ONU clusters
 
 /**
  * Initialize Leaflet map and basic interactions.
@@ -231,11 +232,42 @@ export function initNetwork() {
               <button onclick="setLayer('hyb')" id="btn-layer-hyb">🛰️🏷️ Гібрид</button>
             </div>
           </div>
+          <div class="zoom-indicator">
+            <button class="zoom-btn" id="zoom-minus" title="Зменшити">−</button>
+            <div class="zoom-slider-wrap">
+              <span id="zoom-val">${map.getZoom()}</span>
+              <input type="range" id="zoom-slider" min="${map.getMinZoom()}" max="${map.getMaxZoom()}" value="${map.getZoom()}" step="1" list="zoom-ticks">
+              <datalist id="zoom-ticks">
+                ${Array.from({ length: 11 }, (_, i) => 10 + i).map(z => `<option value="${z}"></option>`).join("")}
+              </datalist>
+            </div>
+            <button class="zoom-btn" id="zoom-plus" title="Збільшити">+</button>
+          </div>
           <button onclick="openOnboarding()" id="btn-help-pulse" title="Онбординг: основи роботи, типи сплітерів, поради">
             ?
           </button>
         </div>
       </div>`;
+    
+    // Встановлюємо хандлери безпосередньо, бо в ES-модулях inline-events не бачать глобальних об'єктів
+    setTimeout(() => {
+      const slider = div.querySelector("#zoom-slider");
+      const btnMinus = div.querySelector("#zoom-minus");
+      const btnPlus = div.querySelector("#zoom-plus");
+      
+      if (slider) {
+        slider.addEventListener("input", (e) => {
+          map.setZoom(parseInt(e.target.value));
+        });
+      }
+      if (btnMinus) {
+        btnMinus.addEventListener("click", () => map.zoomOut());
+      }
+      if (btnPlus) {
+        btnPlus.addEventListener("click", () => map.zoomIn());
+      }
+    }, 0);
+
     L.DomEvent.disableClickPropagation(div);
     return div;
   };
@@ -388,6 +420,7 @@ export function addNode(type, latlng) {
     }
     // Оновити все одразу після завершення драгу
     nodes.forEach((x) => updateNodeLabel(x));
+    layoutONUTooltips();
     refreshSignalAnim();
     if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
     updateStats();
@@ -1251,6 +1284,7 @@ function onNodeDrag(n) {
   dragUpdateTimer = setTimeout(() => {
     // Оновити підписи всіх вузлів (відстані могли змінитися)
     nodes.forEach((x) => updateNodeLabel(x));
+    layoutONUTooltips();
     refreshSignalAnim();
     // Оновити підсвітку магістралі якщо активна
     if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
@@ -1371,12 +1405,12 @@ function updateNodeTooltip(node, content) {
   } else if (node.type === "ONU") {
     // ONU: при віддаленні показуємо тільки при hover, щоб не настакувались
     if (zoom >= minZoomForPermanent) {
-      // При наближенні - показуємо завжди
+      // При наближенні - показуємо завжди з обраним напрямком (від layoutONUTooltips)
       node.marker.bindTooltip(content, {
         permanent: true,
-        direction: "bottom",
-        className: "node-label",
-        offset: [0, 5],
+        direction: node._tooltipDir || "bottom",
+        className: "node-label" + (node._hasLeader ? " onu-callout" : ""),
+        offset: node._tooltipOffset || [0, 5],
       });
     } else {
       // При віддаленні - показуємо тільки при hover
@@ -1393,6 +1427,10 @@ function updateNodeTooltip(node, content) {
 
 // Оновити видимість tooltip'ів для всіх вузлів при зміні zoom
 function updateTooltipsVisibility() {
+  const zoom = map.getZoom();
+  // Важливо: очистити підказки до перерахунку, щоб updateNodeTooltip не використовував старі оффсети
+  clearONULeaderLines();
+
   nodes.forEach((n) => {
     // Перебудувати tooltip з правильним режимом
     let L1 = "";
@@ -1447,6 +1485,232 @@ function updateTooltipsVisibility() {
     
     const content = L1 + (L2 ? "<br>" + L2 : "");
     updateNodeTooltip(n, content);
+  });
+
+  // Оновити індикатор зуму
+  const zv = document.getElementById("zoom-val");
+  const zs = document.getElementById("zoom-slider");
+  if (zv) zv.innerText = zoom;
+  if (zs) zs.value = zoom;
+
+  // Після побудови всіх тултипів — розкласти ONU тултипи щоб не перекривались
+  layoutONUTooltips();
+}
+
+// ═══════════════════════════════════════════════
+//  ONU TOOLTIP SMART LAYOUT (hybrid: direction + leader lines)
+// ═══════════════════════════════════════════════
+
+function clearONULeaderLines() {
+  onuLeaderLines.forEach((l) => map.removeLayer(l));
+  onuLeaderLines = [];
+  // Reset layout hints on all ONU nodes
+  nodes.forEach((n) => {
+    if (n.type === "ONU") {
+      delete n._tooltipDir;
+      delete n._tooltipOffset;
+      delete n._hasLeader;
+    }
+  });
+}
+
+/**
+ * Lay out ONU tooltips so they don't overlap.
+ * - Zoom-aware: at high zoom nodes are far apart, so less layout needed
+ * - Only spreads tooltips when actual overlap is detected
+ * - ≤4 in overlapping cluster → smart directions (8 directions)
+ * - >4 in overlapping cluster → radial callout with leader lines
+ * - Leader line distance scales with zoom (closer at high zoom)
+ */
+function layoutONUTooltips() {
+  // Тепер clearONULeaderLines() викликається в updateTooltipsVisibility(), щоб уникнути стацинарних оффсетів
+  // тут лишаємо тільки видалення ліній
+  onuLeaderLines.forEach((l) => map.removeLayer(l));
+  onuLeaderLines = [];
+
+  const zoom = map.getZoom();
+  const minZoomForPermanent = 16;
+  if (zoom < minZoomForPermanent) return;
+
+  const onus = nodes.filter((n) => n.type === "ONU");
+  if (onus.length === 0) return;
+
+  // Convert to pixel positions
+  const items = onus.map((n) => ({
+    node: n,
+    pt: map.latLngToContainerPoint([n.lat, n.lng]),
+  }));
+
+  // Estimated tooltip size in pixels (approximate for overlap check)
+  const TT_W = 110; // tooltip width
+  const TT_H = 40;  // tooltip height
+
+  // --- Zoom-aware cluster radius ---
+  // At zoom 16 nodes are close together → need larger radius to detect clusters
+  // At zoom 19+ nodes are far apart → only very close ones cluster
+  const clusterRadius = Math.max(40, 140 - (zoom - 16) * 20);
+
+  // --- Zoom-aware callout distance ---
+  // At zoom 16-17 → need more offset (tooltips close together)
+  // At zoom 19+ → minimal offset (plenty of space)
+  const baseCalloutDistance = Math.max(15, 60 - (zoom - 16) * 12);
+
+  // --- BFS clustering ---
+  const visited = new Set();
+  const clusters = [];
+
+  for (let i = 0; i < items.length; i++) {
+    if (visited.has(i)) continue;
+    const cluster = [i];
+    visited.add(i);
+    const queue = [i];
+    while (queue.length > 0) {
+      const cur = queue.shift();
+      for (let j = 0; j < items.length; j++) {
+        if (visited.has(j)) continue;
+        const dx = items[cur].pt.x - items[j].pt.x;
+        const dy = items[cur].pt.y - items[j].pt.y;
+        if (Math.sqrt(dx * dx + dy * dy) < clusterRadius) {
+          visited.add(j);
+          cluster.push(j);
+          queue.push(j);
+        }
+      }
+    }
+    clusters.push(cluster);
+  }
+
+  // 8 directions for better coverage
+  const DIRECTIONS = ["bottom", "right", "top", "left", "bottom", "right", "top", "left"];
+  const dirOffsetBase = {
+    bottom: [0, 1],
+    top:    [0, -1],
+    right:  [1, 0],
+    left:   [-1, 0],
+  };
+
+  clusters.forEach((cluster) => {
+    if (cluster.length === 1) {
+      // Solo ONU — default
+      items[cluster[0]].node._tooltipDir = "bottom";
+      items[cluster[0]].node._tooltipOffset = [0, 5];
+      return;
+    }
+
+    // --- Check if tooltips actually overlap at current zoom ---
+    // Calculate bounding boxes for default "bottom" tooltip positions
+    let hasOverlap = false;
+    const boxes = cluster.map((i) => {
+      const pt = items[i].pt;
+      return {
+        i,
+        // Default "bottom" tooltip position: centered below marker
+        x1: pt.x - TT_W / 2,
+        y1: pt.y + 5,
+        x2: pt.x + TT_W / 2,
+        y2: pt.y + 5 + TT_H,
+      };
+    });
+
+    for (let a = 0; a < boxes.length && !hasOverlap; a++) {
+      for (let b = a + 1; b < boxes.length && !hasOverlap; b++) {
+        if (boxes[a].x1 < boxes[b].x2 && boxes[a].x2 > boxes[b].x1 &&
+            boxes[a].y1 < boxes[b].y2 && boxes[a].y2 > boxes[b].y1) {
+          hasOverlap = true;
+        }
+      }
+    }
+
+    if (!hasOverlap) {
+      // No overlap — keep all at default bottom, close to markers
+      cluster.forEach((i) => {
+        items[i].node._tooltipDir = "bottom";
+        items[i].node._tooltipOffset = [0, 5];
+      });
+      return;
+    }
+
+    // --- There IS overlap — apply layout ---
+    const cx = cluster.reduce((s, i) => s + items[i].pt.x, 0) / cluster.length;
+    const cy = cluster.reduce((s, i) => s + items[i].pt.y, 0) / cluster.length;
+
+    // Sort by angle from centroid
+    const sorted = cluster
+      .map((i) => ({
+        i,
+        angle: Math.atan2(items[i].pt.y - cy, items[i].pt.x - cx),
+      }))
+      .sort((a, b) => a.angle - b.angle);
+
+    if (cluster.length <= 4) {
+      // ---- Smart Direction: assign direction per ONU ----
+      sorted.forEach((item, idx) => {
+        const dir = DIRECTIONS[idx % 4];
+        const base = dirOffsetBase[dir];
+        const dist = baseCalloutDistance;
+        items[item.i].node._tooltipDir = dir;
+        items[item.i].node._tooltipOffset = [base[0] * dist, base[1] * dist];
+      });
+    } else {
+      // ---- Leader Lines: radial callout for dense clusters ----
+      // Dynamic radius grows with cluster size, scaled by zoom
+      const radiusGrowth = Math.max(0, cluster.length - 5) * 6;
+      const calloutRadius = baseCalloutDistance + 30 + radiusGrowth;
+
+      sorted.forEach((item, idx) => {
+        const n = items[item.i].node;
+        const angle = (2 * Math.PI * idx) / sorted.length - Math.PI / 2;
+
+        const offX = Math.cos(angle) * calloutRadius;
+        const offY = Math.sin(angle) * calloutRadius;
+
+        // Choose cardinal direction for tooltip
+        const absX = Math.abs(offX);
+        const absY = Math.abs(offY);
+        let dir;
+        if (absX > absY) {
+          dir = offX > 0 ? "right" : "left";
+        } else {
+          dir = offY > 0 ? "bottom" : "top";
+        }
+
+        n._tooltipDir = dir;
+        n._tooltipOffset = [Math.round(offX), Math.round(offY)];
+        n._hasLeader = true;
+
+        // Draw leader line in lat/lng
+        const markerPt = items[item.i].pt;
+        const tooltipPt = L.point(markerPt.x + offX, markerPt.y + offY);
+        const markerLL = map.containerPointToLatLng(markerPt);
+        const tooltipLL = map.containerPointToLatLng(tooltipPt);
+
+        const line = L.polyline([markerLL, tooltipLL], {
+          weight: 1.5,
+          color: "#ffffffbb",
+          dashArray: "6,4",
+          interactive: false,
+          className: "onu-leader-line",
+          pmIgnore: true,
+        }).addTo(map);
+        onuLeaderLines.push(line);
+      });
+    }
+
+    // Rebind tooltips with computed directions/offsets
+    cluster.forEach((i) => {
+      const n = items[i].node;
+      const tooltip = n.marker.getTooltip();
+      if (tooltip) {
+        const content = tooltip.getContent();
+        n.marker.unbindTooltip();
+        n.marker.bindTooltip(content, {
+          permanent: true,
+          direction: n._tooltipDir || "bottom",
+          className: "node-label" + (n._hasLeader ? " onu-callout" : ""),
+          offset: n._tooltipOffset || [0, 5],
+        });
+      }
+    });
   });
 }
 
@@ -1518,7 +1782,7 @@ function showProps(n) {
   if (!p) return;
   if (!n) {
     p.innerHTML =
-      '<div style="padding:40px;text-align:center;color:#666">👆 Оберіть елемент</div>';
+      '<div style="padding:40px;text-align:center;color:#d5dce5">👆 Оберіть елемент</div>';
     return;
   }
 
