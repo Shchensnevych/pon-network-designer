@@ -30,8 +30,16 @@ import {
   cntONUport, cntDn, getSignalColor, updateCableColors,
 } from "./signal.js";
 
+// Signal path highlighting & animation — extracted to signal-path.js
+import {
+  highlightSignalPath, clearSignalPath,
+  refreshSignalAnim, removeSignalAnimOverlays,
+  toggleSignalAnim, hasActiveGlow,
+} from "./signal-path.js";
+
 // Re-export for main.js and ui.js compatibility
 export { nodes, conns, connKm, sigIn, sigONU, hasOLTPath, cntONUport };
+export { toggleSignalAnim };
 
 // Local state — stays in this module (no need for setter functions)
 let streets;
@@ -41,7 +49,7 @@ let hybrid;
 let tool = "select";
 let selNode = null;
 let connStart = null;
-let pathGlowLayers = [];
+
 let dragUpdateTimer = null; // Throttle для оновлення під час драгу
 let onuLeaderLines = []; // Leader lines for dense ONU clusters
 
@@ -456,7 +464,7 @@ export function addNode(type, latlng) {
     nodes.forEach((x) => updateNodeLabel(x));
     layoutONUTooltips();
     refreshSignalAnim();
-    if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
+    if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
     updateStats();
     if (selNode === n) showProps(n);
   });
@@ -468,108 +476,6 @@ export function addNode(type, latlng) {
   selNode = n;
   showProps(n);
   updateStats();
-}
-
-// ═══════════════════════════════════════════════
-//  SIGNAL PATH HIGHLIGHTING
-// ═══════════════════════════════════════════════
-
-// Trace signal path from node upstream to OLT
-function getSignalPath(node) {
-  const pathConns = [];
-  const pathNodes = [node];
-  let current = node;
-  const visited = new Set();
-  while (current && !visited.has(current.id)) {
-    visited.add(current.id);
-    // Find upstream connection (cable INTO this node)
-    let upConn = null;
-    if (current.type === "ONU") {
-      upConn = conns.find((c) => c.to === current && c.type === "patchcord");
-    } else if (current.type === "FOB") {
-      upConn = current.inputConn;
-    }
-    if (upConn) {
-      pathConns.push(upConn);
-      pathNodes.push(upConn.from);
-      current = upConn.from;
-    } else {
-      break;
-    }
-  }
-  return { conns: pathConns, nodes: pathNodes };
-}
-
-// Get all downstream connections from a node
-function getDownstreamConns(node) {
-  const result = [];
-  const visited = new Set();
-  function walk(n) {
-    if (visited.has(n.id)) return;
-    visited.add(n.id);
-    conns.forEach((c) => {
-      if (c.from === n) {
-        result.push(c);
-        if (c.to) walk(c.to);
-      }
-    });
-  }
-  walk(node);
-  return result;
-}
-
-function highlightSignalPath(node) {
-  clearSignalPath();
-  let pathConns = [];
-  let pathNodes = [];
-
-  if (node.type === "ONU" || node.type === "FOB") {
-    const path = getSignalPath(node);
-    pathConns = path.conns;
-    pathNodes = path.nodes;
-  } else if (node.type === "OLT") {
-    // For OLT: highlight all downstream
-    pathNodes = [node];
-    const downstream = getDownstreamConns(node);
-    pathConns = downstream;
-    downstream.forEach((c) => {
-      if (c.to && !pathNodes.includes(c.to)) pathNodes.push(c.to);
-    });
-  }
-
-  if (pathConns.length === 0) return;
-
-  // Create glow overlay polylines
-  pathConns.forEach((c) => {
-    if (!c.polyline) return;
-    const pts = c.polyline.getLatLngs();
-    const glow = L.polyline(pts, {
-      color: "#00d4ff",
-      weight: 10,
-      opacity: 0.4,
-      className: "signal-path-glow",
-      interactive: false,
-      pmIgnore: true,
-    }).addTo(map);
-    pathGlowLayers.push(glow);
-  });
-
-  // Highlight markers
-  pathNodes.forEach((n) => {
-    if (n.marker && n.marker._icon) {
-      n.marker._icon.classList.add("highlighted-marker");
-    }
-  });
-}
-
-function clearSignalPath() {
-  pathGlowLayers.forEach((l) => map.removeLayer(l));
-  pathGlowLayers = [];
-  nodes.forEach((n) => {
-    if (n.marker && n.marker._icon) {
-      n.marker._icon.classList.remove("highlighted-marker");
-    }
-  });
 }
 
 // ═══════════════════════════════════════════════
@@ -668,7 +574,7 @@ export function restoreNetwork(json) {
       // Оновити все одразу після завершення драгу
       nodes.forEach((x) => updateNodeLabel(x));
       refreshSignalAnim();
-      if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
+      if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
       updateStats();
       if (selNode === n) showProps(n);
     });
@@ -750,7 +656,7 @@ function updateConnections(node) {
   nodes.forEach((x) => updateNodeLabel(x));
   refreshSignalAnim();
   // Refresh signal path highlight if active
-  if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
+  if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
 }
 
 // ═══════════════════════════════════════════════
@@ -887,7 +793,7 @@ function createConnection(from, to, type, color, props = {}) {
     nodes.forEach((x) => updateNodeLabel(x));
     if (selNode === c.to || selNode === c.from) showProps(selNode);
     // Оновити підсвітку магістралі після зміни форми лінії
-    if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
+    if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
   });
   polyline.on("pm:markerdragend", () => {
     updateStats();
@@ -895,7 +801,7 @@ function createConnection(from, to, type, color, props = {}) {
     nodes.forEach((x) => updateNodeLabel(x));
     if (selNode === c.to || selNode === c.from) showProps(selNode);
     // Оновити підсвітку магістралі після перетягування вершини
-    if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
+    if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
   });
 
   polyline.on("click", (e) => {
@@ -949,230 +855,9 @@ function updateConnLabel(c) {
 }
 
 // ═══════════════════════════════════════════════
-//  SIGNAL ANIMATION
-// ═══════════════════════════════════════════════
-let signalAnimLayers = [];
-let signalAnimActive = false;
-
-export function toggleSignalAnim() {
-  signalAnimActive = !signalAnimActive;
-  const btn = document.getElementById("btn-anim");
-  if (btn) btn.classList.toggle("active", signalAnimActive);
-  if (signalAnimActive) createSignalAnimOverlays();
-  else removeSignalAnimOverlays();
-}
-
-function createSignalAnimOverlays() {
-  removeSignalAnimOverlays();
-  conns.forEach((c) => {
-    if (!c.polyline) return;
-    const pts = c.polyline.getLatLngs();
-    const overlay = L.polyline(pts, {
-      color: "#ffffff",
-      weight: 2,
-      opacity: 0.7,
-      dashArray: "6, 18",
-      className: "signal-anim-overlay",
-      interactive: false,
-      pmIgnore: true,
-    }).addTo(map);
-    signalAnimLayers.push(overlay);
-  });
-}
-
-function removeSignalAnimOverlays() {
-  signalAnimLayers.forEach((l) => map.removeLayer(l));
-  signalAnimLayers = [];
-}
-
-function refreshSignalAnim() {
-  if (signalAnimActive) createSignalAnimOverlays();
-}
-
-// ═══════════════════════════════════════════════
 //  P O N   L O G I C (helpers used by connection rules & labels)
 //  → Moved to signal.js
 // ═══════════════════════════════════════════════
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-    const total = xUsed + yUsed;
-    const xClr = xUsed ? "#f85149" : "#3fb950";
-    const yClr = yUsed ? "#f85149" : "#3fb950";
-    lines.push(
-      `<span style="color:#ff6b6b">FBT ${n.fbtType}: <span style="color:${xClr}">X:${xUsed}/1</span> <span style="color:${yClr}">Y:${yUsed}/1</span></span>`,
-    );
-    rich.push(
-      `🔀 FBT ${n.fbtType}: <span style="color:${xClr}">X=${xUsed ? "зайн." : "вільн."}</span> <span style="color:${yClr}">Y=${yUsed ? "зайн." : "вільн."}</span> (${total}/2)`,
-    );
-  }
-
-  if (!n.fbtType && n.plcType) {
-    const plcMax = parseInt(n.plcType.split("x")[1]);
-    const plcUsed = usedOutputs(n);
-    const plcFree = plcMax - plcUsed;
-    const clr = plcFree > 0 ? "#3fb950" : "#f85149";
-    lines.push(
-      `<span style="color:#c084fc">PLC ${n.plcType}: <span style="color:${clr}">${plcUsed}/${plcMax}</span></span>`,
-    );
-    rich.push(
-      `📊 PLC ${n.plcType}: ${plcUsed}/${plcMax} (<span style="color:${clr}">вільно: ${plcFree}</span>)`,
-    );
-  }
-
-  if (n.fbtType && n.plcType) {
-    const plcBr = n.plcBranch || "Y";
-    const freeBr = plcBr === "X" ? "Y" : "X";
-    const freeBrUsed = conns.some((c) => c.from === n && c.branch === freeBr);
-    const fbtClr = freeBrUsed ? "#f85149" : "#3fb950";
-
-    const plcMax = parseInt(n.plcType.split("x")[1]);
-    const plcUsed = conns.filter((c) => c.from === n && c.branch === plcBr).length;
-    const plcFree = plcMax - plcUsed;
-    const plcClr = plcFree > 0 ? "#3fb950" : "#f85149";
-
-    lines.push(
-      `<span style="color:#ff6b6b">FBT ${freeBr}:<span style="color:${fbtClr}">${freeBrUsed ? "1/1" : "0/1"}</span></span>`,
-    );
-    lines.push(
-      `<span style="color:#c084fc">PLC ${n.plcType}: <span style="color:${plcClr}">${plcUsed}/${plcMax}</span></span>`,
-    );
-    rich.push(
-      `🔀 FBT ${n.fbtType}: гілка ${freeBr} = <span style="color:${fbtClr}">${freeBrUsed ? "зайнята" : "вільна"}</span>`,
-    );
-    rich.push(
-      `📊 PLC ${n.plcType}: ${plcUsed}/${plcMax} (<span style="color:${plcClr}">вільно: ${plcFree}</span>)`,
-    );
-  }
-
-  return { lines, rich };
-}
-
-function getDistM(n1, n2) {
-  return map.distance(L.latLng(n1.lat, n1.lng), L.latLng(n2.lat, n2.lng));
-}
-
-export function connKm(c) {
-  if (!c.polyline) return getDistM(c.from, c.to) / 1000.0;
-  let dist = 0;
-  const pts = c.polyline.getLatLngs();
-  const flatPts =
-    (L.LineUtil.isFlat && L.LineUtil.isFlat(pts)) ||
-    (pts.length > 0 && typeof pts[0].lat === "number")
-      ? pts
-      : pts[0];
-  if (!flatPts || flatPts.length < 2) return getDistM(c.from, c.to) / 1000.0;
-  for (let i = 0; i < flatPts.length - 1; i++) {
-    dist += map.distance(flatPts[i], flatPts[i + 1]);
-  }
-  return dist / 1000.0;
-}
-
-export function sigIn(fob) {
-  if (!fob.inputConn) return 0;
-  const c = fob.inputConn;
-  const cLoss = connKm(c) * FIBER_DB_KM;
-  if (c.from.type === "OLT") return c.from.outputPower - cLoss - MECH;
-  if (c.from.type === "FOB") return sigOnOutput(c.from, c) - cLoss - MECH;
-  return 0;
-}
-
-function sigOnOutput(fob, conn) {
-  const base = sigIn(fob);
-  if (fob.fbtType && fob.plcType) {
-    if (conn.type === "patchcord") {
-      const brLoss = fob.plcBranch === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
-      return base - brLoss - MECH - PLC_LOSSES[fob.plcType] - MECH;
-    } else {
-      const br = conn.branch || (fob.plcBranch === "X" ? "Y" : "X");
-      const brLoss = br === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
-      if (br === fob.plcBranch) {
-        return base - brLoss - MECH - PLC_LOSSES[fob.plcType] - MECH;
-      }
-      return base - brLoss - MECH;
-    }
-  }
-  if (fob.fbtType && !fob.plcType) {
-    const br = conn.branch;
-    if (!br) return base;
-    return base - (br === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y) - MECH;
-  }
-  if (!fob.fbtType && fob.plcType) return base - PLC_LOSSES[fob.plcType] - MECH;
-  return base;
-}
-
-export function hasOLTPath(fob) {
-  if (!fob || !fob.inputConn) return false;
-  if (fob.inputConn.from.type === "OLT") return true;
-  if (fob.inputConn.from.type === "FOB") return hasOLTPath(fob.inputConn.from);
-  return false;
-}
-
-function sigAtONU(onu) {
-  const c = conns.find((x) => x.to === onu && x.type === "patchcord");
-  if (!c || c.from.type !== "FOB") return 0;
-  if (!hasOLTPath(c.from)) return 0;
-  const fobOut = sigOnOutput(c.from, c);
-  const patchLoss = connKm(c) * FIBER_DB_KM;
-  return fobOut - patchLoss;
-}
-
-function sigFBT(fob, branch) {
-  const base = sigIn(fob);
-  if (!fob.fbtType) return base;
-  return (
-    base -
-    (branch === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y) -
-    MECH
-  );
-}
-
-export function sigONU(fob) {
-  if (fob.fbtType && fob.plcType) {
-    const bLoss =
-      fob.plcBranch === "X"
-        ? FBT_LOSSES[fob.fbtType].x
-        : FBT_LOSSES[fob.fbtType].y;
-    return sigIn(fob) - bLoss - MECH - PLC_LOSSES[fob.plcType] - MECH;
-  }
-  if (fob.fbtType) return sigIn(fob);
-  if (fob.plcType) return sigIn(fob) - PLC_LOSSES[fob.plcType] - MECH;
-  return sigIn(fob);
-}
-
-export function cntONUport(olt, port) {
-  return conns
-    .filter((c) => c.from === olt && c.fromPort === port)
-    .reduce((a, c) => a + cntDn(c.to), 0);
-}
-
-function cntDn(n) {
-  if (n.type === "ONU") return 1;
-  if (n.type === "FOB") {
-    const d = conns.filter((c) => c.from === n && c.type === "patchcord").length;
-    const sub = conns
-      .filter((c) => c.from === n && c.type === "cable")
-      .reduce((a, c) => a + cntDn(c.to), 0);
-    return d + sub;
-  }
-  return 0;
-}
-
 function onNodeClick(n, e) {
   L.DomEvent.stopPropagation(e);
   if (tool === "select") {
@@ -1222,7 +907,7 @@ function onNodeDrag(n) {
   if (dragUpdateTimer) clearTimeout(dragUpdateTimer);
   dragUpdateTimer = setTimeout(() => {
     refreshSignalAnim();
-    if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
+    if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
     if (selNode === n) showProps(n);
     dragUpdateTimer = null;
   }, 80);
