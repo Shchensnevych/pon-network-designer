@@ -85,10 +85,11 @@ export function initNetwork() {
     // Debounce: don't fire during zoom (zoomend already handles that)
     if (_moveLayoutTimer) clearTimeout(_moveLayoutTimer);
     _moveLayoutTimer = setTimeout(() => {
+      // Skip if any node is currently being dragged
+      if (nodes.some((n) => n._isDragging)) return;
       const zoom = map.getZoom();
       if (zoom >= 16) {
         clearONULeaderLines();
-        // Re-generate ONU tooltips with reset offsets, then re-layout
         nodes.forEach((n) => {
           if (n.type === "ONU") {
             updateNodeLabel(n);
@@ -433,6 +434,8 @@ export function addNode(type, latlng) {
   n.marker.on("click", (evt) => onNodeClick(n, evt));
   n.marker.on("drag", () => onNodeDrag(n));
   n.marker.on("dragend", () => {
+    // Зняти прапорець драгу
+    n._isDragging = false;
     // Після завершення драгу - виконати фінальне оновлення без затримки
     if (dragUpdateTimer) {
       clearTimeout(dragUpdateTimer);
@@ -1283,6 +1286,7 @@ function onNodeClick(n, e) {
 }
 
 function onNodeDrag(n) {
+  n._isDragging = true;
   const ll = n.marker.getLatLng();
   n.lat = ll.lat;
   n.lng = ll.lng;
@@ -1299,15 +1303,11 @@ function onNodeDrag(n) {
     }
   });
   
-  // Тротлінг для оновлення підписів, анімації та статистики
+  // Тротлінг для анімації та підсвітки (НЕ оновлюємо tooltip'и під час drag)
   if (dragUpdateTimer) clearTimeout(dragUpdateTimer);
   dragUpdateTimer = setTimeout(() => {
-    // Safe: updateNodeLabel now uses setTooltipContent, no unbind/rebind
-    nodes.forEach((x) => updateNodeLabel(x));
-    layoutONUTooltips();
     refreshSignalAnim();
     if (selNode && pathGlowLayers.length > 0) highlightSignalPath(selNode);
-    updateStats();
     if (selNode === n) showProps(n);
     dragUpdateTimer = null;
   }, 80);
