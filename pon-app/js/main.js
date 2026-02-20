@@ -1,3 +1,4 @@
+// @ts-check
 // Entry point for modular PON Designer.
 // Wires up map/network/UI/backup logic and exposes the expected global API.
 
@@ -99,12 +100,13 @@ document.addEventListener("DOMContentLoaded", () => {
     inp.type = "file";
     inp.accept = ".json,application/json";
     inp.onchange = (e) => {
-      const file = e.target.files?.[0];
+      const target = /** @type {HTMLInputElement} */ (e.target);
+      const file = target.files?.[0];
       if (!file) return;
       const r = new FileReader();
       r.onload = (ev) => {
         try {
-          restoreNetwork(String(ev.target.result || ""));
+          restoreNetwork(String(ev.target?.result || ""));
           updateStats();
           alert("✅ Проєкт завантажено успішно!");
         } catch (err) {
@@ -122,7 +124,9 @@ document.addEventListener("DOMContentLoaded", () => {
       alert("html2canvas не завантажено.");
       return;
     }
-    html2canvas(document.querySelector(".app")).then((canvas) => {
+    const appEl = /** @type {HTMLElement | null} */ (document.querySelector(".app"));
+    if (!appEl) return;
+    html2canvas(appEl).then((canvas) => {
       const a = document.createElement("a");
       a.download = "pon_scheme_" + Date.now() + ".png";
       a.href = canvas.toDataURL();
@@ -171,7 +175,7 @@ document.addEventListener("DOMContentLoaded", () => {
   // Manual onboarding opener from toolbar (ignores "don't show" flag)
   window.openOnboarding = () => {
     const overlay = document.getElementById("onboarding-overlay");
-    const checkbox = document.getElementById("onboarding-dont-show");
+    const checkbox = /** @type {HTMLInputElement | null} */ (document.getElementById("onboarding-dont-show"));
     if (checkbox) checkbox.checked = localStorage.getItem("pon_onboarding_dismissed") === "true";
     switchOnboardingTab(0);
     if (overlay) overlay.style.display = "flex";
@@ -180,7 +184,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.closeOnboarding = () => {
     const overlay = document.getElementById("onboarding-overlay");
     if (overlay) overlay.style.display = "none";
-    const checkbox = document.getElementById("onboarding-dont-show");
+    const checkbox = /** @type {HTMLInputElement | null} */ (document.getElementById("onboarding-dont-show"));
     if (checkbox?.checked) {
       localStorage.setItem("pon_onboarding_dismissed", "true");
     } else {
@@ -211,4 +215,3 @@ document.addEventListener("DOMContentLoaded", () => {
     }
   });
 });
-

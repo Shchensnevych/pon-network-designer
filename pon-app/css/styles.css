@@ -439,7 +439,7 @@ input[type="number"]::-webkit-inner-spin-button {
 
 /* Users can still use keyboard arrows (↑↓) to change values in number inputs */
 
-.info-pill {  
+.info-pill {
   border: 1px solid rgba(89, 231, 7, 0.7);
   border-radius: 4px;
   padding: 5px 8px;
@@ -941,7 +941,9 @@ input[type="number"]::-webkit-inner-spin-button {
   }
   50% {
     opacity: 0.8;
-    text-shadow: 0 0 8px rgba(255, 255, 255, 0.9), 0 0 12px rgba(255, 255, 255, 0.5);
+    text-shadow:
+      0 0 8px rgba(255, 255, 255, 0.9),
+      0 0 12px rgba(255, 255, 255, 0.5);
   }
   100% {
     opacity: 1;
@@ -1100,7 +1102,9 @@ tr:hover td {
   font-weight: 600;
   padding: 3px 7px;
   border-radius: 5px;
-  box-shadow: 0 0 6px rgba(0, 0, 0, 0.7), 0 0 0 1px rgba(88, 99, 110, 0.3);
+  box-shadow:
+    0 0 6px rgba(0, 0, 0, 0.7),
+    0 0 0 1px rgba(88, 99, 110, 0.3);
   line-height: 1.4;
   white-space: nowrap;
 }
@@ -1208,7 +1212,9 @@ tr:hover td {
 
 .leaflet-tooltip.node-label.onu-callout {
   border-color: rgba(255, 255, 255, 0.3);
-  box-shadow: 0 2px 8px rgba(0, 0, 0, 0.5), 0 0 4px rgba(255, 255, 255, 0.1);
+  box-shadow:
+    0 2px 8px rgba(0, 0, 0, 0.5),
+    0 0 4px rgba(255, 255, 255, 0.1);
 }
 
 /* ── ZOOM INDICATOR ── */
@@ -1677,6 +1683,41 @@ path.leaflet-interactive:hover {
 .action-btn:hover .info-icon,
 .clear-btn:hover .info-icon {
   opacity: 1;
+}
+
+/* ── BADGE COUNTERS ── */
+.badge {
+  position: absolute;
+  top: 3px;
+  right: 24px;
+  min-width: 18px;
+  height: 18px;
+  border-radius: 9px;
+  font-size: 10px;
+  font-weight: 600;
+  display: none;
+  align-items: center;
+  justify-content: center;
+  padding: 0 5px;
+  pointer-events: none;
+  line-height: 1;
+  z-index: 1;
+}
+.badge:not(:empty) {
+  display: flex;
+}
+.badge-red {
+  background: #f85149;
+  color: #fff;
+}
+.badge-green {
+  background: #3fb950;
+  color: #0d1117;
+}
+.badge-gray {
+  background: #30363d;
+  color: #c9d1d9;
+  border: 1px solid #484f58;
 }
 
 .info-icon:hover {

@@ -1,3 +1,4 @@
+// @ts-check
 import { FBT_LOSSES, PLC_LOSSES, MECH, ONU_MIN, FIBER_DB_KM } from "./config.js";
 import { sigClass } from "./utils.js";
 import {
@@ -15,7 +16,7 @@ function buildReportData() {
   const rows = [];
   nodes
     .filter((n) => n.type === "FOB")
-    .forEach((fob) => {
+    .forEach((/** @type {FOBNode} */ fob) => {
       if (!fob.inputConn) {
         rows.push({ name: fob.name, status: "NOT_CONNECTED" });
         return;
@@ -173,14 +174,16 @@ export function openReport() {
 
   // Count splitters by type
   const fbtCounts = {};
-  nodes.filter((n) => n.type === "FOB" && n.fbtType).forEach((n) => {
-    const key = `FBT ${n.fbtType}`;
+  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).fbtType).forEach((n) => {
+    const fob = /** @type {FOBNode} */ (n);
+    const key = `FBT ${fob.fbtType}`;
     fbtCounts[key] = (fbtCounts[key] || 0) + 1;
   });
 
   const plcCounts = {};
-  nodes.filter((n) => n.type === "FOB" && n.plcType).forEach((n) => {
-    const key = `PLC ${n.plcType}`;
+  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).plcType).forEach((n) => {
+    const fob = /** @type {FOBNode} */ (n);
+    const key = `PLC ${fob.plcType}`;
     plcCounts[key] = (plcCounts[key] || 0) + 1;
   });
 
@@ -363,14 +366,16 @@ export function downloadCSV() {
   });
 
   const fbtCounts = {};
-  nodes.filter((n) => n.type === "FOB" && n.fbtType).forEach((n) => {
-    const key = `FBT ${n.fbtType}`;
+  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).fbtType).forEach((n) => {
+    const fob = /** @type {FOBNode} */ (n);
+    const key = `FBT ${fob.fbtType}`;
     fbtCounts[key] = (fbtCounts[key] || 0) + 1;
   });
 
   const plcCounts = {};
-  nodes.filter((n) => n.type === "FOB" && n.plcType).forEach((n) => {
-    const key = `PLC ${n.plcType}`;
+  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).plcType).forEach((n) => {
+    const fob = /** @type {FOBNode} */ (n);
+    const key = `PLC ${fob.plcType}`;
     plcCounts[key] = (plcCounts[key] || 0) + 1;
   });
 
@@ -513,14 +518,16 @@ export function downloadTXT() {
   });
 
   const fbtCounts = {};
-  nodes.filter((n) => n.type === "FOB" && n.fbtType).forEach((n) => {
-    const key = `FBT ${n.fbtType}`;
+  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).fbtType).forEach((n) => {
+    const fob = /** @type {FOBNode} */ (n);
+    const key = `FBT ${fob.fbtType}`;
     fbtCounts[key] = (fbtCounts[key] || 0) + 1;
   });
 
   const plcCounts = {};
-  nodes.filter((n) => n.type === "FOB" && n.plcType).forEach((n) => {
-    const key = `PLC ${n.plcType}`;
+  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).plcType).forEach((n) => {
+    const fob = /** @type {FOBNode} */ (n);
+    const key = `PLC ${fob.plcType}`;
     plcCounts[key] = (plcCounts[key] || 0) + 1;
   });
 
@@ -590,8 +597,8 @@ export function showSuggestions() {
     });
 
   nodes
-    .filter((n) => n.type === "FOB" && n.inputConn && (n.plcType || n.fbtType))
-    .forEach((fob) => {
+    .filter((n) => n.type === "FOB" && n.inputConn && (/** @type {FOBNode} */ (n).plcType || /** @type {FOBNode} */ (n).fbtType))
+    .forEach((/** @type {FOBNode} */ fob) => {
       const sig = sigONU(fob);
       if (sig < ONU_MIN - 3)
         issues.push({
@@ -674,7 +681,7 @@ export function showSuggestions() {
     .getElementById("modal-overlay")
     .querySelector("h2");
   if (h2) h2.textContent = "🔍 Перевірка мережі";
-  document.getElementById("modal-overlay").classList.add("open");
+  document.getElementById("modal-overlay")?.classList.add("open");
 }
 
 export function focusNode(id) {
@@ -707,6 +714,10 @@ export function focusNode(id) {
 export function showTopology() {
   let html = `<div class="report-section"><h3>🌳 Топологія мережі (Натисніть на елемент для переходу)</h3>`;
 
+  /**
+   * @param {FOBNode} fob
+   * @param {PONConnection} cable
+   */
   function renderFobTree(fob, cable) {
     let h = "";
     const sig = hasOLTPath(fob) ? sigIn(fob) : null;
@@ -732,7 +743,7 @@ export function showTopology() {
       (c) => c.from === fob && c.type === "cable",
     );
     downCables.forEach((dc) => {
-      if (dc.to) h += renderFobTree(dc.to, dc);
+      if (dc.to) h += renderFobTree(/** @type {FOBNode} */ (dc.to), dc);
     });
 
     const onus = conns
@@ -776,7 +787,7 @@ export function showTopology() {
         html += `<div class="topo-branch">`;
         html += `<div class="topo-port">🔌 Порт ${p + 1}</div>`;
         portCables.forEach((cable) => {
-          if (cable.to) html += renderFobTree(cable.to, cable);
+          if (cable.to) html += renderFobTree(/** @type {FOBNode} */ (cable.to), cable);
         });
         html += `</div>`;
       }
@@ -790,13 +801,17 @@ export function showTopology() {
     .getElementById("modal-overlay")
     .querySelector("h2");
   if (h2) h2.textContent = "🌳 Топологія";
-  document.getElementById("modal-overlay").classList.add("open");
+  document.getElementById("modal-overlay")?.classList.add("open");
 }
 
 // Helper: calculate total loss for current FOB splitter setup
 // For FBT+PLC combo: returns X branch + PLC loss + 2x MECH
 // For PLC-only: returns PLC loss + MECH
 // For FBT-only: returns X branch loss + MECH (tap branch)
+/**
+ * @param {FOBNode} fob
+ * @returns {number}
+ */
 function getTotalLoss(fob) {
   if (fob.plcType && fob.fbtType) {
     // Combo: FBT X branch + PLC + mechanical losses
@@ -815,6 +830,11 @@ function getTotalLoss(fob) {
 
 // Helper: get loss for selected splitter type in scenario
 // "keep" = keep original, "PLC 1x8" = PLC only, "FBT 10/90" = FBT only (X branch)
+/**
+ * @param {string} selectedSplitter
+ * @param {number} originalLoss
+ * @returns {number}
+ */
 function getScenarioLoss(selectedSplitter, originalLoss) {
   if (selectedSplitter === "keep") {
     return originalLoss;
@@ -834,7 +854,12 @@ function getScenarioLoss(selectedSplitter, originalLoss) {
 }
 
 // Helper: find OLT port for a FOB by tracing back through connections
+/**
+ * @param {FOBNode} fob
+ * @returns {{ olt: PONNode, port: number } | null}
+ */
 function getOLTPort(fob) {
+  /** @type {PONNode} */
   let node = fob;
   while (node && node.inputConn) {
     const c = node.inputConn;
@@ -851,9 +876,9 @@ export function showScenarioCompare() {
   const current = [];
   nodes
     .filter(
-      (n) => n.type === "FOB" && n.inputConn && (n.plcType || n.fbtType),
+      (n) => n.type === "FOB" && n.inputConn && (/** @type {FOBNode} */ (n).plcType || /** @type {FOBNode} */ (n).fbtType),
     )
-    .forEach((fob) => {
+    .forEach((/** @type {FOBNode} */ fob) => {
       const sig = hasOLTPath(fob) ? sigIn(fob) : null;
       const onuSig = hasOLTPath(fob) ? sigONU(fob) : null;
       const onus = conns.filter(
@@ -1068,7 +1093,7 @@ export function showScenarioCompare() {
     current.forEach((item) => {
       const select = document.querySelector(`.scenario-splitter-select[data-fob-id="${item.fobId}"]`);
       if (select) {
-        select.value = "keep";
+        /** @type {HTMLSelectElement} */ (select).value = "keep";
         const result = recalcRow(item.fobId, "keep");
         if (result) {
           // Find row index in DOM (excluding group headers)
@@ -1088,9 +1113,10 @@ export function showScenarioCompare() {
   // Attach event listeners to dropdowns - changes apply automatically
   document.querySelectorAll(".scenario-splitter-select").forEach((select) => {
     select.addEventListener("change", (e) => {
-      const rowIdx = parseInt(e.target.dataset.row);
-      const fobId = e.target.dataset.fobId || current[rowIdx]?.fobId;
-      const selected = e.target.value;
+      const tgt = /** @type {HTMLSelectElement} */ (e.target);
+      const rowIdx = parseInt(tgt.dataset.row || "0");
+      const fobId = tgt.dataset.fobId || current[rowIdx]?.fobId;
+      const selected = tgt.value;
       const result = recalcRow(fobId, selected);
       if (result) {
         // Find the actual row in DOM by fobId
@@ -1126,7 +1152,8 @@ export function openHelp() {
   switchOnboardingTab(2);
   const overlay = document.getElementById("onboarding-overlay");
   const checkbox = document.getElementById("onboarding-dont-show");
-  if (checkbox) checkbox.checked = localStorage.getItem("pon_onboarding_dismissed") === "true";
+  const cb = /** @type {HTMLInputElement | null} */ (checkbox);
+  if (cb) cb.checked = localStorage.getItem("pon_onboarding_dismissed") === "true";
   if (overlay) overlay.style.display = "flex";
 }
 
@@ -1149,3 +1176,40 @@ export function switchOnboardingTab(index) {
   });
 }
 
+/**
+ * Update the validation badge counter on the sidebar button.
+ * Counts network issues without opening the modal.
+ */
+export function updateValidationBadge() {
+  let count = 0;
+
+  // Disconnected FOBs
+  count += nodes.filter((n) => n.type === "FOB" && !n.inputConn).length;
+  // Disconnected ONUs
+  count += nodes
+    .filter((n) => n.type === "ONU")
+    .filter((onu) => !conns.some((c) => c.to === onu && c.type === "patchcord")).length;
+  // Weak signals
+  nodes
+    .filter((n) => n.type === "FOB" && n.inputConn && (/** @type {FOBNode} */ (n).plcType || /** @type {FOBNode} */ (n).fbtType))
+    .forEach((/** @type {FOBNode} */ fob) => {
+      const sig = sigONU(fob);
+      if (sig < ONU_MIN) count++;
+    });
+  // Port overloads
+  nodes
+    .filter((n) => n.type === "OLT")
+    .forEach((olt) => {
+      for (let i = 0; i < olt.ports; i++) {
+        if (cntONUport(olt, i) > (olt.maxOnuPerPort || 64)) count++;
+      }
+    });
+  // Long cables
+  count += conns.filter((c) => c.type === "cable" && connKm(c) > 5).length;
+
+  const badge = document.getElementById("badge-validation");
+  if (badge) {
+    badge.textContent = count > 0 ? String(count) : "";
+    badge.className = count > 0 ? "badge badge-red" : "badge badge-green";
+  }
+}

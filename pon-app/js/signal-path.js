@@ -1,3 +1,4 @@
+// @ts-check
 // Signal path highlighting & signal animation overlays.
 // Extracted from network.js — pure visualization, no business logic.
 
@@ -7,6 +8,7 @@ import { nodes, conns, map } from "./state.js";
 //  SIGNAL PATH HIGHLIGHTING
 // ═══════════════════════════════════════════════
 
+/** @type {import('leaflet').Polyline[]} */
 let pathGlowLayers = [];
 
 /** Check whether a signal-path glow is currently active. */
@@ -14,20 +16,27 @@ export function hasActiveGlow() {
   return pathGlowLayers.length > 0;
 }
 
-// Trace signal path from node upstream to OLT
+/**
+ * Trace signal path from node upstream to OLT.
+ * @param {PONNode} node
+ * @returns {{ conns: PONConnection[], nodes: PONNode[] }}
+ */
 function getSignalPath(node) {
+  /** @type {PONConnection[]} */
   const pathConns = [];
+  /** @type {PONNode[]} */
   const pathNodes = [node];
   let current = node;
+  /** @type {Set<string>} */
   const visited = new Set();
   while (current && !visited.has(current.id)) {
     visited.add(current.id);
-    // Find upstream connection (cable INTO this node)
-    let upConn = null;
+    /** @type {PONConnection | undefined} */
+    let upConn = undefined;
     if (current.type === "ONU") {
       upConn = conns.find((c) => c.to === current && c.type === "patchcord");
     } else if (current.type === "FOB") {
-      upConn = current.inputConn;
+      upConn = current.inputConn || undefined;
     }
     if (upConn) {
       pathConns.push(upConn);
@@ -40,10 +49,17 @@ function getSignalPath(node) {
   return { conns: pathConns, nodes: pathNodes };
 }
 
-// Get all downstream connections from a node
+/**
+ * Get all downstream connections from a node.
+ * @param {PONNode} node
+ * @returns {PONConnection[]}
+ */
 function getDownstreamConns(node) {
+  /** @type {PONConnection[]} */
   const result = [];
+  /** @type {Set<string>} */
   const visited = new Set();
+  /** @param {PONNode} n */
   function walk(n) {
     if (visited.has(n.id)) return;
     visited.add(n.id);
@@ -58,9 +74,15 @@ function getDownstreamConns(node) {
   return result;
 }
 
+/**
+ * Highlight signal path for a node (glow overlay on cables).
+ * @param {PONNode} node
+ */
 export function highlightSignalPath(node) {
   clearSignalPath();
+  /** @type {PONConnection[]} */
   let pathConns = [];
+  /** @type {PONNode[]} */
   let pathNodes = [];
 
   if (node.type === "ONU" || node.type === "FOB") {
@@ -68,7 +90,6 @@ export function highlightSignalPath(node) {
     pathConns = path.conns;
     pathNodes = path.nodes;
   } else if (node.type === "OLT") {
-    // For OLT: highlight all downstream
     pathNodes = [node];
     const downstream = getDownstreamConns(node);
     pathConns = downstream;
@@ -79,10 +100,9 @@ export function highlightSignalPath(node) {
 
   if (pathConns.length === 0) return;
 
-  // Create glow overlay polylines
   pathConns.forEach((c) => {
-    if (!c.polyline) return;
-    const pts = c.polyline.getLatLngs();
+    if (!c.polyline || !map) return;
+    const pts = /** @type {import('leaflet').LatLngExpression[]} */ (c.polyline.getLatLngs());
     const glow = L.polyline(pts, {
       color: "#00d4ff",
       weight: 10,
@@ -94,7 +114,6 @@ export function highlightSignalPath(node) {
     pathGlowLayers.push(glow);
   });
 
-  // Highlight markers
   pathNodes.forEach((n) => {
     if (n.marker && n.marker._icon) {
       n.marker._icon.classList.add("highlighted-marker");
@@ -102,8 +121,11 @@ export function highlightSignalPath(node) {
   });
 }
 
+/** Remove all signal path glow overlays. */
 export function clearSignalPath() {
-  pathGlowLayers.forEach((l) => map.removeLayer(l));
+  if (map) {
+    pathGlowLayers.forEach((l) => map.removeLayer(l));
+  }
   pathGlowLayers = [];
   nodes.forEach((n) => {
     if (n.marker && n.marker._icon) {
@@ -115,6 +137,7 @@ export function clearSignalPath() {
 // ═══════════════════════════════════════════════
 //  SIGNAL ANIMATION
 // ═══════════════════════════════════════════════
+/** @type {import('leaflet').Polyline[]} */
 let signalAnimLayers = [];
 let signalAnimActive = false;
 
@@ -129,8 +152,8 @@ export function toggleSignalAnim() {
 function createSignalAnimOverlays() {
   removeSignalAnimOverlays();
   conns.forEach((c) => {
-    if (!c.polyline) return;
-    const pts = c.polyline.getLatLngs();
+    if (!c.polyline || !map) return;
+    const pts = /** @type {import('leaflet').LatLngExpression[]} */ (c.polyline.getLatLngs());
     const overlay = L.polyline(pts, {
       color: "#ffffff",
       weight: 2,
@@ -145,7 +168,9 @@ function createSignalAnimOverlays() {
 }
 
 export function removeSignalAnimOverlays() {
-  signalAnimLayers.forEach((l) => map.removeLayer(l));
+  if (map) {
+    signalAnimLayers.forEach((l) => map.removeLayer(l));
+  }
   signalAnimLayers = [];
 }
 

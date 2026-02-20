@@ -1,0 +1,15 @@
+{
+  "compilerOptions": {
+    "target": "ES2020",
+    "module": "ES2020",
+    "moduleResolution": "bundler",
+    "checkJs": false,
+    "allowJs": true,
+    "noEmit": true,
+    "strict": false,
+    "skipLibCheck": true,
+    "types": ["leaflet"]
+  },
+  "include": ["js/**/*.js", "js/**/*.d.ts"],
+  "exclude": ["js/network.ref.js"]
+}

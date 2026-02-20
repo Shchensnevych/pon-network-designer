@@ -579,6 +579,8 @@ export function restoreNetwork(json) {
     n.marker.on("click", (e) => onNodeClick(n, e));
     n.marker.on("drag", (e) => onNodeDrag(n));
     n.marker.on("dragend", () => {
+      // Зняти прапорець драгу
+      n._isDragging = false;
       // Після завершення драгу - виконати фінальне оновлення без затримки
       if (dragUpdateTimer) {
         clearTimeout(dragUpdateTimer);
@@ -586,6 +588,7 @@ export function restoreNetwork(json) {
       }
       // Оновити все одразу після завершення драгу
       nodes.forEach((x) => updateNodeLabel(x));
+      layoutONUTooltips();
       refreshSignalAnim();
       if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
       updateStats();
@@ -613,6 +616,8 @@ export function restoreNetwork(json) {
   selNode = null;
   showProps(null);
   updateStats();
+  // Refresh all tooltip labels after connections are fully restored
+  updateTooltipsVisibility();
   _restoring = false;
 }
 
@@ -919,7 +924,7 @@ function onNodeDrag(n) {
 }
 
 /** @param {any} n */
-function updateNodeLabel(n) {
+function buildNodeLabelContent(n) {
   let L1 = "";
   let L2 = "";
 
@@ -940,7 +945,19 @@ function updateNodeLabel(n) {
     // Input signal
     if (n.inputConn) {
       const si = sigIn(n);
-      L2 = `<span class="lbl-dim">IN:</span><span class="lbl-sig ${sigColorClass(si)}">${si.toFixed(1)}дБ</span>`;
+      const src = n.inputConn.from.name || n.inputConn.from.type;
+      const parent = /** @type {any} */ (n.inputConn.from);
+      let br = "";
+      if (n.inputConn.branch) {
+        if (parent.plcType && parent.plcBranch === n.inputConn.branch) {
+          br = `[PLC]`;
+        } else if (parent.fbtType) {
+          br = `[FBT ${n.inputConn.branch}]`;
+        } else {
+          br = `[${n.inputConn.branch}]`;
+        }
+      }
+      L2 = `<span class="lbl-dim">IN: ${src}${br ? " " + br : ""}</span> <span class="lbl-sig ${sigColorClass(si)}">${si.toFixed(1)}дБ</span>`;
     }
 
     // Port status
@@ -974,14 +991,19 @@ function updateNodeLabel(n) {
       if (conn && conn.from) {
         let tag = "";
         if (conn.branch) tag += `[${conn.branch}]`;
-        if (conn.from.plcType) tag += conn.from.plcType;
-        else if (conn.from.fbtType) tag += conn.from.fbtType;
+        if (/** @type {any} */ (conn.from).plcType) tag += /** @type {any} */ (conn.from).plcType;
+        else if (/** @type {any} */ (conn.from).fbtType) tag += /** @type {any} */ (conn.from).fbtType;
         if (tag) L2 += ` <span class="lbl-dim">${tag}</span>`;
       }
     }
   }
 
-  const content = L1 + (L2 ? "<br>" + L2 : "");
+  return L1 + (L2 ? "<br>" + L2 : "");
+}
+
+/** @param {any} n */
+function updateNodeLabel(n) {
+  const content = buildNodeLabelContent(n);
 
   // Оновити tooltip з правильним режимом відображення
   updateNodeTooltip(n, content);
@@ -1053,59 +1075,9 @@ function updateTooltipsVisibility() {
   // Важливо: очистити підказки до перерахунку, щоб updateNodeTooltip не використовував старі оффсети
   clearONULeaderLines();
 
-  nodes.forEach((n) => {
+  nodes.forEach((/** @type {any} */ n) => {
     // Перебудувати tooltip з правильним режимом
-    let L1 = "";
-    let L2 = "";
-    
-    if (n.type === "OLT") {
-      L1 = `<span class="lbl-name lbl-olt">${n.name}</span>`;
-      L2 = `<span class="lbl-dim">${n.outputPower} дБ</span>`;
-      const portInfo = [];
-      for (let i = 0; i < n.ports; i++) {
-        const c = cntONUport(n, i);
-        if (c > 0) portInfo.push(`P${i + 1}: ${c}`);
-      }
-      if (portInfo.length)
-        L2 += `<br><span class="lbl-dim">${portInfo.join(" | ")}</span>`;
-    } else if (n.type === "FOB") {
-      L1 = `<span class="lbl-name lbl-fob">${n.name}</span>`;
-      if (n.inputConn) {
-        const si = sigIn(n);
-        L2 = `<span class="lbl-dim">IN:</span><span class="lbl-sig ${sigColorClass(si)}">${si.toFixed(1)}дБ</span>`;
-      }
-      const pi = fobPortStatus(n);
-      pi.lines.forEach((l) => (L2 += `<br>${l}`));
-      if (n.fbtType && n.inputConn) {
-        const sx = sigFBT(n, "X");
-        const sy = sigFBT(n, "Y");
-        L2 += `<br><span class="${sigColorClass(sx)}">X:${sx.toFixed(1)}дБ</span>`;
-        L2 += ` <span class="${sigColorClass(sy)}">Y:${sy.toFixed(1)}дБ</span>`;
-      }
-      if (n.plcType && n.inputConn) {
-        const so = sigONU(n);
-        L2 += `<br><span class="${sigColorClass(so)}">→ONU:${so.toFixed(1)}дБ</span>`;
-      }
-      if (!n.fbtType && !n.plcType) {
-        L2 += `<br><span class="lbl-transit">→ транзит</span>`;
-      }
-    } else if (n.type === "ONU") {
-      L1 = `<span class="lbl-name lbl-onu">${n.name}</span>`;
-      const s = sigAtONU(n);
-      const conn = conns.find((x) => x.to === n && x.type === "patchcord");
-      if (s !== 0) {
-        L2 = `<span class="lbl-sig ${sigColorClass(s)}">${s.toFixed(1)}дБ</span>`;
-        if (conn && conn.from) {
-          let tag = "";
-          if (conn.branch) tag += `[${conn.branch}]`;
-          if (conn.from.plcType) tag += conn.from.plcType;
-          else if (conn.from.fbtType) tag += conn.from.fbtType;
-          if (tag) L2 += ` <span class="lbl-dim">${tag}</span>`;
-        }
-      }
-    }
-    
-    const content = L1 + (L2 ? "<br>" + L2 : "");
+    const content = buildNodeLabelContent(n);
     updateNodeTooltip(n, content);
   });
 
@@ -1330,7 +1302,8 @@ function buildTooltip(n) {
     if (n.inputConn) {
       const si = sigIn(n);
       t += `📥 IN: <span style='color:${sigClass(si) === "ok" ? "#3fb950" : sigClass(si) === "warn" ? "#d29922" : "#f85149"}'>${si.toFixed(2)} дБ</span><br>`;
-      t += `📡 Від: ${n.inputConn.from.name || n.inputConn.from.type}<br>`;
+      const branchTag = n.inputConn.branch ? ` (гілка ${n.inputConn.branch})` : "";
+      t += `📡 Від: ${n.inputConn.from.name || n.inputConn.from.type}${branchTag}<br>`;
     } else {
       t += `⚠️ Не підключений (Input)<br>`;
     }
@@ -1354,7 +1327,7 @@ function buildTooltip(n) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
       if (conn?.from) t += `📦 FOB: ${conn.from.name}<br>`;
       if (conn?.branch) t += `🔀 Гілка: ${conn.branch}<br>`;
-      if (conn?.from?.plcType) t += `📊 PLC: ${conn.from.plcType}`;
+      if (/** @type {any} */ (conn?.from)?.plcType) t += `📊 PLC: ${/** @type {any} */ (conn.from).plcType}`;
     } else {
       t += `⚠️ Не підключений`;
     }
@@ -1716,6 +1689,8 @@ export function updateStats() {
   document.getElementById("s-conn").textContent = String(conns.length);
   updateCableColors();
   refreshSignalAnim();
+  // Lazy import to avoid circular dependency with ui.js
+  import("./ui.js").then((ui) => ui.updateValidationBadge());
 }
 
 // Expose internal functions for inline HTML handlers
