@@ -1,5 +1,5 @@
-﻿// Core map + network logic for modular PON Designer.
-// Signal calculations live in signal.js, shared arrays in state.js.
+// Core map + network logic for modular PON Designer.
+// This is a first extracted version: focuses on map init and basic node management.
 
 import {
   FBT_LOSSES,
@@ -18,25 +18,14 @@ import {
 } from "./config.js";
 import { sigClass, sigColorClass } from "./utils.js";
 
-// Shared state — used by signal.js for calculations
-import { nodes, conns, map, setMap } from "./state.js";
-
-// Signal calculations — extracted to signal.js (~320 lines removed)
-import {
-  getChainColor, usedCables, usedPatches, usedOutputs,
-  maxOutputs, freeCablePorts, freePatchPorts,
-  fobPortStatus, getDistM, connKm, sigIn, sigOnOutput,
-  hasOLTPath, sigAtONU, sigFBT, sigONU,
-  cntONUport, cntDn, getSignalColor, updateCableColors,
-} from "./signal.js";
-
-// Re-export for main.js and ui.js compatibility
-export { nodes, conns, connKm, sigIn, sigONU, hasOLTPath, cntONUport };
-
-// Local state — stays in this module (no need for setter functions)
+// Global-ish state for the modular app
+let map;
 let streets;
 let satellite;
 let hybrid;
+
+export const nodes = [];
+export const conns = [];
 
 let tool = "select";
 let selNode = null;
@@ -57,11 +46,11 @@ export function initNetwork() {
   }
 
   // Map & base layers (from original INIT block)
-  setMap(L.map("map", {
+  map = L.map("map", {
     center: [50.4501, 30.5234],
     zoom: 13,
     zoomControl: false,
-  }));
+  });
 
   streets = L.tileLayer("https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png", {
     attribution: "&copy; OpenStreetMap contributors",
@@ -949,6 +938,34 @@ function updateConnLabel(c) {
 }
 
 // ═══════════════════════════════════════════════
+//  COLOR-CODED CABLES
+// ═══════════════════════════════════════════════
+function getSignalColor(sig) {
+  if (sig === 0 || sig === null || sig === undefined) return "#6b7280";
+  if (sig >= ONU_MIN) return "#3fb950";
+  if (sig >= ONU_MIN - 3) return "#d29922";
+  return "#f85149";
+}
+
+function updateCableColors() {
+  conns.forEach((c) => {
+    if (!c.polyline) return;
+    let sig = null;
+    if (c.type === "cable" && c.to?.type === "FOB" && c.to.inputConn && hasOLTPath(c.to)) {
+      sig = sigIn(c.to);
+    } else if (c.type === "patchcord" && c.to?.type === "ONU" && c.from && hasOLTPath(c.from)) {
+      sig = sigAtONU(c.to);
+    }
+    if (sig !== null) {
+      const glowColor = getSignalColor(sig);
+      c.polyline.getElement()?.style?.setProperty("filter", `drop-shadow(0 0 4px ${glowColor})`);
+    } else {
+      c.polyline.getElement()?.style?.setProperty("filter", "none");
+    }
+  });
+}
+
+// ═══════════════════════════════════════════════
 //  SIGNAL ANIMATION
 // ═══════════════════════════════════════════════
 let signalAnimLayers = [];
@@ -991,26 +1008,94 @@ function refreshSignalAnim() {
 
 // ═══════════════════════════════════════════════
 //  P O N   L O G I C (helpers used by connection rules & labels)
-//  → Moved to signal.js
 // ═══════════════════════════════════════════════
 
+function getChainColor(fob) {
+  let node = fob;
+  while (node && node.type === "FOB" && node.inputConn) {
+    const c = node.inputConn;
+    if (c.from.type === "OLT" && c.color) return c.color;
+    if (c.color && c.from.type === "OLT") return c.color;
+    node = c.from;
+  }
+  return "#e0e0e0";
+}
 
+function usedCables(fob) {
+  return conns.filter((c) => c.from === fob && c.type === "cable").length;
+}
+function usedPatches(fob) {
+  return conns.filter((c) => c.from === fob && c.type === "patchcord").length;
+}
+function usedOutputs(fob) {
+  return usedCables(fob) + usedPatches(fob);
+}
 
+function maxOutputs(fob) {
+  if (!fob.plcType && !fob.fbtType) return 1;
+  if (fob.plcType && !fob.fbtType) return parseInt(fob.plcType.split("x")[1]);
+  if (fob.fbtType && !fob.plcType) return 2;
+  if (fob.fbtType && fob.plcType) return 1 + parseInt(fob.plcType.split("x")[1]);
+  return 1;
+}
 
+function freeCablePorts(fob) {
+  if (!fob.plcType && !fob.fbtType) return usedCables(fob) === 0 ? 1 : 0;
+  if (fob.plcType && !fob.fbtType) {
+    const max = parseInt(fob.plcType.split("x")[1]);
+    return Math.max(0, max - usedOutputs(fob));
+  }
+  if (fob.fbtType && !fob.plcType) {
+    const x = conns.some((c) => c.from === fob && c.branch === "X");
+    const y = conns.some((c) => c.from === fob && c.branch === "Y");
+    return (x ? 0 : 1) + (y ? 0 : 1);
+  }
+  if (fob.fbtType && fob.plcType) {
+    let free = 0;
+    const freeBr = fob.plcBranch === "X" ? "Y" : "X";
+    if (!conns.some((c) => c.from === fob && c.branch === freeBr)) free++;
 
+    const maxPLC = parseInt(fob.plcType.split("x")[1]);
+    const plcBr = fob.plcBranch || "Y";
+    const usedOnPLC = conns.filter((c) => c.from === fob && c.branch === plcBr).length;
+    free += Math.max(0, maxPLC - usedOnPLC);
+    return free;
+  }
+  return 0;
+}
 
+function freePatchPorts(fob) {
+  if (!fob.plcType && !fob.fbtType) return 0;
+  if (fob.plcType && !fob.fbtType)
+    return Math.max(0, parseInt(fob.plcType.split("x")[1]) - usedOutputs(fob));
+  if (fob.fbtType && !fob.plcType) {
+    const x = conns.some((c) => c.from === fob && c.branch === "X");
+    const y = conns.some((c) => c.from === fob && c.branch === "Y");
+    return (x ? 0 : 1) + (y ? 0 : 1);
+  }
+  if (fob.fbtType && fob.plcType) {
+    const max = parseInt(fob.plcType.split("x")[1]);
+    const plcBr = fob.plcBranch || "Y";
+    return Math.max(0, max - conns.filter((c) => c.from === fob && c.branch === plcBr).length);
+  }
+  return 0;
+}
 
+// Unified FOB port status for tooltip & popup
+function fobPortStatus(n) {
+  const lines = [];
+  const rich = [];
 
+  if (!n.fbtType && !n.plcType) {
+    const used = usedOutputs(n);
+    const clr = used === 0 ? "#3fb950" : "#f85149";
+    lines.push(`<span style="color:#f97316">⇄ ${used}/1</span>`);
+    rich.push(`📦 Транзит: <span style="color:${clr}">${used}/1</span>`);
+  }
 
-
-
-
-
-
-
-
-
-
+  if (n.fbtType && !n.plcType) {
+    const xUsed = conns.filter((c) => c.from === n && c.branch === "X").length;
+    const yUsed = conns.filter((c) => c.from === n && c.branch === "Y").length;
     const total = xUsed + yUsed;
     const xClr = xUsed ? "#f85149" : "#3fb950";
     const yClr = yUsed ? "#f85149" : "#3fb950";
