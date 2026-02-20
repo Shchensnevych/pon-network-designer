@@ -1,4 +1,5 @@
-﻿// Core map + network logic for modular PON Designer.
+﻿// @ts-check
+// Core map + network logic for modular PON Designer.
 // Signal calculations live in signal.js, shared arrays in state.js.
 
 import {
@@ -42,15 +43,22 @@ export { nodes, conns, connKm, sigIn, sigONU, hasOLTPath, cntONUport };
 export { toggleSignalAnim };
 
 // Local state — stays in this module (no need for setter functions)
+/** @type {import('leaflet').TileLayer | undefined} */
 let streets;
+/** @type {import('leaflet').TileLayer | undefined} */
 let satellite;
+/** @type {import('leaflet').TileLayer | undefined} */
 let hybrid;
 
 let tool = "select";
+/** @type {PONNode | null} */
 let selNode = null;
+/** @type {PONNode | null} */
 let connStart = null;
 
+/** @type {ReturnType<typeof setTimeout> | null} */
 let dragUpdateTimer = null; // Throttle для оновлення під час драгу
+/** @type {import('leaflet').Polyline[]} */
 let onuLeaderLines = []; // Leader lines for dense ONU clusters
 
 /**
@@ -131,7 +139,7 @@ export function initNetwork() {
     map.on("pm:globaleditmodetoggled", (e) => {
       conns.forEach((c) => {
         if (c.polyline) {
-          if (e.enabled) {
+          if (/** @type {any} */ (e).enabled) {
             c.polyline.pm.enable({ snappable: true, snapDistance: 20 });
           } else {
             c.polyline.pm.disable();
@@ -180,7 +188,7 @@ export function initNetwork() {
 
   // Close layers dropdown when clicking outside
   window.addEventListener("click", (e) => {
-    if (!e.target.matches("#btn-layers")) {
+    if (!/** @type {HTMLElement} */ (e.target).matches("#btn-layers")) {
       const menu = document.getElementById("layer-menu");
       if (menu && menu.classList.contains("show")) {
         menu.classList.remove("show");
@@ -191,7 +199,7 @@ export function initNetwork() {
   // Drag & drop from toolbox onto map
   document.querySelectorAll(".tool-btn[draggable]").forEach((btn) => {
     btn.addEventListener("dragstart", (e) => {
-      e.dataTransfer.setData("text/plain", btn.dataset.type);
+      /** @type {DragEvent} */ (e).dataTransfer?.setData("text/plain", /** @type {HTMLElement} */ (btn).dataset.type || "");
     });
   });
   mapContainer.addEventListener("dragover", (e) => e.preventDefault());
@@ -207,7 +215,7 @@ export function initNetwork() {
   });
 
   // Mini-legend + toolbar (keeps original HTML; relies on window.undo/etc)
-  const legendPanel = L.control({ position: "bottomleft" });
+  const legendPanel = /** @type {any} */ (L.control)({ position: "bottomleft" });
   legendPanel.onAdd = function () {
     const div = L.DomUtil.create("div", "leaflet-legend-panel");
     div.innerHTML = `
@@ -297,7 +305,7 @@ export function initNetwork() {
       
       if (slider) {
         slider.addEventListener("input", (e) => {
-          map.setZoom(parseInt(e.target.value));
+          map.setZoom(parseInt(/** @type {HTMLInputElement} */ (e.target).value));
         });
       }
       if (btnMinus) {
@@ -407,6 +415,7 @@ export function onMapClick(e) {
  */
 export function addNode(type, latlng) {
   saveState();
+  /** @type {any} */
   const n = {
     id: "n" + Date.now(),
     type: type.toUpperCase(),
@@ -490,16 +499,16 @@ export function serializeNetwork() {
   return JSON.stringify({
     schemaVersion: "1.0",
     nodes: nodes.map((n) => {
-      const { marker, inputConn, ...rest } = n;
+      const { marker, inputConn, ...rest } = /** @type {any} */ (n);
       return rest;
     }),
     conns: conns.map((c) => {
-      const { polyline, from, to, _distTooltip, ...rest } = c;
+      const { polyline, from, to, _distTooltip, ...rest } = /** @type {any} */ (c);
       return {
         ...rest,
         from: from.id,
         to: to.id,
-        pts: polyline ? polyline.getLatLngs().map((ll) => [ll.lat, ll.lng]) : null,
+        pts: polyline ? polyline.getLatLngs().map((/** @type {any} */ ll) => [ll.lat, ll.lng]) : null,
       };
     }),
     fobCounter,
@@ -514,8 +523,12 @@ function saveState() {
   redoHistory = [];
 }
 
+/**
+ * @param {string} json
+ */
 export function restoreNetwork(json) {
   _restoring = true;
+  /** @type {any} */
   const d = JSON.parse(json);
   
   // Version migration: handle old formats
@@ -533,7 +546,7 @@ export function restoreNetwork(json) {
     if (c._distTooltip) map.removeLayer(c._distTooltip);
     map.removeLayer(c.polyline);
   });
-  nodes.forEach((n) => map.removeLayer(n.marker));
+  nodes.forEach((n) => map.removeLayer(/** @type {any} */ (n.marker)));
   nodes.length = 0;
   conns.length = 0;
 
@@ -614,7 +627,7 @@ export function clearNetwork() {
     if (c._distTooltip) map.removeLayer(c._distTooltip);
     map.removeLayer(c.polyline);
   });
-  nodes.forEach((n) => map.removeLayer(n.marker));
+  nodes.forEach((n) => map.removeLayer(/** @type {any} */ (n.marker)));
 
   nodes.length = 0;
   conns.length = 0;
@@ -643,11 +656,7 @@ export function redo() {
 function updateConnections(node) {
   conns.forEach((c) => {
     if (c.from === node || c.to === node) {
-      const latlngs = [
-        [c.from.lat, c.from.lng],
-        [c.to.lat, c.to.lng],
-      ];
-      c.polyline.setLatLngs(latlngs);
+      c.polyline.setLatLngs(/** @type {import('leaflet').LatLngExpression[]} */ ([[c.from.lat, c.from.lng], [c.to.lat, c.to.lng]]));
       // Refresh distance label
       if (c.type === "cable") updateConnLabel(c);
     }
@@ -805,13 +814,13 @@ function createConnection(from, to, type, color, props = {}) {
   });
 
   polyline.on("click", (e) => {
-    L.DomEvent.stopPropagation(e);
-    showConnCtx(e, c);
+    L.DomEvent.stopPropagation(/** @type {any} */ (e));
+    showConnCtx(/** @type {any} */ (e), c);
   });
   polyline.on("contextmenu", (e) => {
-    L.DomEvent.stopPropagation(e);
-    L.DomEvent.preventDefault(e);
-    showConnCtx(e, c);
+    L.DomEvent.stopPropagation(/** @type {any} */ (e));
+    L.DomEvent.preventDefault(/** @type {any} */ (e));
+    showConnCtx(/** @type {any} */ (e), c);
   });
 
   polyline.on("mouseover", () => polyline.setStyle({ weight: type === "cable" ? 7 : 5 }));
@@ -894,11 +903,7 @@ function onNodeDrag(n) {
   // Оновлюємо полілінії одразу (візуально важливо)
   conns.forEach((c) => {
     if (c.from === n || c.to === n) {
-      const latlngs = [
-        [c.from.lat, c.from.lng],
-        [c.to.lat, c.to.lng],
-      ];
-      c.polyline.setLatLngs(latlngs);
+      c.polyline.setLatLngs(/** @type {import('leaflet').LatLngExpression[]} */ ([[c.from.lat, c.from.lng], [c.to.lat, c.to.lng]]));
       if (c.type === "cable") updateConnLabel(c);
     }
   });
@@ -913,6 +918,7 @@ function onNodeDrag(n) {
   }, 80);
 }
 
+/** @param {any} n */
 function updateNodeLabel(n) {
   let L1 = "";
   let L2 = "";
@@ -1106,8 +1112,8 @@ function updateTooltipsVisibility() {
   // Оновити індикатор зуму
   const zv = document.getElementById("zoom-val");
   const zs = document.getElementById("zoom-slider");
-  if (zv) zv.innerText = zoom;
-  if (zs) zs.value = zoom;
+  if (zv) zv.innerText = String(zoom);
+  if (zs) /** @type {HTMLInputElement} */ (zs).value = String(zoom);
 
   // Після побудови всіх тултипів — розкласти ONU тултипи щоб не перекривались
   layoutONUTooltips();
@@ -1300,7 +1306,7 @@ function layoutONUTooltips() {
  */
 export function fitNetwork() {
   if (!map || nodes.length === 0) return;
-  const group = L.featureGroup(nodes.map((n) => n.marker));
+  const group = L.featureGroup(/** @type {any} */ (nodes.map((n) => n.marker)));
   map.fitBounds(group.getBounds().pad(0.2));
 }
 
@@ -1308,6 +1314,7 @@ export function fitNetwork() {
 //  UI HELPERS (tooltips, props, ctx, selectors)
 // ═══════════════════════════════════════════════
 
+/** @param {any} n */
 function buildTooltip(n) {
   if (n.type === "OLT") {
     let t = `<strong style='color:#58a6ff'>${n.name}</strong><br>`;
@@ -1356,6 +1363,7 @@ function buildTooltip(n) {
   return "";
 }
 
+/** @param {any} n */
 function showProps(n) {
   const p = document.getElementById("props");
   if (!p) return;
@@ -1480,7 +1488,12 @@ function showProps(n) {
   p.innerHTML = h;
 }
 
+/** @param {string} id
+ * @param {string} prop
+ * @param {any} val
+ */
 function updNode(id, prop, val) {
+  /** @type {any} */
   const n = nodes.find((x) => x.id === id);
   if (!n) return;
   saveState();
@@ -1514,6 +1527,10 @@ function updNode(id, prop, val) {
   }
 }
 
+/**
+ * @param {any} n
+ * @param {string} branch
+ */
 function isBranchFull(n, branch) {
   if (n.fbtType && n.plcType) {
     const plcBr = n.plcBranch || "Y";
@@ -1551,7 +1568,7 @@ export function reassignBranch(connId, newBranch) {
 function deleteNode(n) {
   if (!n) return;
   saveState();
-  map.removeLayer(n.marker);
+  map.removeLayer(/** @type {any} */ (n.marker));
   conns
     .filter((c) => c.from === n || c.to === n)
     .forEach((c) => {
@@ -1654,7 +1671,7 @@ function showFOBBranchSel(src, tgt) {
 
 export function finishFBT(sid, tid, br) {
   const src = nodes.find((x) => x.id === sid);
-  const chainColor = getChainColor(src);
+  const chainColor = getChainColor(/** @type {FOBNode} */ (src));
   createConnection(src, nodes.find((x) => x.id === tid), "cable", chainColor, {
     branch: br,
   });
@@ -1678,8 +1695,8 @@ function showFOBBranchSel_Combo(src, tgt) {
 
 export function finishCombo(sid, tid, type) {
   const s = nodes.find((x) => x.id === sid);
-  const plcBr = s.plcBranch || "Y";
-  const chainColor = getChainColor(s);
+  const plcBr = /** @type {any} */ (s).plcBranch || "Y";
+  const chainColor = getChainColor(/** @type {FOBNode} */ (s));
   if (type === "FREE") {
     const br = plcBr === "X" ? "Y" : "X";
     createConnection(s, nodes.find((x) => x.id === tid), "cable", chainColor, {
@@ -1693,10 +1710,10 @@ export function finishCombo(sid, tid, type) {
 }
 
 export function updateStats() {
-  document.getElementById("s-olt").textContent = nodes.filter((n) => n.type === "OLT").length;
-  document.getElementById("s-fob").textContent = nodes.filter((n) => n.type === "FOB").length;
-  document.getElementById("s-onu").textContent = nodes.filter((n) => n.type === "ONU").length;
-  document.getElementById("s-conn").textContent = conns.length;
+  document.getElementById("s-olt").textContent = String(nodes.filter((n) => n.type === "OLT").length);
+  document.getElementById("s-fob").textContent = String(nodes.filter((n) => n.type === "FOB").length);
+  document.getElementById("s-onu").textContent = String(nodes.filter((n) => n.type === "ONU").length);
+  document.getElementById("s-conn").textContent = String(conns.length);
   updateCableColors();
   refreshSignalAnim();
 }
@@ -1725,4 +1742,3 @@ window.finishOLT = finishOLT;
 window.finishFBT = finishFBT;
 window.finishCombo = finishCombo;
 window.reassignBranch = reassignBranch;
-
