@@ -464,18 +464,19 @@ export function addNode(type, latlng) {
   n.marker.on("dragend", () => {
     // Зняти прапорець драгу
     n._isDragging = false;
-    // Після завершення драгу - виконати фінальне оновлення без затримки
     if (dragUpdateTimer) {
       clearTimeout(dragUpdateTimer);
       dragUpdateTimer = null;
     }
-    // Оновити все одразу після завершення драгу
-    nodes.forEach((x) => updateNodeLabel(x));
-    layoutONUTooltips();
-    refreshSignalAnim();
-    if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
-    updateStats();
-    if (selNode === n) showProps(n);
+    // Виконуємо оновлення через мікро-затримку, щоб Leaflet завершив drag
+    setTimeout(() => {
+      nodes.forEach((x) => updateNodeLabel(x));
+      layoutONUTooltips();
+      refreshSignalAnim();
+      if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
+      updateStats();
+      if (selNode === n) showProps(n);
+    }, 10);
   });
   // Context menu / advanced actions will be wired later
 
@@ -581,18 +582,19 @@ export function restoreNetwork(json) {
     n.marker.on("dragend", () => {
       // Зняти прапорець драгу
       n._isDragging = false;
-      // Після завершення драгу - виконати фінальне оновлення без затримки
       if (dragUpdateTimer) {
         clearTimeout(dragUpdateTimer);
         dragUpdateTimer = null;
       }
-      // Оновити все одразу після завершення драгу
-      nodes.forEach((x) => updateNodeLabel(x));
-      layoutONUTooltips();
-      refreshSignalAnim();
-      if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
-      updateStats();
-      if (selNode === n) showProps(n);
+      // Виконуємо оновлення через мікро-затримку
+      setTimeout(() => {
+        nodes.forEach((x) => updateNodeLabel(x));
+        layoutONUTooltips();
+        refreshSignalAnim();
+        if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
+        updateStats();
+        if (selNode === n) showProps(n);
+      }, 10);
     });
     n.marker.on("contextmenu", (e) => showNodeCtx(e, n));
     updateNodeLabel(n);
