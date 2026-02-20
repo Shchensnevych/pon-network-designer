@@ -933,14 +933,20 @@ function buildNodeLabelContent(n) {
   if (n.type === "OLT") {
     L1 = `<span class="lbl-name lbl-olt">${n.name}</span>`;
     L2 = `<span class="lbl-dim">${n.outputPower} дБ</span>`;
-    // Per-port ONU stats
     const portInfo = [];
     for (let i = 0; i < n.ports; i++) {
       const c = cntONUport(n, i);
-      if (c > 0) portInfo.push(`P${i + 1}: ${c}`);
+      const targets = conns.filter((x) => x.from === n && x.type === "cable" && x.fromPort === i)
+                           .map((x) => x.to?.name).filter(Boolean).join(", ");
+      if (c > 0 || targets) {
+        let txt = `P${i + 1}`;
+        if (targets) txt += ` ➔ ${targets}`;
+        if (c > 0) txt += ` (${c} ONU)`;
+        portInfo.push(txt);
+      }
     }
     if (portInfo.length)
-      L2 += `<br><span class="lbl-dim">${portInfo.join(" | ")}</span>`;
+      L2 += `<br><span class="lbl-dim">${portInfo.join("<br>")}</span>`;
   } else if (n.type === "FOB") {
     L1 = `<span class="lbl-name lbl-fob">${n.name}</span>`;
 
@@ -1295,8 +1301,15 @@ function buildTooltip(n) {
     t += `⚡ Потужність: ${n.outputPower} дБ<br>`;
     for (let i = 0; i < n.ports; i++) {
       const c = cntONUport(n, i);
-      if (c > 0)
-        t += `P${i + 1}: <span style='color:${["#ff4444", "#3fb950", "#58a6ff", "#f0883e"][i % 4]}'>${c} ONU${c > (n.maxOnuPerPort || 64) ? " ⚠" : ""}</span><br>`;
+      const targets = conns.filter((x) => x.from === n && x.type === "cable" && x.fromPort === i)
+                           .map((x) => x.to?.name).filter(Boolean).join(", ");
+      if (c > 0 || targets) {
+        let pText = `P${i + 1}`;
+        if (targets) pText += ` ➔ ${targets}`;
+        const color = ["#ff4444", "#3fb950", "#58a6ff", "#f0883e"][i % 4];
+        let cText = c > 0 ? `${c} ONU${c > (n.maxOnuPerPort || 64) ? " ⚠" : ""}` : "0 ONU";
+        t += `${pText}: <span style='color:${color}'>${cText}</span><br>`;
+      }
     }
     return t;
   } else if (n.type === "FOB") {
