@@ -118,14 +118,14 @@ export function initNetwork() {
       // Skip if any node is currently being dragged
       if (nodes.some((n) => n._isDragging)) return;
       const zoom = map.getZoom();
-      if (zoom >= 16) {
+      if (zoom >= 15) {
         clearONULeaderLines();
+        layoutONUTooltips();
         nodes.forEach((n) => {
-          if (n.type === "ONU") {
+          if (n.type === "ONU" || n.type === "MDU") {
             updateNodeLabel(n);
           }
         });
-        layoutONUTooltips();
       }
     }, 150);
   });
@@ -475,6 +475,9 @@ export function addNode(type, latlng) {
   n.marker.nodeRef = n;
 
   n.marker.on("click", (evt) => onNodeClick(n, evt));
+  n.marker.on("dragstart", () => {
+    n._isDragging = true;
+  });
   n.marker.on("drag", () => onNodeDrag(n));
   n.marker.on("dragend", () => {
     // Зняти прапорець драгу
@@ -485,8 +488,8 @@ export function addNode(type, latlng) {
     }
     // Виконуємо оновлення через мікро-затримку, щоб Leaflet завершив drag
     setTimeout(() => {
-      nodes.forEach((x) => updateNodeLabel(x));
       layoutONUTooltips();
+      nodes.forEach((x) => updateNodeLabel(x));
       refreshSignalAnim();
       if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
       updateStats();
@@ -600,6 +603,9 @@ export function restoreNetwork(json) {
     n.marker.nodeRef = n;
     n.inputConn = null;
     n.marker.on("click", (e) => onNodeClick(n, e));
+    n.marker.on("dragstart", () => {
+      n._isDragging = true;
+    });
     n.marker.on("drag", (e) => onNodeDrag(n));
     n.marker.on("dragend", () => {
       // Зняти прапорець драгу
@@ -610,8 +616,8 @@ export function restoreNetwork(json) {
       }
       // Виконуємо оновлення через мікро-затримку
       setTimeout(() => {
-        nodes.forEach((x) => updateNodeLabel(x));
         layoutONUTooltips();
+        nodes.forEach((x) => updateNodeLabel(x));
         refreshSignalAnim();
         if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
         updateStats();
@@ -1064,15 +1070,15 @@ function updateNodeLabel(n) {
 
 // Адаптивне відображення tooltip'ів
 function updateNodeTooltip(node, content) {
-  // SKIP rebinding during drag to prevent tooltip disappearing
+  // SKIP rebinding during drag to prevent tooltip disappearing or jittering
   if (node._isDragging) return;
 
   const zoom = map.getZoom();
-  const minZoomForPermanent = 14;
+  const minZoomForPermanent = 15;
   
   if (node.type === "OLT" || node.type === "FOB") {
     const tt = node.marker.getTooltip();
-    if (tt && tt.options.permanent === true) {
+    if (tt && tt.options.permanent === true && node.marker.isTooltipOpen()) {
       node.marker.setTooltipContent(content);
     } else {
       if (tt) node.marker.unbindTooltip();
@@ -1084,30 +1090,36 @@ function updateNodeTooltip(node, content) {
       });
     }
   } else if (node.type === "ONU" || node.type === "MDU") {
-    // Встановлюємо permanent: true ЗАВЖДИ, як це було раніше
-    const shouldBePermanent = true;
+    const shouldBePermanent = zoom >= minZoomForPermanent;
     const tt = node.marker.getTooltip();
-    const isCurrentlyPermanent = tt ? tt.options.permanent : null;
+    const isCurrentlyPermanent = tt ? (tt.options.permanent === true) : null;
     
     const offset = node._tooltipOffset || [0, 5];
     const className = "node-label" + (node._hasLeader ? " onu-callout" : "");
 
-    // Якщо tooltip вже існує з потрібним режимом — просто оновлюємо його конфігурацію "на льоту"
-    if (tt && isCurrentlyPermanent === shouldBePermanent) {
-      let needsClassUpdate = false;
-      if (tt.options.className !== className || tt.options.offset[0] !== offset[0] || tt.options.offset[1] !== offset[1]) {
-        tt.options.className = className;
-        tt.options.offset = offset;
-        needsClassUpdate = true;
-      }
-      
-      node.marker.setTooltipContent(content);
-
-      if (needsClassUpdate && tt._container) {
-        // Force the class update on the generated leaflet container
-        tt._container.className = 'leaflet-tooltip leaflet-zoom-animated leaflet-tooltip-bottom ' + className;
-      }
+    // Leaflet bugs out if we mutate options natively on an open tooltip, or if we force it open
+    // while it thinks it's closed. The cleanest fix is to unbind/bind if IT CLOSED (due to drag) or geometry changed.
+    let needsRebind = false;
+    
+    // Check missing or closed
+    if (!tt || (shouldBePermanent && !node.marker.isTooltipOpen())) {
+      needsRebind = true;
+    } else if (isCurrentlyPermanent !== shouldBePermanent) {
+      needsRebind = true;
     } else {
+      // Check geometry/CSS changes safely
+      const currOff = tt.options.offset;
+      let currX = 0, currY = 5;
+      if (currOff) {
+          currX = currOff.x !== undefined ? currOff.x : currOff[0];
+          currY = currOff.y !== undefined ? currOff.y : currOff[1];
+      }
+      if (currX !== offset[0] || currY !== offset[1] || tt.options.className !== className) {
+        needsRebind = true;
+      }
+    }
+
+    if (needsRebind) {
       if (tt) node.marker.unbindTooltip();
       node.marker.bindTooltip(content, {
         permanent: shouldBePermanent,
@@ -1116,6 +1128,10 @@ function updateNodeTooltip(node, content) {
         offset: offset,
         sticky: !shouldBePermanent, 
       });
+      // automatically opens it correctly!
+    } else {
+      // Normal update without geometry changes
+      node.marker.setTooltipContent(content);
     }
   }
 }
@@ -1124,9 +1140,9 @@ function updateNodeTooltip(node, content) {
 function updateTooltipsVisibility() {
   const zoom = map.getZoom();
   
-  // Прибираємо приховування ліній лідера при зумі, раз тултипи завжди відкриті
-  // (або залишаємо, але leader lines все одно будуть перераховуватись)
-  // clearONULeaderLines(); 
+  if (zoom < 15) {
+    clearONULeaderLines();
+  }
 
   // Обчислюємо нові позиції тултипів (без сліпого unbind/bind)
   layoutONUTooltips();
@@ -1172,9 +1188,9 @@ function layoutONUTooltips() {
   onuLeaderLines = [];
 
   const zoom = map.getZoom();
-  if (zoom < 16) return;
+  if (zoom < 15) return;
 
-  const onus = nodes.filter((n) => n.type === "ONU");
+  const onus = nodes.filter((n) => n.type === "ONU" || n.type === "MDU");
   if (onus.length === 0) return;
 
   const bounds = map.getBounds().pad(0.15);
@@ -1225,7 +1241,7 @@ function layoutONUTooltips() {
   }
 
   // --- Zoom-aware force parameters ---
-  const t = Math.min(1, Math.max(0, (zoom - 14) / 5)); // 0 at z14, 1 at z19
+  const t = Math.min(1, Math.max(0, (zoom - 15) / 4)); // 0 at z15, 1 at z19
   const PUSH_ONU  = 0.52 - t * 0.20;   // 0.52 → 0.32
   const PUSH_OBS  = 0.70 - t * 0.25;   // 0.70 → 0.45
   const MAX_DISP  = 120  - t * 70;      // 120  → 50
