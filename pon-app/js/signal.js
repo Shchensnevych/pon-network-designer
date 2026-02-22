@@ -344,8 +344,8 @@ export function hasOLTPath(fob) {
 }
 
 /**
- * Signal level at ONU (dBm).
- * @param {ONUNode} onu
+ * Signal level at ONU/MDU (dBm).
+ * @param {ONUNode | MDUNode} onu
  * @returns {number}
  */
 export function sigAtONU(onu) {
@@ -410,6 +410,7 @@ export function cntONUport(olt, port) {
  */
 export function cntDn(n) {
   if (n.type === "ONU") return 1;
+  if (n.type === "MDU") return (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
   if (n.type === "FOB") {
     const d = conns.filter((c) => c.from === n && c.type === "patchcord").length;
     const sub = conns
@@ -444,8 +445,8 @@ export function updateCableColors() {
     let sig = null;
     if (c.type === "cable" && c.to?.type === "FOB" && c.to.inputConn && hasOLTPath(/** @type {FOBNode} */ (c.to))) {
       sig = sigIn(/** @type {FOBNode} */ (c.to));
-    } else if (c.type === "patchcord" && c.to?.type === "ONU" && c.from && hasOLTPath(/** @type {FOBNode} */ (c.from))) {
-      sig = sigAtONU(/** @type {ONUNode} */ (c.to));
+    } else if (c.type === "patchcord" && (c.to?.type === "ONU" || c.to?.type === "MDU") && c.from && hasOLTPath(/** @type {FOBNode} */ (c.from))) {
+      sig = sigAtONU(/** @type {ONUNode|MDUNode} */ (c.to));
     }
     if (sig !== null) {
       const glowColor = getSignalColor(sig);

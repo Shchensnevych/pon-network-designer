@@ -40,6 +40,8 @@ export let FIBER_DB_KM = 0.4;
 export let fobCounter = 1;
 /** @type {number} */
 export let onuCounter = 1;
+/** @type {number} */
+export let mduCounter = 1;
 
 /** @returns {number} */
 export function nextFobNumber() {
@@ -51,11 +53,17 @@ export function nextOnuNumber() {
   return onuCounter++;
 }
 
-/** @param {{ fobCounter?: number, onuCounter?: number } | null} next */
+/** @returns {number} */
+export function nextMduNumber() {
+  return mduCounter++;
+}
+
+/** @param {{ fobCounter?: number, onuCounter?: number, mduCounter?: number } | null} next */
 export function setCounters(next) {
   if (!next) return;
   if (typeof next.fobCounter === "number") fobCounter = next.fobCounter;
   if (typeof next.onuCounter === "number") onuCounter = next.onuCounter;
+  if (typeof next.mduCounter === "number") mduCounter = next.mduCounter;
 }
 
 /**
@@ -89,4 +97,11 @@ export const iconONU = L.divIcon({
   className: "icon-onu",
   iconSize: [10, 10],
   iconAnchor: [5, 5],
+});
+
+export const iconMDU = L.divIcon({
+  html: '<div style="background:#a371f7;width:20px;height:20px;border:2px solid #fff;border-radius:4px;box-shadow:0 0 6px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="12" height="12" fill="white"><path d="M12 2L4 6v14a2 2 0 002 2h12a2 2 0 002-2V6l-8-4zM8 18H6v-2h2v2zm0-4H6v-2h2v2zm0-4H6V8h2v2zm4 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V8h2v2zm4 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V8h2v2z"/></svg></div>',
+  className: "icon-mdu",
+  iconSize: [20, 20],
+  iconAnchor: [10, 10],
 });

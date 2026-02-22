@@ -10,12 +10,15 @@ import {
   FIBER_DB_KM,
   fobCounter,
   onuCounter,
+  mduCounter,
   setCounters,
   nextFobNumber,
   nextOnuNumber,
+  nextMduNumber,
   iconOLT,
   iconFOB,
   iconONU,
+  iconMDU,
 } from "./config.js";
 import { sigClass, sigColorClass } from "./utils.js";
 
@@ -206,7 +209,7 @@ export function initNetwork() {
   mapContainer.addEventListener("drop", (e) => {
     e.preventDefault();
     const type = e.dataTransfer.getData("text/plain");
-    if (!["olt", "fob", "onu"].includes(type)) return;
+    if (!["olt", "fob", "onu", "mdu"].includes(type)) return;
     const rect = mapContainer.getBoundingClientRect();
     const pt = L.point(e.clientX - rect.left, e.clientY - rect.top);
     const latlng = map.containerPointToLatLng(pt);
@@ -226,6 +229,7 @@ export function initNetwork() {
             <div><span style="display:inline-block;width:12px;height:12px;background:#58a6ff;border-radius:2px;margin-right:6px;vertical-align:middle"></span>OLT</div>
             <div><span style="display:inline-block;width:12px;height:12px;background:#ff6b6b;border-radius:50%;margin-right:6px;vertical-align:middle"></span>FOB</div>
             <div><span style="display:inline-block;width:10px;height:10px;background:#4ade80;border-radius:2px;margin-right:6px;vertical-align:middle"></span>ONU</div>
+            <div><span style="display:inline-block;width:14px;height:14px;background:#a371f7;border-radius:3px;margin-right:6px;vertical-align:middle"></span>Багатоповерхівка (MDU)</div>
             <hr style="border-color:#30363d;margin:4px 0">
             <div style="font-size:10px;color:#8b949e;margin-bottom:2px">Сигнал (підсвітка + текст):</div>
             <div><span style="display:inline-block;width:20px;height:3px;background:#3fb950;margin-right:6px;vertical-align:middle"></span>OK (≥ ${ONU_MIN} дБ)</div>
@@ -400,7 +404,7 @@ export function selectTool(t) {
  * Map click handler: add nodes in placement modes or clear selection in select mode.
  */
 export function onMapClick(e) {
-  if (["olt", "fob", "onu"].includes(tool)) {
+  if (["olt", "fob", "onu", "mdu"].includes(tool)) {
     addNode(tool, e.latlng);
     selectTool("select");
   } else if (tool === "select") {
@@ -451,6 +455,17 @@ export function addNode(type, latlng) {
     n.name = "ONU-" + n.number;
     n.marker = L.marker(latlng, {
       icon: iconONU,
+      draggable: true,
+      pmIgnore: true,
+    });
+  } else if (type === "mdu") {
+    n.number = nextMduNumber();
+    n.name = "MDU-" + n.number;
+    n.floors = 5;
+    n.entrances = 2;
+    n.flatsPerFloor = 4;
+    n.marker = L.marker(latlng, {
+      icon: iconMDU,
       draggable: true,
       pmIgnore: true,
     });
@@ -514,6 +529,7 @@ export function serializeNetwork() {
     }),
     fobCounter,
     onuCounter,
+    mduCounter,
   });
 }
 
@@ -569,8 +585,14 @@ export function restoreNetwork(json) {
     if (n.type === "ONU") {
       if (!n.name) n.name = "ONU";
     }
+    if (n.type === "MDU") {
+      if (!n.name) n.name = "MDU";
+      if (typeof n.floors !== "number") n.floors = 5;
+      if (typeof n.entrances !== "number") n.entrances = 2;
+      if (typeof n.flatsPerFloor !== "number") n.flatsPerFloor = 4;
+    }
     if (typeof n.price !== "number") n.price = 0;
-    const icon = n.type === "OLT" ? iconOLT : n.type === "ONU" ? iconONU : iconFOB;
+    const icon = n.type === "OLT" ? iconOLT : n.type === "ONU" ? iconONU : n.type === "MDU" ? iconMDU : iconFOB;
     n.marker = L.marker(
       { lat: n.lat, lng: n.lng },
       { icon, draggable: true, pmIgnore: true },
@@ -614,7 +636,7 @@ export function restoreNetwork(json) {
       });
   });
 
-  setCounters({ fobCounter: d.fobCounter || 1, onuCounter: d.onuCounter || 1 });
+  setCounters({ fobCounter: d.fobCounter || 1, onuCounter: d.onuCounter || 1, mduCounter: d.mduCounter || 1 });
   selNode = null;
   showProps(null);
   updateStats();
@@ -639,7 +661,7 @@ export function clearNetwork() {
   nodes.length = 0;
   conns.length = 0;
 
-  setCounters({ fobCounter: 1, onuCounter: 1 });
+  setCounters({ fobCounter: 1, onuCounter: 1, mduCounter: 1 });
   undoHistory.length = 0;
   redoHistory = [];
 
@@ -731,8 +753,8 @@ function addConn(from, to, type) {
       return;
     }
   } else if (type === "patchcord") {
-    if (from.type !== "FOB" || to.type !== "ONU") {
-      alert("Патчкорд: FOB → ONU");
+    if (from.type !== "FOB" || (to.type !== "ONU" && to.type !== "MDU")) {
+      alert("Патчкорд: FOB → ONU/MDU");
       return;
     }
     if (!from.plcType && !from.fbtType) {
@@ -990,7 +1012,7 @@ function buildNodeLabelContent(n) {
     if (!n.fbtType && !n.plcType) {
       L2 += `<br><span class="lbl-transit">→ транзит</span>`;
     }
-  } else if (n.type === "ONU") {
+  } else if (n.type === "ONU" || n.type === "MDU") {
     L1 = `<span class="lbl-name lbl-onu">${n.name}</span>`;
     const s = sigAtONU(n);
     const conn = conns.find((x) => x.to === n && x.type === "patchcord");
@@ -1046,32 +1068,53 @@ function updateNodeTooltip(node, content) {
   if (node._isDragging) return;
 
   const zoom = map.getZoom();
-  const minZoomForPermanent = 16;
-  
-  node.marker.unbindTooltip();
+  const minZoomForPermanent = 14;
   
   if (node.type === "OLT" || node.type === "FOB") {
-    node.marker.bindTooltip(content, {
-      permanent: true,
-      direction: "bottom",
-      className: "node-label",
-      offset: [0, 5],
-    });
-  } else if (node.type === "ONU") {
-    if (zoom >= minZoomForPermanent) {
+    const tt = node.marker.getTooltip();
+    if (tt && tt.options.permanent === true) {
+      node.marker.setTooltipContent(content);
+    } else {
+      if (tt) node.marker.unbindTooltip();
       node.marker.bindTooltip(content, {
         permanent: true,
         direction: "bottom",
-        className: "node-label" + (node._hasLeader ? " onu-callout" : ""),
-        offset: node._tooltipOffset || [0, 5],
-      });
-    } else {
-      node.marker.bindTooltip(content, {
-        permanent: false,
-        direction: "bottom",
         className: "node-label",
         offset: [0, 5],
-        sticky: true,
+      });
+    }
+  } else if (node.type === "ONU" || node.type === "MDU") {
+    // Встановлюємо permanent: true ЗАВЖДИ, як це було раніше
+    const shouldBePermanent = true;
+    const tt = node.marker.getTooltip();
+    const isCurrentlyPermanent = tt ? tt.options.permanent : null;
+    
+    const offset = node._tooltipOffset || [0, 5];
+    const className = "node-label" + (node._hasLeader ? " onu-callout" : "");
+
+    // Якщо tooltip вже існує з потрібним режимом — просто оновлюємо його конфігурацію "на льоту"
+    if (tt && isCurrentlyPermanent === shouldBePermanent) {
+      let needsClassUpdate = false;
+      if (tt.options.className !== className || tt.options.offset[0] !== offset[0] || tt.options.offset[1] !== offset[1]) {
+        tt.options.className = className;
+        tt.options.offset = offset;
+        needsClassUpdate = true;
+      }
+      
+      node.marker.setTooltipContent(content);
+
+      if (needsClassUpdate && tt._container) {
+        // Force the class update on the generated leaflet container
+        tt._container.className = 'leaflet-tooltip leaflet-zoom-animated leaflet-tooltip-bottom ' + className;
+      }
+    } else {
+      if (tt) node.marker.unbindTooltip();
+      node.marker.bindTooltip(content, {
+        permanent: shouldBePermanent,
+        direction: "bottom",
+        className: className,
+        offset: offset,
+        sticky: !shouldBePermanent, 
       });
     }
   }
@@ -1080,8 +1123,13 @@ function updateNodeTooltip(node, content) {
 // Оновити видимість tooltip'ів для всіх вузлів при зміні zoom
 function updateTooltipsVisibility() {
   const zoom = map.getZoom();
-  // Важливо: очистити підказки до перерахунку, щоб updateNodeTooltip не використовував старі оффсети
-  clearONULeaderLines();
+  
+  // Прибираємо приховування ліній лідера при зумі, раз тултипи завжди відкриті
+  // (або залишаємо, але leader lines все одно будуть перераховуватись)
+  // clearONULeaderLines(); 
+
+  // Обчислюємо нові позиції тултипів (без сліпого unbind/bind)
+  layoutONUTooltips();
 
   nodes.forEach((/** @type {any} */ n) => {
     // Перебудувати tooltip з правильним режимом
@@ -1094,9 +1142,6 @@ function updateTooltipsVisibility() {
   const zs = document.getElementById("zoom-slider");
   if (zv) zv.innerText = String(zoom);
   if (zs) /** @type {HTMLInputElement} */ (zs).value = String(zoom);
-
-  // Після побудови всіх тултипів — розкласти ONU тултипи щоб не перекривались
-  layoutONUTooltips();
 }
 
 // ═══════════════════════════════════════════════
@@ -1108,7 +1153,7 @@ function clearONULeaderLines() {
   onuLeaderLines = [];
   // Reset layout hints on all ONU nodes
   nodes.forEach((n) => {
-    if (n.type === "ONU") {
+    if (n.type === "ONU" || n.type === "MDU") {
       delete n._tooltipDir;
       delete n._tooltipOffset;
       delete n._hasLeader;
@@ -1180,7 +1225,7 @@ function layoutONUTooltips() {
   }
 
   // --- Zoom-aware force parameters ---
-  const t = Math.min(1, Math.max(0, (zoom - 16) / 3)); // 0 at z16, 1 at z19
+  const t = Math.min(1, Math.max(0, (zoom - 14) / 5)); // 0 at z14, 1 at z19
   const PUSH_ONU  = 0.52 - t * 0.20;   // 0.52 → 0.32
   const PUSH_OBS  = 0.70 - t * 0.25;   // 0.70 → 0.45
   const MAX_DISP  = 120  - t * 70;      // 120  → 50
@@ -1250,19 +1295,6 @@ function layoutONUTooltips() {
     n._tooltipDir = dir;
     n._tooltipOffset = [offX, offY];
     n._hasLeader = moved;
-
-    // Rebind with computed layout
-    const tt = n.marker.getTooltip();
-    if (tt) {
-      const content = tt.getContent();
-      n.marker.unbindTooltip();
-      n.marker.bindTooltip(content, {
-        permanent: true,
-        direction: "bottom",
-        className: "node-label" + (moved ? " onu-callout" : ""),
-        offset: [offX, offY],
-      });
-    }
 
     // Leader line
     if (moved) {
@@ -1338,6 +1370,19 @@ function buildTooltip(n) {
     const s = sigAtONU(n);
     const conn = conns.find((c) => c.to === n && c.type === "patchcord");
     let t = `<strong style='color:#4ade80'>${n.name}</strong><br>`;
+    if (s !== 0) {
+      t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
+      if (conn?.from) t += `📦 FOB: ${conn.from.name}<br>`;
+      if (conn?.branch) t += `🔀 Гілка: ${conn.branch}<br>`;
+      if (/** @type {any} */ (conn?.from)?.plcType) t += `📊 PLC: ${/** @type {any} */ (conn.from).plcType}`;
+    } else {
+      t += `⚠️ Не підключений`;
+    }
+    return t;
+  } else if (n.type === "MDU") {
+    const s = sigAtONU(n);
+    const conn = conns.find((c) => c.to === n && c.type === "patchcord");
+    let t = `<strong style='color:#a371f7'>${n.name}</strong><br>`;
     if (s !== 0) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
       if (conn?.from) t += `📦 FOB: ${conn.from.name}<br>`;
@@ -1469,6 +1514,19 @@ function showProps(n) {
       h += `<div class="info-pill" style="margin-top:10px">Сигнал: <b class="${sigClass(s)}">${s.toFixed(2)} дБ</b></div>`;
     } else {
       h += `<div class="warn-pill" style="margin-top:10px">Не підключено</div>`;
+    }
+  } else if (n.type === "MDU") {
+    const totalAbon = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
+    h += `<div style="margin-bottom:6px">Поверхів: <input type="number" value="${n.floors}" min="1" max="50" style="width:55px" onchange="updNode('${n.id}','floors', parseInt(this.value))"></div>`;
+    h += `<div style="margin-bottom:6px">Під'їздів: <input type="number" value="${n.entrances}" min="1" max="20" style="width:55px" onchange="updNode('${n.id}','entrances', parseInt(this.value))"></div>`;
+    h += `<div style="margin-bottom:8px">Кв. на поверсі: <input type="number" value="${n.flatsPerFloor}" min="1" max="20" style="width:55px" onchange="updNode('${n.id}','flatsPerFloor', parseInt(this.value))"></div>`;
+    h += `<div class="info-pill" style="margin-top:4px;background:#2d333b">Всього квартир: <b style="color:#58a6ff">${totalAbon}</b></div>`;
+
+    const s = sigAtONU(n);
+    if (s !== 0) {
+      h += `<div class="info-pill" style="margin-top:10px">Оптичний Сигнал: <b class="${sigClass(s)}">${s.toFixed(2)} дБ</b></div>`;
+    } else {
+      h += `<div class="warn-pill" style="margin-top:10px">Не підключено до PON</div>`;
     }
   }
 

@@ -108,7 +108,7 @@ declare global {
 
   interface PONNodeBase {
     id: string;
-    type: "OLT" | "FOB" | "ONU";
+    type: "OLT" | "FOB" | "ONU" | "MDU";
     name: string;
     lat: number;
     lng: number;
@@ -149,7 +149,14 @@ declare global {
     type: "ONU";
   }
 
-  type PONNode = OLTNode | FOBNode | ONUNode;
+  interface MDUNode extends PONNodeBase {
+    type: "MDU";
+    floors: number;
+    entrances: number;
+    flatsPerFloor: number;
+  }
+
+  type PONNode = OLTNode | FOBNode | ONUNode | MDUNode;
 
   // ═══════════════════════════════════════════════
   //  CONNECTION
@@ -176,7 +183,7 @@ declare global {
 
   interface SerializedNode {
     id: string;
-    type: "OLT" | "FOB" | "ONU";
+    type: "OLT" | "FOB" | "ONU" | "MDU";
     name: string;
     lat: number;
     lng: number;
@@ -187,6 +194,9 @@ declare global {
     fbtType?: string;
     plcType?: string;
     plcBranch?: string;
+    floors?: number;
+    entrances?: number;
+    flatsPerFloor?: number;
   }
 
   interface SerializedConnection {

@@ -42,7 +42,7 @@ function buildReportData() {
         plcBranch: fob.plcBranch || "—",
         plcLoss: fob.plcType ? PLC_LOSSES[fob.plcType].toFixed(2) : "—",
         signalONU: so !== null ? so.toFixed(2) : "—",
-        onuCnt: conns.filter((x) => x.from === fob && x.type === "patchcord").length,
+        onuCnt: conns.filter((x) => x.from === fob && x.type === "patchcord").reduce((acc, c) => acc + (c.to.type === "MDU" ? (c.to.floors || 0) * (c.to.entrances || 0) * (c.to.flatsPerFloor || 0) : 1), 0),
         status:
           so !== null
             ? so >= ONU_MIN
@@ -60,7 +60,11 @@ export function openReport() {
   const rows = buildReportData();
   const oltCount = nodes.filter((n) => n.type === "OLT").length;
   const fobCount = nodes.filter((n) => n.type === "FOB").length;
-  const onuCount = nodes.filter((n) => n.type === "ONU").length;
+  let onuCount = 0;
+  nodes.forEach((n) => {
+    if (n.type === "ONU") onuCount++;
+    if (n.type === "MDU") onuCount += (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
+  });
   const totalCableM = conns
     .filter((c) => c.type === "cable")
     .reduce((a, c) => a + connKm(c) * 1000, 0);
@@ -177,6 +181,15 @@ export function openReport() {
     if (price > 0 && groupedOnu[base].price === 0) groupedOnu[base].price = price;
   });
 
+  const groupedMdu = {};
+  nodes.filter((n) => n.type === "MDU").forEach((n) => {
+    const base = getBaseName(n.name, "MDU");
+    if (!groupedMdu[base]) groupedMdu[base] = { name: base, count: 0, price: 0 };
+    groupedMdu[base].count++;
+    const price = typeof n.price === "number" ? n.price : 0;
+    if (price > 0 && groupedMdu[base].price === 0) groupedMdu[base].price = price;
+  });
+
   // Count splitters by type
   const fbtCounts = {};
   nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).fbtType).forEach((n) => {
@@ -193,7 +206,7 @@ export function openReport() {
   });
 
   const hasEquipment = Object.keys(groupedOlt).length > 0 || Object.keys(groupedFob).length > 0 || 
-                       Object.keys(groupedOnu).length > 0 || Object.keys(fbtCounts).length > 0 || 
+                       Object.keys(groupedOnu).length > 0 || Object.keys(groupedMdu).length > 0 || Object.keys(fbtCounts).length > 0 || 
                        Object.keys(plcCounts).length > 0;
 
   if (hasEquipment) {
@@ -229,6 +242,17 @@ export function openReport() {
 
     // ONU
     Object.values(groupedOnu).forEach((g) => {
+      const total = g.count * g.price;
+      html += `<tr>
+        <td class="td-name">${g.name}</td>
+        <td>${g.count} шт.</td>
+        <td>${g.price > 0 ? g.price.toFixed(2) : ""}</td>
+        <td>${total > 0 ? total.toFixed(2) : ""}</td>
+      </tr>`;
+    });
+
+    // MDU
+    Object.values(groupedMdu).forEach((g) => {
       const total = g.count * g.price;
       html += `<tr>
         <td class="td-name">${g.name}</td>
@@ -379,6 +403,15 @@ export function downloadCSV() {
     if (price > 0 && groupedOnu[base].price === 0) groupedOnu[base].price = price;
   });
 
+  const groupedMdu = {};
+  nodes.filter((n) => n.type === "MDU").forEach((n) => {
+    const base = getBaseName(n.name, "MDU");
+    if (!groupedMdu[base]) groupedMdu[base] = { name: base, count: 0, price: 0 };
+    groupedMdu[base].count++;
+    const price = typeof n.price === "number" ? n.price : 0;
+    if (price > 0 && groupedMdu[base].price === 0) groupedMdu[base].price = price;
+  });
+
   const fbtCounts = {};
   nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).fbtType).forEach((n) => {
     const fob = /** @type {FOBNode} */ (n);
@@ -405,6 +438,10 @@ export function downloadCSV() {
     economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};${safeCell(g.price > 0 ? g.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
   });
   Object.values(groupedOnu).forEach((g) => {
+    const total = g.count * g.price;
+    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};${safeCell(g.price > 0 ? g.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
+  });
+  Object.values(groupedMdu).forEach((g) => {
     const total = g.count * g.price;
     economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};${safeCell(g.price > 0 ? g.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
   });
@@ -534,6 +571,13 @@ export function downloadTXT() {
     groupedOnu[base].count++;
   });
 
+  const groupedMdu = {};
+  nodes.filter((n) => n.type === "MDU").forEach((n) => {
+    const base = getBaseName(n.name, "MDU");
+    if (!groupedMdu[base]) groupedMdu[base] = { name: base, count: 0 };
+    groupedMdu[base].count++;
+  });
+
   const fbtCounts = {};
   nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).fbtType).forEach((n) => {
     const fob = /** @type {FOBNode} */ (n);
@@ -558,6 +602,9 @@ export function downloadTXT() {
     econTable.push([g.name, `${g.count} шт.`, "", ""]);
   });
   Object.values(groupedOnu).forEach((g) => {
+    econTable.push([g.name, `${g.count} шт.`, "", ""]);
+  });
+  Object.values(groupedMdu).forEach((g) => {
     econTable.push([g.name, `${g.count} шт.`, "", ""]);
   });
   Object.entries(fbtCounts).forEach(([type, count]) => {
@@ -598,11 +645,12 @@ export function showSuggestions() {
         icon: "❌",
         type: "err",
         msg: `${fob.name}: не підключений (немає вхідного кабелю)`,
+        nodeId: fob.id,
       });
     });
 
   nodes
-    .filter((n) => n.type === "ONU")
+    .filter((n) => n.type === "ONU" || n.type === "MDU")
     .forEach((onu) => {
       const hasConn = conns.some((c) => c.to === onu && c.type === "patchcord");
       if (!hasConn)
@@ -610,6 +658,7 @@ export function showSuggestions() {
           icon: "❌",
           type: "err",
           msg: `${onu.name}: не підключений (немає патчкорду)`,
+          nodeId: onu.id,
         });
     });
 
@@ -622,12 +671,14 @@ export function showSuggestions() {
           icon: "❌",
           type: "err",
           msg: `${fob.name}: критично слабкий сигнал ONU (${sig.toFixed(1)} дБ)`,
+          nodeId: fob.id,
         });
       else if (sig < ONU_MIN)
         issues.push({
           icon: "⚠️",
           type: "warn",
           msg: `${fob.name}: сигнал на межі порогу (${sig.toFixed(1)} дБ)`,
+          nodeId: fob.id,
         });
     });
 
@@ -642,6 +693,7 @@ export function showSuggestions() {
             icon: "⚠️",
             type: "warn",
             msg: `${olt.name} Порт ${i + 1}: перевантаження! ${c}/${max} ONU`,
+            nodeId: olt.id,
           });
       }
     });
@@ -654,9 +706,8 @@ export function showSuggestions() {
         issues.push({
           icon: "⚠️",
           type: "warn",
-          msg: `Довгий кабель: ${c.from.name}→${c.to.name} (${(km * 1000).toFixed(
-            0,
-          )} м)`,
+          msg: `Довгий кабель: ${c.from.name}→${c.to.name} (${(km * 1000).toFixed(0)} м)`,
+          nodeId: c.from.id,
         });
     });
 
@@ -671,6 +722,7 @@ export function showSuggestions() {
             icon: "❌",
             type: "err",
             msg: `Петля виявлена! Ланцюг через ${fob.name}`,
+            nodeId: fob.id,
           });
           break;
         }
@@ -687,7 +739,14 @@ export function showSuggestions() {
     html += `<ul style="list-style:none;padding:0;margin:0">`;
     issues.forEach((i) => {
       const cls = i.type === "err" ? "td-err" : i.type === "warn" ? "td-warn" : "";
-      html += `<li class="${cls}" style="margin-bottom:4px">${i.icon} ${i.msg}</li>`;
+      let btn = "";
+      if (i.nodeId) {
+        btn = `<button class="action-btn btn-blue" style="padding:2px 8px; font-size:11px; margin-left:auto; width:max-content; flex-shrink:0; white-space:nowrap;" onclick="focusNode('${i.nodeId}')"><i class="fa-solid fa-magnifying-glass"></i> Показати</button>`;
+      }
+      html += `<li class="${cls}" style="margin-bottom:8px; display:flex; justify-content:space-between; align-items:center; gap: 10px;">
+        <span>${i.icon} ${i.msg}</span>
+        ${btn}
+      </li>`;
     });
     html += `</ul>`;
   }
