@@ -29,8 +29,8 @@ import { nodes, conns, map, setMap } from "./state.js";
 import {
   getChainColor, usedCables, usedPatches, usedOutputs,
   maxOutputs, freeCablePorts, freePatchPorts,
-  fobPortStatus, getDistM, connKm, sigIn, sigOnOutput,
-  hasOLTPath, sigAtONU, sigFBT, sigONU,
+  fobPortStatus, getDistM, connKm, sigIn, 
+  hasOLTPath, sigAtONU, sigONU, sigFBT,
   cntONUport, cntDn, getSignalColor, updateCableColors,
 } from "./signal.js";
 
@@ -646,6 +646,8 @@ export function restoreNetwork(json) {
         id: c.id,
         fromPort: c.fromPort,
         branch: c.branch,
+        capacity: c.capacity,
+        length: c.length,
         pts: c.pts,
       });
   });
@@ -746,80 +748,22 @@ function addConn(from, to, type) {
 
     // FOB -> FOB Rules
     const chainColor = getChainColor(from);
-    if (!from.fbtType && !from.plcType) {
-      if (usedOutputs(from) >= 1) {
-        alert(`${from.name} (Транзит) вже має вихід!`);
-        return;
-      }
-      promptCableCapacity(from, to, type, chainColor, () => {
-         if (typeof window.openCrossConnect === "function") window.openCrossConnect(from.id);
-      });
-      return;
-    }
-    if (from.plcType && !from.fbtType) {
-      const max = parseInt(from.plcType.split("x")[1]);
-      if (usedOutputs(from) >= max) {
-        alert(`${from.name}: PLC ${from.plcType} повністю зайнятий (${max}/${max})!`);
-        return;
-      }
-      promptCableCapacity(from, to, type, chainColor, () => {
-         if (typeof window.openCrossConnect === "function") window.openCrossConnect(from.id);
-      });
-      return;
-    }
-    if (from.fbtType && !from.plcType) {
-      showFOBBranchSel(from, to);
-      return;
-    }
-    if (from.fbtType && from.plcType) {
-      showFOBBranchSel_Combo(from, to);
-      return;
-    }
+    promptCableCapacity(from, to, type, chainColor, () => {
+       if (typeof window.openCrossConnect === "function") window.openCrossConnect(from.id);
+    });
+    return;
   } else if (type === "patchcord") {
     if (from.type !== "FOB" || (to.type !== "ONU" && to.type !== "MDU")) {
       alert("Патчкорд: FOB → ONU/MDU");
       return;
     }
-    if (!from.plcType && !from.fbtType) {
-      alert(`${from.name} (Транзит) — немає сплітера для ONU!`);
-      return;
-    }
-
-    if (from.plcType && !from.fbtType) {
-      const max = parseInt(from.plcType.split("x")[1]);
-      if (usedOutputs(from) >= max) {
-        alert(`${from.name}: PLC ${from.plcType} повністю зайнятий (${max}/${max})!`);
-        return;
-      }
-      createConnection(from, to, type, "#ffd700");
-      return;
-    }
-    if (from.fbtType && !from.plcType) {
-      const usedX = conns.some((c) => c.from === from && c.branch === "X");
-      const usedY = conns.some((c) => c.from === from && c.branch === "Y");
-      const br = !usedX ? "X" : !usedY ? "Y" : null;
-      if (!br) {
-        alert(`${from.name}: FBT ${from.fbtType} повністю зайнятий!`);
-        return;
-      }
-      createConnection(from, to, type, "#ffd700", { branch: br });
-      return;
-    }
-    if (from.fbtType && from.plcType) {
-      const plcBr = from.plcBranch || "Y";
-      const max = parseInt(from.plcType.split("x")[1]);
-      const usedOnPLC = conns.filter((c) => c.from === from && c.branch === plcBr).length;
-      if (usedOnPLC >= max) {
-        alert(`${from.name}: PLC ${from.plcType} (гілка ${plcBr}) повністю зайнятий!`);
-        return;
-      }
-      createConnection(from, to, type, "#ffd700", { branch: plcBr });
-      return;
-    }
+    createConnection(from, to, type, "#ffd700");
+    if (typeof window.openCrossConnect === "function") window.openCrossConnect(from.id);
+    return;
   }
 }
 
-function promptCableCapacity(from, to, type, color, callback) {
+function promptCableCapacity(from, to, type, color, callback, extraProps = {}) {
     let capacity = 12; // default
     const input = prompt(`Введіть кількість жил у магістралі (Кабель від ${from.name} до ${to.name}):`, "12");
     if (input === null) {
@@ -830,7 +774,7 @@ function promptCableCapacity(from, to, type, color, callback) {
     if (!isNaN(val) && val > 0 && val <= 144) capacity = val;
     
     // Create the connection using the parsed capacity
-    createConnection(from, to, type, color, { capacity });
+    createConnection(from, to, type, color, { capacity, ...extraProps });
     
     // Call the callback to open the modal
     if (callback) callback();
@@ -995,17 +939,17 @@ function buildNodeLabelContent(n) {
 
   if (n.type === "OLT") {
     L1 = `<span class="lbl-name lbl-olt">${n.name}</span>`;
-    L2 = `<span class="lbl-dim">${n.outputPower} дБ</span>`;
+    L2 = `<span class="lbl-dim">${Number(n.outputPower || 0).toFixed(1)} дБ</span>`;
     const portInfo = [];
+    const xcArr = n.crossConnects || [];
     for (let i = 0; i < n.ports; i++) {
-      const c = cntONUport(n, i);
-      const targets = conns.filter((x) => x.from === n && x.type === "cable" && x.fromPort === i)
-                           .map((x) => x.to?.name).filter(Boolean).join(", ");
-      if (c > 0 || targets) {
-        let txt = `P${i + 1}`;
-        if (targets) txt += ` ➔ ${targets}`;
-        if (c > 0) txt += ` (${c} ONU)`;
-        portInfo.push(txt);
+      const activeCores = xcArr.filter(x => parseInt(String(x.fromId)) === i && x.toType === "CABLE");
+      if (activeCores.length > 0) {
+        const targetNodes = [...new Set(activeCores.map(x => {
+            const cable = conns.find(cf => cf.id === x.toId);
+            return cable ? cable.to?.name : "";
+        }))].filter(Boolean).join(", ");
+        portInfo.push(`PON ${i + 1} ➔ [${targetNodes}] (${activeCores.length} жил)`);
       }
     }
     if (portInfo.length)
@@ -1027,10 +971,11 @@ function buildNodeLabelContent(n) {
         } else {
           br = `[${n.inputConn.branch}]`;
         }
-      } else if (parent.type === "FOB" && parent.plcType) {
-        br = `[PLC]`;
       }
-      L2 = `<span class="lbl-dim">IN: ${src}${br ? " " + br : ""}</span> <span class="lbl-sig ${sigColorClass(si)}">${si.toFixed(1)}дБ</span>`;
+      L2 = `<span class="lbl-dim">IN: ${src}${br ? " " + br : ""}</span>`;
+      if (si !== null) {
+        L2 += ` <span class="lbl-sig ${sigColorClass(si)}">${si.toFixed(1)}дБ</span>`;
+      }
     }
 
     // Port status
@@ -1038,17 +983,21 @@ function buildNodeLabelContent(n) {
     pi.lines.forEach((l) => (L2 += `<br>${l}`));
 
     // FBT branch signals
-    if (n.fbtType && n.inputConn) {
+    if (n.fbtType) {
       const sx = sigFBT(n, "X");
       const sy = sigFBT(n, "Y");
-      L2 += `<br><span class="${sigColorClass(sx)}">X:${sx.toFixed(1)}дБ</span>`;
-      L2 += ` <span class="${sigColorClass(sy)}">Y:${sy.toFixed(1)}дБ</span>`;
+      if (sx !== null && sy !== null) {
+        L2 += `<br><span class="${sigColorClass(sx)}">X:${sx.toFixed(1)}дБ</span>`;
+        L2 += ` <span class="${sigColorClass(sy)}">Y:${sy.toFixed(1)}дБ</span>`;
+      }
     }
 
     // PLC ONU signal
     if (n.plcType && n.inputConn) {
       const so = sigONU(n);
-      L2 += `<br><span class="${sigColorClass(so)}">→ONU:${so.toFixed(1)}дБ</span>`;
+      if (so !== null) {
+        L2 += `<br><span class="${sigColorClass(so)}">→ONU:${so.toFixed(1)}дБ</span>`;
+      }
     }
 
     // Transit indicator
@@ -1059,7 +1008,7 @@ function buildNodeLabelContent(n) {
     L1 = `<span class="lbl-name lbl-onu">${n.name}</span>`;
     const s = sigAtONU(n);
     const conn = conns.find((x) => x.to === n && x.type === "patchcord");
-    if (s !== 0) {
+    if (s !== null) {
       L2 = `<span class="lbl-sig ${sigColorClass(s)}">${s.toFixed(1)}дБ</span>`;
       if (conn && conn.from) {
         let tag = "";
@@ -1076,6 +1025,8 @@ function buildNodeLabelContent(n) {
                  let srcName = inConn ? inConn.from.name : "?";
                  tag += `[Тр. ${srcName} ж.${(xc.fromCore || 0) + 1}]`;
               }
+           } else {
+             tag += `[Немає кросування]`;
            }
         }
         
@@ -1402,17 +1353,17 @@ export function fitNetwork() {
 function buildTooltip(n) {
   if (n.type === "OLT") {
     let t = `<strong style='color:#58a6ff'>${n.name}</strong><br>`;
-    t += `⚡ Потужність: ${n.outputPower} дБ<br>`;
+    t += `⚡ Потужність: ${Number(n.outputPower || 0).toFixed(1)} дБ<br>`;
+    const xcArr = n.crossConnects || [];
     for (let i = 0; i < n.ports; i++) {
-      const c = cntONUport(n, i);
-      const targets = conns.filter((x) => x.from === n && x.type === "cable" && x.fromPort === i)
-                           .map((x) => x.to?.name).filter(Boolean).join(", ");
-      if (c > 0 || targets) {
-        let pText = `P${i + 1}`;
-        if (targets) pText += ` ➔ ${targets}`;
+      const activeCores = xcArr.filter(x => parseInt(String(x.fromId)) === i && x.toType === "CABLE");
+      if (activeCores.length > 0) {
+        const targetNodes = [...new Set(activeCores.map(x => {
+            const cable = conns.find(cf => cf.id === x.toId);
+            return cable ? cable.to?.name : "";
+        }))].filter(Boolean).join(", ");
         const color = ["#ff4444", "#3fb950", "#58a6ff", "#f0883e"][i % 4];
-        let cText = c > 0 ? `${c} ONU${c > (n.maxOnuPerPort || 64) ? " ⚠" : ""}` : "0 ONU";
-        t += `${pText}: <span style='color:${color}'>${cText}</span><br>`;
+        t += `PON ${i + 1} ➔ ${targetNodes}: <span style='color:${color}'>${activeCores.length} жил(и) підключено</span><br>`;
       }
     }
     return t;
@@ -1434,7 +1385,9 @@ function buildTooltip(n) {
       t += `📊 PLC: ${n.plcType}<br>`;
       if (n.inputConn) {
         const so = sigONU(n);
-        t += `→ONU: <span style='color:${sigClass(so) === "ok" ? "#3fb950" : sigClass(so) === "warn" ? "#d29922" : "#f85149"}'>${so.toFixed(2)} дБ</span><br>`;
+        if (so !== null) {
+          t += `→ONU: <span style='color:${sigClass(so) === "ok" ? "#3fb950" : sigClass(so) === "warn" ? "#d29922" : "#f85149"}'>${so.toFixed(2)} дБ</span><br>`;
+        }
       }
     }
     const pi = fobPortStatus(n);
@@ -1445,7 +1398,7 @@ function buildTooltip(n) {
     const s = sigAtONU(n);
     const conn = conns.find((c) => c.to === n && c.type === "patchcord");
     let t = `<strong style='color:#4ade80'>${n.name}</strong><br>`;
-    if (s !== 0) {
+    if (s !== null) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
       if (conn?.from) t += `📦 FOB: ${conn.from.name}<br>`;
       
@@ -1467,20 +1420,15 @@ function buildTooltip(n) {
             }
          }
       }
-      
-      if (!xcTag) {
-        if (conn?.branch) t += `🔀 Гілка: ${conn.branch}<br>`;
-        if (/** @type {any} */ (conn?.from)?.plcType) t += `📊 PLC: ${/** @type {any} */ (conn.from).plcType}`;
-      }
     } else {
-      t += `⚠️ Не підключений`;
+      t += `⚠️ Не підключений (немає кросування)`;
     }
     return t;
   } else if (n.type === "MDU") {
     const s = sigAtONU(n);
     const conn = conns.find((c) => c.to === n && c.type === "patchcord");
     let t = `<strong style='color:#a371f7'>${n.name}</strong><br>`;
-    if (s !== 0) {
+    if (s !== null) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
       if (conn?.from) t += `📦 FOB: ${conn.from.name}<br>`;
       
@@ -1501,13 +1449,8 @@ function buildTooltip(n) {
             }
          }
       }
-      
-      if (!xcTag) {
-        if (conn?.branch) t += `🔀 Гілка: ${conn.branch}<br>`;
-        if (/** @type {any} */ (conn?.from)?.plcType) t += `📊 PLC: ${/** @type {any} */ (conn.from).plcType}`;
-      }
     } else {
-      t += `⚠️ Не підключений`;
+      t += `⚠️ Не підключений (немає кросування)`;
     }
     return t;
   }
@@ -1583,7 +1526,12 @@ function showProps(n) {
       const dist = connKm(n.inputConn) * 1000;
       const loss = (dist / 1000) * FIBER_DB_KM;
       const s = sigIn(n);
-      h += `<div class="info-pill" style="margin-top:10px">Input <br> ${dist.toFixed(0)}м (${loss.toFixed(2)}дБ)<br>Sig: <b class="${sigClass(s)}">${s.toFixed(2)} дБ</b></div>`;
+      h += `<div class="info-pill" style="margin-top:10px">Input <br> ${dist.toFixed(0)}м (${loss.toFixed(2)}дБ)<br>Sig: `;
+      if (s !== null) {
+        h += `<b class="${sigClass(s)}">${s.toFixed(2)} дБ</b></div>`;
+      } else {
+        h += `<b>---</b></div>`;
+      }
       
       let fromInfo = n.inputConn.from.name || n.inputConn.from.type;
       if (n.inputConn.branch) fromInfo += ` (гілка ${n.inputConn.branch})`;
@@ -1597,50 +1545,18 @@ function showProps(n) {
     const fC = freeCablePorts(n);
     const fP = freePatchPorts(n);
 
-    // Branch reassignment UI (per-connection branch chooser)
+    // We now use pure optical tracing, no legacy branch dropdowns
     const outConns = conns.filter((c) => c.from === n);
-    if (n.fbtType && outConns.length > 0) {
-      h += `<div style="margin-top:8px;border-top:1px solid #30363d;padding-top:6px">`;
-      h += `<div style="font-size:10px;color:#8b949e;margin-bottom:4px">🔌 Підключення (гілки):</div>`;
-      outConns.forEach((c) => {
-        const target = c.to ? c.to.name : "?";
-        const typeIcon = c.type === "cable" ? "━" : "╌";
-        const typeLabel = c.type === "cable" ? "каб" : "патч";
-
-        let options = "";
-        if (n.fbtType && n.plcType) {
-          const plcBr = n.plcBranch || "Y";
-          const freeBr = plcBr === "X" ? "Y" : "X";
-          const plcFull = isBranchFull(n, plcBr) && c.branch !== plcBr;
-          const freeFull = isBranchFull(n, freeBr) && c.branch !== freeBr;
-
-          options = `<option value="${plcBr}" ${c.branch === plcBr ? "selected" : ""} ${plcFull ? "disabled" : ""}>PLC (${plcBr}) ${plcFull ? "(Full)" : ""}</option>
-                     <option value="${freeBr}" ${c.branch === freeBr ? "selected" : ""} ${freeFull ? "disabled" : ""}>FBT (${freeBr}) ${freeFull ? "(Full)" : ""}</option>`;
-        } else if (n.fbtType) {
-          const xFull = isBranchFull(n, "X") && c.branch !== "X";
-          const yFull = isBranchFull(n, "Y") && c.branch !== "Y";
-          options = `<option value="X" ${c.branch === "X" ? "selected" : ""} ${xFull ? "disabled" : ""}>X ${xFull ? "(Full)" : ""}</option>
-                     <option value="Y" ${c.branch === "Y" ? "selected" : ""} ${yFull ? "disabled" : ""}>Y ${yFull ? "(Full)" : ""}</option>`;
-        }
-
-        h += `<div style="display:flex;align-items:center;gap:4px;font-size:11px;margin-bottom:3px">
-          <span style="color:#58a6ff">${typeIcon}</span>
-          <span style="flex:1;overflow:hidden;text-overflow:ellipsis;white-space:nowrap" title="${typeLabel} → ${target}">${target}</span>
-          <select style="width:95px;font-size:10px" onchange="reassignBranch('${c.id}',this.value)">${options}</select>
-        </div>`;
-      });
-      h += `</div>`;
-    }
 
     h += `<div style="font-size:10px;margin-top:6px;border-top:1px solid #30363d;padding-top:4px">
       Free Cable: ${fC} <br> Free ONU: ${fP}
     </div>`;
   } else if (n.type === "ONU") {
     const s = sigAtONU(n);
-    if (s !== 0) {
+    if (s !== null) {
       h += `<div class="info-pill" style="margin-top:10px">Сигнал: <b class="${sigClass(s)}">${s.toFixed(2)} дБ</b></div>`;
     } else {
-      h += `<div class="warn-pill" style="margin-top:10px">Не підключено</div>`;
+      h += `<div class="warn-pill" style="margin-top:10px">Не підключено до PON</div>`;
     }
   } else if (n.type === "MDU") {
     const totalAbon = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
@@ -1650,7 +1566,7 @@ function showProps(n) {
     h += `<div class="info-pill" style="margin-top:4px;background:#2d333b">Всього квартир: <b style="color:#58a6ff">${totalAbon}</b></div>`;
 
     const s = sigAtONU(n);
-    if (s !== 0) {
+    if (s !== null) {
       h += `<div class="info-pill" style="margin-top:10px">Оптичний Сигнал: <b class="${sigClass(s)}">${s.toFixed(2)} дБ</b></div>`;
     } else {
       h += `<div class="warn-pill" style="margin-top:10px">Не підключено до PON</div>`;
@@ -1823,10 +1739,11 @@ function showOLTPortSel(olt, fob) {
 export function finishOLT(oid, fid, port) {
   const o = nodes.find((x) => x.id === oid);
   const f = nodes.find((x) => x.id === fid);
-  createConnection(o, f, "cable", "#888", {
-    fromPort: port,
-    color: ["#00d4ff", "#ff69b4", "#ff8c00", "#b4ff00"][port % 4],
-  });
+  showProps(null); // hide standard properties
+  const color = ["#00d4ff", "#ff69b4", "#ff8c00", "#b4ff00"][port % 4];
+  promptCableCapacity(o, f, "cable", color, () => {
+    if (typeof window.openPatchPanel === "function") window.openPatchPanel(o.id);
+  }, { fromPort: port });
 }
 
 function showFOBBranchSel(src, tgt) {
@@ -1894,6 +1811,14 @@ export function updateStats() {
 }
 
 // Expose internal functions for inline HTML handlers
+window.refreshNetworkUI = () => {
+  nodes.forEach(x => {
+    updateNodeLabel(x);
+  });
+  if (typeof updateTooltipsVisibility === "function") updateTooltipsVisibility();
+  updateStats();
+};
+
 window.updNode = updNode;
 window.selectNodeById = (id) => {
   const n = nodes.find((x) => x.id === id);

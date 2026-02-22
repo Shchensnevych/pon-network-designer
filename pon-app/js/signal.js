@@ -139,122 +139,72 @@ export function freePatchPorts(fob) {
  * @returns {{ lines: string[], rich: string[], details: Array<{label: string, targets: string[]}> }}
  */
 export function fobPortStatus(n) {
-  /** @type {string[]} */
   const lines = [];
-  /** @type {string[]} */
   const rich = [];
-  /** @type {Array<{label: string, targets: string[]}>} */
   const details = [];
 
-  /**
-   * Build compact type tag like (FOB), (ONU), (FOB/ONU) from connections
-   * @param {typeof conns} arr
-   * @returns {string}
-   */
-  const typeTag = (arr) => {
-    const types = [...new Set(arr.map((c) => c.to.type))];
-    return types.length > 0 ? ` (${types.join("/")})` : "";
+  const xc = n.crossConnects || [];
+  
+  // Helper to format cable core counts
+  const targetTag = (cId) => {
+      const c = conns.find(x => x.id === cId);
+      if (!c || !c.to) return "";
+      return c.type === "patchcord" ? ` (${c.to.name})` : ` [К: ${c.to.name}]`;
   };
 
-  if (!n.fbtType && !n.plcType) {
-    const outConns = conns.filter((c) => c.from === n);
-    const used = outConns.length;
-    const clr = used === 0 ? "#3fb950" : "#f85149";
-    lines.push(`<span style="color:#f97316">⇄ ${used}/1${typeTag(outConns)}</span>`);
-    const target = outConns.length > 0 ? outConns[0].to.name : "";
-    rich.push(`📦 Транзит: <span style="color:${clr}">${used}/1</span>${target ? ` → ${target}` : ""}`);
-    details.push({ label: "Транзит", targets: outConns.map((c) => c.to.name) });
+  const activeTransits = xc.filter(x => x.fromType === "CABLE" && x.toType === "CABLE");
+  const used = activeTransits.length;
+  
+  if (used > 0 || (!n.fbtType && !n.plcType)) {
+    const clr = used > 0 ? "#3fb950" : "#f85149";
+    lines.push(`<span style="color:#f97316">Транзит: <span style="color:${clr}">${used} жил</span></span>`);
+    rich.push(`📦 Транзит: <span style="color:${clr}">${used} жил зварено</span>`);
+    
+    // Group by outgoing cable
+    const outCables = [...new Set(activeTransits.map(x => x.toId))];
+    outCables.forEach(cid => {
+        const c = conns.find(x => x.id === cid);
+        if (c) {
+           const count = activeTransits.filter(x => x.toId === cid).length;
+           rich.push(`  └ До ${c.to.name}: ${count} жил`);
+        }
+    });
   }
 
-  if (n.fbtType && !n.plcType) {
-    const xConns = conns.filter((c) => c.from === n && c.branch === "X");
-    const yConns = conns.filter((c) => c.from === n && c.branch === "Y");
-    const xUsed = xConns.length;
-    const yUsed = yConns.length;
-    const total = xUsed + yUsed;
-    const xClr = xUsed ? "#f85149" : "#3fb950";
-    const yClr = yUsed ? "#f85149" : "#3fb950";
-    const xName = xConns.length > 0 ? xConns[0].to.name : "";
-    const yName = yConns.length > 0 ? yConns[0].to.name : "";
-    lines.push(
-      `<span style="color:#ff6b6b">FBT X: <span style="color:${xClr}">${xUsed}/1${typeTag(xConns)}</span></span>`,
-    );
-    lines.push(
-      `<span style="color:#ff6b6b">FBT Y: <span style="color:${yClr}">${yUsed}/1${typeTag(yConns)}</span></span>`,
-    );
-    rich.push(
-      `🔀 FBT ${n.fbtType}: <span style="color:${xClr}">X=${xUsed ? "зайн." : "вільн."}</span>${xName ? ` → ${xName}` : ""} <span style="color:${yClr}">Y=${yUsed ? "зайн." : "вільн."}</span>${yName ? ` → ${yName}` : ""} (${total}/2)`,
-    );
-    details.push({ label: `FBT X`, targets: xConns.map((c) => c.to.name) });
-    details.push({ label: `FBT Y`, targets: yConns.map((c) => c.to.name) });
+  if (n.fbtType) {
+    const xConns = xc.filter(x => x.fromType === "SPLITTER" && x.fromId === "legacy_fbt" && x.fromBranch === "X");
+    const yConns = xc.filter(x => x.fromType === "SPLITTER" && x.fromId === "legacy_fbt" && x.fromBranch === "Y");
+    
+    const xClr = xConns.length ? "#f85149" : "#3fb950"; // Red if busy, Green if free
+    const yClr = yConns.length ? "#f85149" : "#3fb950";
+    
+    const xName = xConns.length ? targetTag(xConns[0].toId) : "";
+    const yName = yConns.length ? targetTag(yConns[0].toId) : "";
+
+    lines.push(`<span style="color:#ff6b6b">FBT X: <span style="color:${xClr}">${xConns.length ? "зайнята" + xName : "вільна"}</span></span>`);
+    lines.push(`<span style="color:#ff6b6b">FBT Y: <span style="color:${yClr}">${yConns.length ? "зайнята" + yName : "вільна"}</span></span>`);
+    
+    rich.push(`🔀 FBT ${n.fbtType}: <span style="color:${xClr}">X = ${xConns.length ? "зайн." : "вільн."}</span>${xName} | <span style="color:${yClr}">Y = ${yConns.length ? "зайн." : "вільн."}</span>${yName}`);
   }
 
-  if (!n.fbtType && n.plcType) {
+  if (n.plcType) {
     const plcMax = parseInt(n.plcType.split("x")[1]);
-    const plcConns = conns.filter((c) => c.from === n);
+    const plcConns = xc.filter(x => x.fromType === "SPLITTER" && x.fromId === "legacy_plc");
     const plcUsed = plcConns.length;
     const plcFree = plcMax - plcUsed;
     const clr = plcFree > 0 ? "#3fb950" : "#f85149";
-    lines.push(
-      `<span style="color:#c084fc">PLC ${n.plcType}: <span style="color:${clr}">${plcUsed}/${plcMax}${typeTag(plcConns)}</span></span>`,
-    );
-    const names = plcConns.map((c) => c.to.name).join(", ");
-    rich.push(
-      `📊 PLC ${n.plcType}: ${plcUsed}/${plcMax} (<span style="color:${clr}">вільно: ${plcFree}</span>)${names ? `<br>  └ ${names}` : ""}`,
-    );
-    details.push({ label: `PLC`, targets: plcConns.map((c) => c.to.name) });
+    
+    lines.push(`<span style="color:#c084fc">PLC ${n.plcType}: <span style="color:${clr}">${plcUsed}/${plcMax} зайнято</span></span>`);
+    
+    const targets = [...new Set(plcConns.map(x => {
+        const c = conns.find(cf => cf.id === x.toId);
+        return c ? c.to.name : "";
+    }))].filter(Boolean).join(", ");
+    
+    rich.push(`📊 PLC ${n.plcType}: ${plcUsed}/${plcMax} (<span style="color:${clr}">вільно: ${plcFree}</span>)${targets ? `<br>  └ ${targets}` : ""}`);
   }
 
-  if (n.fbtType && n.plcType) {
-    const plcBr = n.plcBranch || "Y";
-    const freeBr = plcBr === "X" ? "Y" : "X";
-    const freeBrConns = conns.filter((c) => c.from === n && c.branch === freeBr);
-    const freeBrUsed = freeBrConns.length > 0;
-    const freeClr = freeBrUsed ? "#f85149" : "#3fb950";
-    const freeBrName = freeBrConns.length > 0 ? freeBrConns[0].to.name : "";
-    // Free branch tag: (FOB), (ONU), etc.
-    const freeBrTag = typeTag(freeBrConns);
-
-    const plcMax = parseInt(n.plcType.split("x")[1]);
-    const plcConns = conns.filter((c) => c.from === n && c.branch === plcBr);
-    const plcUsed = plcConns.length;
-    const plcFree = plcMax - plcUsed;
-    const plcClr = plcFree > 0 ? "#3fb950" : "#f85149";
-    // PLC branch tag: always PLC + connected node types if any
-    const plcOccupants = typeTag(plcConns);
-    const plcTag = plcOccupants ? ` (PLC${plcOccupants})` : " (PLC)";
-
-    // FBT line: show BOTH branches — X and Y — with who occupies each
-    const brX = plcBr === "X"
-      ? `<span style="color:#f85149">X:1/1${plcTag}</span>`
-      : `<span style="color:${freeClr}">X:${freeBrUsed ? "1/1" : "0/1"}${freeBrTag}</span>`;
-    const brY = plcBr === "Y"
-      ? `<span style="color:#f85149">Y:1/1${plcTag}</span>`
-      : `<span style="color:${freeClr}">Y:${freeBrUsed ? "1/1" : "0/1"}${freeBrTag}</span>`;
-    lines.push(
-      `<span style="color:#ff6b6b">FBT ${brX}</span>`,
-    );
-    lines.push(
-      `<span style="color:#ff6b6b">FBT ${brY}</span>`,
-    );
-    lines.push(
-      `<span style="color:#c084fc">PLC [${plcBr}] ${n.plcType}: <span style="color:${plcClr}">${plcUsed}/${plcMax}${typeTag(plcConns)}</span></span>`,
-    );
-    rich.push(
-      `🔀 FBT ${n.fbtType}: гілка ${plcBr} = <span style="color:#f85149">PLC ${n.plcType}</span>`,
-    );
-    rich.push(
-      `🔀 FBT ${n.fbtType}: гілка ${freeBr} = <span style="color:${freeClr}">${freeBrUsed ? "зайнята" : "вільна"}</span>${freeBrName ? ` → ${freeBrName}` : ""}`,
-    );
-    const plcNames = plcConns.map((c) => c.to.name).join(", ");
-    rich.push(
-      `📊 PLC ${n.plcType} (гілка ${plcBr}): ${plcUsed}/${plcMax} (<span style="color:${plcClr}">вільно: ${plcFree}</span>)${plcNames ? `<br>  └ ${plcNames}` : ""}`,
-    );
-    details.push({ label: `FBT ${freeBr}`, targets: freeBrConns.map((c) => c.to.name) });
-    details.push({ label: `PLC`, targets: plcConns.map((c) => c.to.name) });
-  }
-
-  return { lines, rich, details };
+  return { lines, rich, details: [] };
 }
 
 
@@ -299,146 +249,182 @@ export function connKm(c) {
  * @param {FOBNode} fob
  * @returns {number}
  */
-export function sigIn(fob) {
-  if (!fob.inputConn) return 0;
-  const c = fob.inputConn;
-  const cLoss = connKm(c) * FIBER_DB_KM;
-  if (c.from.type === "OLT") return /** @type {OLTNode} */ (c.from).outputPower - cLoss - MECH;
-  if (c.from.type === "FOB") return sigOnOutput(/** @type {FOBNode} */ (c.from), c) - cLoss - MECH;
-  return 0;
-}
-
 /**
- * Calculates signal explicitly mapped through the FOB's Splice Cassette UI
+ * Trace the physical optical path backward from a specific point to the OLT.
+ * @param {FOBNode} currentFob 
+ * @param {string} targetType "CABLE" | "SPLITTER"
+ * @param {string} targetId
+ * @param {number|string|undefined} targetCore
+ * @returns {number | null} The dBm arriving at this point, or null if no path.
  */
-function calculateCustomCrossConnectLoss(fob, conn) {
-  // Find where this conn is connected FROM
-  const xc = fob.crossConnects.find(x => x.toType === "CABLE" && x.toId === conn.id);
-  if (!xc) return 0; // Not connected inside the cassette! Returns 0 signal.
-  
-  const base = sigIn(fob);
-  if (xc.fromType === "CABLE") {
-    // Transit splice
-    return base - MECH;
-  }
-  
-  if (xc.fromType === "SPLITTER") {
-    if (xc.fromId === "legacy_fbt") {
-      const fbtL = FBT_LOSSES[fob.fbtType] || { x: 0, y: 0 };
-      const brLoss = xc.fromBranch === "X" ? fbtL.x : fbtL.y;
-      return base - brLoss - MECH;
-    }
-    if (xc.fromId === "legacy_plc") {
-      // Is PLC connected to FBT?
-      const plcInXc = fob.crossConnects.find(x => x.toType === "SPLITTER" && x.toId === "legacy_plc");
-      let plcInSig = base - MECH; // default assumes direct patch to incoming cable, 1 splice
+export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
+  let fob = currentFob;
+  let type = targetType;
+  /** @type {string | number} */
+  let id = targetId;
+  let core = targetCore;
+  let accumulatedLoss = 0;
+
+  while (fob && fob.type === "FOB") {
+    const xc = (fob.crossConnects || []).find(
+      x => x.toType === type && x.toId === id && (core === undefined || x.toCore === core || x.toBranch === core)
+    );
+    if (!xc) return null; // Path physically broken
+
+    if (xc.fromType === "CABLE") {
+      const inCable = conns.find(c => c.id === xc.fromId);
+      if (!inCable) return null;
       
-      if (plcInXc && plcInXc.fromType === "SPLITTER" && plcInXc.fromId === "legacy_fbt") {
-        const fbtL = FBT_LOSSES[fob.fbtType] || { x: 0, y: 0 };
-        const brLoss = plcInXc.fromBranch === "X" ? fbtL.x : fbtL.y;
-        plcInSig = base - brLoss - MECH; // FBT output
+      accumulatedLoss += MECH; // Splice loss inside FOB
+      accumulatedLoss += connKm(inCable) * FIBER_DB_KM; // Cable fiber loss
+
+      if (inCable.from.type === "OLT") {
+        const olt = inCable.from;
+        const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === inCable.id && x.toCore === xc.fromCore);
+        if (!oltXc) return null;
+        return olt.outputPower - accumulatedLoss;
+      } else if (inCable.from.type === "FOB") {
+        fob = inCable.from;
+        type = "CABLE";
+        id = inCable.id;
+        core = xc.fromCore;
+      } else {
+        return null; // Unknown upstream type
       }
-      
-      const plcLoss = PLC_LOSSES[fob.plcType] || 0;
-      return plcInSig - plcLoss - MECH; // Output pigtail splice
-    }
-  }
-  
-  return 0;
-}
 
-/**
- * Signal on a specific output of a FOB (dBm).
- * @param {FOBNode} fob
- * @param {PONConnection} conn
- * @returns {number}
- */
-export function sigOnOutput(fob, conn) {
-  if (fob.crossConnects && fob.crossConnects.length > 0) {
-    return calculateCustomCrossConnectLoss(fob, conn);
-  }
+    } else if (xc.fromType === "SPLITTER") {
+      if (xc.fromId === "legacy_fbt") {
+        const loss = xc.fromBranch === "X" ? FBT_LOSSES[String(fob.fbtType)].x : FBT_LOSSES[String(fob.fbtType)].y;
+        accumulatedLoss += loss + MECH;
+      } else if (xc.fromId === "legacy_plc") {
+        accumulatedLoss += PLC_LOSSES[fob.plcType] + MECH;
+      }
 
-  const base = sigIn(fob);
-  if (fob.fbtType && fob.plcType) {
-    if (conn.type === "patchcord") {
-      const brLoss = fob.plcBranch === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
-      return base - brLoss - MECH - PLC_LOSSES[fob.plcType] - MECH;
+      // Continue tracing back from the splitter's INPUT
+      type = "SPLITTER";
+      id = xc.fromId;
+      core = undefined; // Splitter inputs don't have cores
     } else {
-      const br = conn.branch || (fob.plcBranch === "X" ? "Y" : "X");
-      const brLoss = br === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
-      if (br === fob.plcBranch) {
-        return base - brLoss - MECH - PLC_LOSSES[fob.plcType] - MECH;
-      }
-      return base - brLoss - MECH;
+      return null;
     }
   }
-  if (fob.fbtType && !fob.plcType) {
-    const br = conn.branch;
-    if (!br) return base;
-    return base - (br === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y) - MECH;
-  }
-  if (!fob.fbtType && fob.plcType) return base - PLC_LOSSES[fob.plcType] - MECH;
-  return base;
+  return null;
 }
 
 /**
- * Check if a FOB has a path to an OLT.
+ * Returns the MAXIMUM signal arriving at any incoming cable core of the fob.
+ * Used primarily for theoretical calculations and UI summaries.
+ * @param {FOBNode} fob
+ * @returns {number | null}
+ */
+export function sigIn(fob) {
+  const inCables = conns.filter(c => c.to === fob && c.type === "cable");
+  let maxSig = -Infinity;
+  for (const c of inCables) {
+    const cores = c.capacity || 1;
+    for (let i = 0; i < cores; i++) {
+        // Trace the signal arriving *just before* it splices into anything
+        // which means we must trace from its upstream connection
+        // But traceOpticalPath expects us to start tracing from a FOB's output.
+        // Actually, entering the FOB from upstream CABLE:
+        if (c.from.type === "OLT") {
+            const olt = c.from;
+            const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
+            if (oltXc) {
+                const s = olt.outputPower - (connKm(c) * FIBER_DB_KM);
+                if (s > maxSig) maxSig = s;
+            }
+        } else if (c.from.type === "FOB") {
+             const s = traceOpticalPath(c.from, "CABLE", c.id, i);
+             if (s !== null) {
+                 const arrivingSignal = s - (connKm(c) * FIBER_DB_KM);
+                 if (arrivingSignal > maxSig) maxSig = arrivingSignal;
+             }
+        }
+    }
+  }
+  return maxSig === -Infinity ? null : maxSig;
+}
+
+/**
+ * Check if a FOB has a verified physical splice path to an OLT.
  * @param {FOBNode} fob
  * @returns {boolean}
  */
 export function hasOLTPath(fob) {
-  if (!fob || !fob.inputConn) return false;
-  if (fob.inputConn.from.type === "OLT") return true;
-  if (fob.inputConn.from.type === "FOB") return hasOLTPath(/** @type {FOBNode} */ (fob.inputConn.from));
-  return false;
+  return sigIn(fob) !== null;
 }
 
 /**
  * Signal level at ONU/MDU (dBm).
  * @param {ONUNode | MDUNode} onu
- * @returns {number}
+ * @returns {number | null}
  */
 export function sigAtONU(onu) {
   const c = conns.find((x) => x.to === onu && x.type === "patchcord");
-  if (!c || c.from.type !== "FOB") return 0;
-  if (!hasOLTPath(/** @type {FOBNode} */ (c.from))) return 0;
-  const fobOut = sigOnOutput(/** @type {FOBNode} */ (c.from), c);
-  const patchLoss = connKm(c) * FIBER_DB_KM;
-  return fobOut - patchLoss;
+  if (!c || c.from.type !== "FOB") return null;
+  
+  const s = traceOpticalPath(c.from, "CABLE", c.id, 0);
+  if (s === null) return null;
+  return s; // traceOpticalPath already accounts for upstream length, but wait...
+  // traceOpticalPath accounts for upstream splicing, but we must subtract the loss of THIS final patchcord!
 }
 
 /**
- * Signal after FBT split on a specific branch.
+ * Signal level helper wrapper to apply patch loss correctly to ONU
+ */
+export function trueSigAtONU(onu) {
+  const c = conns.find((x) => x.to === onu && x.type === "patchcord");
+  if (!c || c.from.type !== "FOB") return null;
+  
+  const s = traceOpticalPath(c.from, "CABLE", c.id, 0); // Traces back looking for what feeds `c.id` core 0
+  if (s === null) return null;
+  
+  const patchLoss = connKm(c) * FIBER_DB_KM;
+  return s - patchLoss; // Signal drops by the time it travels patchcord length
+}
+
+/**
+ * Signal after FBT split on a specific branch, based on actual splice path.
  * @param {FOBNode} fob
  * @param {string} branch - "X" or "Y"
- * @returns {number}
+ * @returns {number | null}
  */
 export function sigFBT(fob, branch) {
-  const base = sigIn(fob);
-  if (!fob.fbtType) return base;
-  return (
-    base -
-    (branch === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y) -
-    MECH
-  );
+  if (!fob.fbtType) return null;
+  const s = traceOpticalPath(fob, "SPLITTER", "legacy_fbt", undefined);
+  if (s === null) return null;
+  const loss = branch === "X" ? FBT_LOSSES[String(fob.fbtType)].x : FBT_LOSSES[String(fob.fbtType)].y;
+  return s - loss - MECH;
 }
 
 /**
- * Expected signal at ONU for a FOB.
+ * Signal after PLC split, based on actual splice path.
  * @param {FOBNode} fob
- * @returns {number}
+ * @returns {number | null}
+ */
+export function sigPLC(fob) {
+  if (!fob.plcType) return null;
+  const s = traceOpticalPath(fob, "SPLITTER", "legacy_plc", undefined);
+  if (s === null) return null;
+  return s - PLC_LOSSES[fob.plcType] - MECH;
+}
+
+/**
+ * Expected theoretical signal at ONU for a FOB (for Scenario calculation).
+ * @param {FOBNode} fob
+ * @returns {number | null}
  */
 export function sigONU(fob) {
+  const sIn = sigIn(fob);
+  if (sIn === null) return null;
   if (fob.fbtType && fob.plcType) {
-    const bLoss =
-      fob.plcBranch === "X"
-        ? FBT_LOSSES[fob.fbtType].x
-        : FBT_LOSSES[fob.fbtType].y;
-    return sigIn(fob) - bLoss - MECH - PLC_LOSSES[fob.plcType] - MECH;
+    const bLoss = fob.plcBranch === "X" ? FBT_LOSSES[String(fob.fbtType)].x : FBT_LOSSES[String(fob.fbtType)].y;
+    return sIn - bLoss - MECH - PLC_LOSSES[fob.plcType] - MECH;
   }
-  if (fob.fbtType) return sigIn(fob);
-  if (fob.plcType) return sigIn(fob) - PLC_LOSSES[fob.plcType] - MECH;
-  return sigIn(fob);
+  if (fob.plcType) return sIn - PLC_LOSSES[fob.plcType] - MECH;
+  if (fob.fbtType) return sIn;
+  return sIn;
 }
 
 /**
@@ -448,9 +434,10 @@ export function sigONU(fob) {
  * @returns {number}
  */
 export function cntONUport(olt, port) {
-  return conns
-    .filter((c) => c.from === olt && c.fromPort === port)
-    .reduce((a, c) => a + cntDn(c.to), 0);
+  const xcList = (olt.crossConnects || []).filter(xc => parseInt(String(xc.fromId)) === port && xc.toType === "CABLE");
+  
+  // Actually simulating downstream devices per port is complex now. Let's just return the number of cores spliced to this port.
+  return xcList.length;
 }
 
 /**

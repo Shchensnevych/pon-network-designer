@@ -1,4 +1,6 @@
 import { nodes, conns } from "./state.js";
+import { FIBER_DB_KM } from "./config.js";
+import { traceOpticalPath, sigFBT, sigPLC, connKm } from "./signal.js";
 
 // Modal HTML generation
 function createModalContainer() {
@@ -131,8 +133,18 @@ function renderOLTPatchUI(node) {
                 
                 let selectHtml = `<select class="patch-select" data-cable="${c.id}" data-core="${i}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:3px; padding:2px;" onchange="window.checkOltPorts(this)">
                     <option value="">-- ВІЛЬНО --</option>`;
+                
+                const xcArr = node.crossConnects || [];
+                const usedPons = xcArr.map(xc => parseInt(xc.fromId));
+
                 for(let p=0; p<node.ports; p++) {
-                    selectHtml += `<option value="${p}" ${selectedPort === p ? "selected" : ""}>PON ${p+1}</option>`;
+                    const isSelected = selectedPort === p;
+                    const isBusy = !isSelected && usedPons.includes(p);
+                    const disabledStr = isBusy ? "disabled" : "";
+                    const busyStr = isBusy ? " (ЗАЙНЯТО)" : "";
+                    const colorStr = isBusy ? "color:#ff5555" : "";
+                    
+                    selectHtml += `<option value="${p}" ${isSelected ? "selected" : ""} ${disabledStr} style="${colorStr}">PON ${p+1}${busyStr}</option>`;
                 }
                 selectHtml += `</select>`;
                 
@@ -177,6 +189,7 @@ function savePatchPanel(nodeId, skipClose = false) {
     
     // Save state globally so Undo works
     if (typeof window.saveState === "function") window.saveState();
+    if (typeof window.refreshNetworkUI === "function") window.refreshNetworkUI();
     
     if (!skipClose) {
         closeCrossConnectModal();
@@ -249,9 +262,20 @@ function renderFOBCrossUI(node) {
     inCables.forEach(c => {
         const cores = c.capacity || 1;
         for(let i=0; i<cores; i++) {
+            let sigStr = "";
+            let s = null;
+            if (c.from.type === "OLT") {
+                const oltXc = (c.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
+                if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
+            } else if (c.from.type === "FOB") {
+                const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
+                if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
+            }
+            if (s !== null) sigStr = ` ⚡${s.toFixed(1)}дБ`;
+
             const pathStr = getIncomingCorePath(node, c.id, i);
             const pathLabel = pathStr ? ` [${pathStr}]` : ``;
-            sourceOptions += `<option value="CABLE|${c.id}|${i}">🟦 Вхід: ${c.from.name} - Жила ${i+1}${pathLabel}</option>`;
+            sourceOptions += `<option value="CABLE|${c.id}|${i}">🟦 Вхід: ${c.from.name} - Жила ${i+1}${sigStr}${pathLabel}</option>`;
         }
     });
 
@@ -259,13 +283,19 @@ function renderFOBCrossUI(node) {
     // Include legacy splitters for now: FBT and PLC if they exist.
     // To cleanly separate them without deep refactoring, we treat them as virtual sources.
     if (node.fbtType) {
-        sourceOptions += `<option value="SPLITTER|legacy_fbt|X">🔀 Від: FBT ${node.fbtType} (Гілка X)</option>`;
-        sourceOptions += `<option value="SPLITTER|legacy_fbt|Y">🔀 Від: FBT ${node.fbtType} (Гілка Y)</option>`;
+        const sx = sigFBT(node, "X");
+        const sy = sigFBT(node, "Y");
+        const sxStr = sx !== null ? ` ⚡${sx.toFixed(1)}дБ` : "";
+        const syStr = sy !== null ? ` ⚡${sy.toFixed(1)}дБ` : "";
+        sourceOptions += `<option value="SPLITTER|legacy_fbt|X">🔀 Від: FBT ${node.fbtType} (Гілка X)${sxStr}</option>`;
+        sourceOptions += `<option value="SPLITTER|legacy_fbt|Y">🔀 Від: FBT ${node.fbtType} (Гілка Y)${syStr}</option>`;
     }
     if (node.plcType) {
+        const s = sigPLC(node);
+        const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
         const plcOuts = parseInt(node.plcType.split("x")[1]) || 2;
         for(let i=1; i<=plcOuts; i++) {
-            sourceOptions += `<option value="SPLITTER|legacy_plc|${i}">📊 Від: PLC ${node.plcType} (Вихід ${i})</option>`;
+            sourceOptions += `<option value="SPLITTER|legacy_plc|${i}">📊 Від: PLC ${node.plcType} (Вихід ${i})${sStr}</option>`;
         }
     }
 
@@ -279,8 +309,23 @@ function renderFOBCrossUI(node) {
         inHtml += `<div style="background:#21262d; padding:8px; border-radius:4px; border:1px solid #30363d; margin-bottom:8px;">
             <div style="font-weight:bold; color:#58a6ff; margin-bottom:4px; font-size:12px;">Від: ${c.from.name}</div>`;
         for(let i=0; i<cores; i++) {
+            let coreSigHtml = "";
+            let s = null;
+            if (c.from.type === "OLT") {
+                const oltXc = (c.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
+                if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
+            } else if (c.from.type === "FOB") {
+                const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
+                if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
+            }
+            if (s !== null) {
+                const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
+                coreSigHtml = `<span style="color:${sColor}; font-weight:bold;">⚡ ${s.toFixed(1)} дБ</span>`;
+            }
+
             inHtml += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:12px;">
                 <div style="display:flex; align-items:center;">${getFiberDotHtml(i)} Жила ${i+1}</div>
+                ${coreSigHtml}
             </div>`;
         }
         inHtml += `</div>`;
@@ -356,47 +401,58 @@ function renderFOBCrossUI(node) {
 }
 
 function saveCrossConnect(nodeId, skipClose = false) {
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return;
+    try {
+        const node = nodes.find(n => n.id === nodeId);
+        if (!node) return;
 
-    const selects = document.querySelectorAll(".fob-cross");
-    const newCross = [];
-    
-    selects.forEach(sel => {
-        const element = /** @type {HTMLSelectElement} */ (sel);
-        if (element.value !== "") {
-            const [fromType, fromId, fromCoreOrBranch] = element.value.split("|");
-            const toType = element.dataset.totype;
-            const toId = element.dataset.toid;
-            
-            let xc = {
-                id: "xc_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
-                fromType,
-                fromId,
-                toType,
-                toId
-            };
-            
-            // Assign specific branches/cores based on type
-            if (fromType === "CABLE") xc.fromCore = parseInt(fromCoreOrBranch);
-            if (fromType === "SPLITTER" && isNaN(parseInt(fromCoreOrBranch))) xc.fromBranch = fromCoreOrBranch; // "X" or "Y"
-            else if (fromType === "SPLITTER") xc.fromCore = parseInt(fromCoreOrBranch); // 1..N PLC logic
-            
-            if (toType === "CABLE") xc.toCore = parseInt(element.dataset.tocore);
-            
-            newCross.push(xc);
+        const selects = document.querySelectorAll(".fob-cross");
+        const newCross = [];
+        
+        selects.forEach(sel => {
+            const element = /** @type {HTMLSelectElement} */ (sel);
+            if (element.value !== "") {
+                const [fromType, fromId, fromCoreOrBranch] = element.value.split("|");
+                const toType = element.dataset.totype;
+                const toId = element.dataset.toid;
+                
+                let xc = {
+                    id: "xc_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+                    fromType,
+                    fromId,
+                    toType,
+                    toId
+                };
+                
+                // Assign specific branches/cores based on type
+                if (fromType === "CABLE") xc.fromCore = parseInt(fromCoreOrBranch);
+                if (fromType === "SPLITTER" && isNaN(parseInt(fromCoreOrBranch))) xc.fromBranch = fromCoreOrBranch; // "X" or "Y"
+                else if (fromType === "SPLITTER") xc.fromCore = parseInt(fromCoreOrBranch); // 1..N PLC logic
+                
+                if (toType === "CABLE") xc.toCore = parseInt(element.dataset.tocore);
+                
+                newCross.push(xc);
+            }
+        });
+
+        node.crossConnects = newCross;
+        
+        // Trigger UI updates
+        if (typeof window.saveState === "function") window.saveState();
+        if (typeof window.refreshNetworkUI === "function") {
+            try { 
+                window.refreshNetworkUI(); 
+            } catch (e) { 
+                console.error("UI refresh error:", e); 
+            }
         }
-    });
-
-    node.crossConnects = newCross;
-    
-    // Trigger UI updates
-    if (typeof window.saveState === "function") window.saveState();
-    // We optionally mark signal dirty, but until the fallback signal calculator reads crossConnects, it's decorative.
-    
-    if (!skipClose) {
-        closeCrossConnectModal();
-        if (typeof window.showSelectedProps === "function") window.showSelectedProps();
+        
+        if (!skipClose) {
+            closeCrossConnectModal();
+            if (typeof window.showSelectedProps === "function") window.showSelectedProps();
+        }
+    } catch (err) {
+        console.error("Error saving cross connect", err);
+        alert("Помилка збереження: " + err.message);
     }
 }
 
@@ -422,61 +478,107 @@ window.updateConnCapacity = function(connId, newCap, nodeId, nodeType) {
 };
 
 window.checkOltPorts = function(selectElement) {
-    if (selectElement.value === "") return;
     const allSelects = document.querySelectorAll(".patch-select");
-    let duplicateFound = false;
-    allSelects.forEach(sel => {
-        if (sel !== selectElement && sel.value === selectElement.value) {
-            sel.value = ""; // Clear the previous selection of this PON port
-            duplicateFound = true;
+    
+    // 1. Clear duplicates if this was a new selection
+    if (selectElement && selectElement.value !== "") {
+        let duplicateFound = false;
+        allSelects.forEach(sel => {
+            if (sel !== selectElement && sel.value === selectElement.value) {
+                sel.value = ""; // Clear the previous selection of this PON port
+                duplicateFound = true;
+            }
+        });
+        if (duplicateFound) {
+            selectElement.style.border = "1px solid #dc3545"; // Flash red
+            setTimeout(() => selectElement.style.border = "1px solid #30363d", 1000);
         }
-    });
-    if (duplicateFound) {
-        selectElement.style.border = "1px solid #dc3545"; // Flash red
-        setTimeout(() => selectElement.style.border = "1px solid #30363d", 1000);
     }
+
+    // 2. Re-evaluate all dropdowns to update disabled/busy states dynamically
+    const usedVals = new Set();
+    allSelects.forEach(sel => {
+        if (sel.value !== "") usedVals.add(sel.value);
+    });
+
+    allSelects.forEach(sel => {
+        const options = sel.querySelectorAll("option");
+        options.forEach(opt => {
+            if (opt.value === "") return; // Skip -- ВІЛЬНО --
+            const pVal = parseInt(opt.value);
+            
+            if (opt.value === sel.value) {
+                // This is the currently selected option in this dropdown
+                opt.disabled = false;
+                opt.textContent = `PON ${pVal + 1}`;
+                opt.style.color = "";
+            } else if (usedVals.has(opt.value)) {
+                // This PON is used by SOME OTHER dropdown
+                opt.disabled = true;
+                opt.textContent = `PON ${pVal + 1} (ЗАЙНЯТО)`;
+                opt.style.color = "#ff5555";
+            } else {
+                // This PON is free
+                opt.disabled = false;
+                opt.textContent = `PON ${pVal + 1}`;
+                opt.style.color = "";
+            }
+        });
+    });
 };
 
 window.autoTransit = function(outCableId, nodeId) {
-    const node = nodes.find(n => n.id === nodeId);
-    if (!node) return;
-    
-    // Auto-map Core 0 to Core 0, Core 1 to Core 1 from the first incoming cable
-    const inCables = conns.filter(c => c.to === node && c.type === "cable");
-    if (inCables.length === 0) {
-        alert("Немає вхідних кабелів для транзиту!");
-        return;
-    }
-    
-    // Keep existing config so we don't overwrite splitters
-    saveCrossConnect(nodeId, true);
-    
-    const outCable = conns.find(c => c.id === outCableId);
-    let cross = node.crossConnects || [];
-    const inCable = inCables[0]; // Take the main trunk
-    
-    const maxCore = Math.min(inCable.capacity || 1, outCable.capacity || 1);
-    
-    for (let i = 0; i < maxCore; i++) {
-        // Only map if Out-core is free AND In-core is free
-        const outUsed = cross.find(xc => xc.toType === "CABLE" && xc.toId === outCableId && xc.toCore === i);
-        const inUsed = cross.find(xc => xc.fromType === "CABLE" && xc.fromId === inCable.id && xc.fromCore === i);
+    try {
+        const node = nodes.find(n => n.id === nodeId);
+        if (!node) return;
         
-        if (!outUsed && !inUsed) {
-            cross.push({
-                id: "xc_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
-                fromType: "CABLE",
-                fromId: inCable.id,
-                fromCore: i,
-                toType: "CABLE",
-                toId: outCableId,
-                toCore: i
-            });
+        // Auto-map Core 0 to Core 0, Core 1 to Core 1 from the first incoming cable
+        const inCables = conns.filter(c => c.to === node && c.type === "cable");
+        if (inCables.length === 0) {
+            alert("Немає вхідних кабелів для транзиту!");
+            return;
         }
+        
+        // Keep existing config so we don't overwrite splitters
+        saveCrossConnect(nodeId, true);
+        
+        const outCable = conns.find(c => c.id === outCableId);
+        if (!outCable) return;
+        
+        let cross = node.crossConnects || [];
+        const inCable = inCables[0]; // Take the main trunk
+        
+        const maxCore = Math.min(inCable.capacity || 1, outCable.capacity || 1);
+        
+        let transferred = 0;
+        for (let i = 0; i < maxCore; i++) {
+            // Only map if Out-core is free AND In-core is free
+            const outUsed = cross.find(xc => xc.toType === "CABLE" && xc.toId === outCableId && xc.toCore === i);
+            const inUsed = cross.find(xc => xc.fromType === "CABLE" && xc.fromId === inCable.id && xc.fromCore === i);
+            
+            if (!outUsed && !inUsed) {
+                cross.push({
+                    id: "xc_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+                    fromType: "CABLE",
+                    fromId: inCable.id,
+                    fromCore: i,
+                    toType: "CABLE",
+                    toId: outCableId,
+                    toCore: i
+                });
+                transferred++;
+            }
+        }
+        
+        if (transferred === 0) {
+            console.log("Усі жили вже зайняті або вже протранзичені.");
+        }
+        
+        node.crossConnects = cross;
+        document.getElementById("cc-modal-body").innerHTML = renderFOBCrossUI(node);
+    } catch (e) {
+        console.error("Auto Transit error:", e);
     }
-    
-    node.crossConnects = cross;
-    document.getElementById("cc-modal-body").innerHTML = renderFOBCrossUI(node);
 };
 
 // Register globals for onclick injection

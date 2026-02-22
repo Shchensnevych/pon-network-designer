@@ -65,6 +65,7 @@ declare global {
     openPatchPanel: Function;
     openCrossConnect: Function;
     autoTransit: Function;
+    refreshNetworkUI: Function;
 
     // main.js
     selectTool: Function;
@@ -147,6 +148,7 @@ declare global {
     toType: "CABLE" | "SPLITTER" | "UNIT";
     toId: string; // Cable ID, Splitter ID
     toCore?: number;
+    toBranch?: string;
   }
 
   interface OLTNode extends PONNodeBase {

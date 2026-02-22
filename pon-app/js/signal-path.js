@@ -1,8 +1,8 @@
 // @ts-check
 // Signal path highlighting & signal animation overlays.
 // Extracted from network.js — pure visualization, no business logic.
-
 import { nodes, conns, map } from "./state.js";
+import { traceOpticalPath, hasOLTPath } from "./signal.js";
 
 // ═══════════════════════════════════════════════
 //  SIGNAL PATH HIGHLIGHTING
@@ -29,15 +29,23 @@ function getSignalPath(node) {
   let current = node;
   /** @type {Set<string>} */
   const visited = new Set();
+  
   while (current && !visited.has(current.id)) {
     visited.add(current.id);
     /** @type {PONConnection | undefined} */
     let upConn = undefined;
-    if (current.type === "ONU") {
+    
+    if (current.type === "ONU" || current.type === "MDU") {
       upConn = conns.find((c) => c.to === current && c.type === "patchcord");
     } else if (current.type === "FOB") {
-      upConn = current.inputConn || undefined;
+      // Find the active incoming cable based on cross connect traces instead of legacy inputConn
+      const inConns = conns.filter(c => c.to === current && c.type === "cable");
+      
+      // Let's use the old inputConn loosely if it exists, or just find any upstream cable
+      upConn = current.inputConn || inConns.find(c => c.from.type !== "FOB" || c.from.inputConn || hasOLTPath(c.from));
+      if (!upConn && inConns.length > 0) upConn = inConns[0];
     }
+    
     if (upConn) {
       pathConns.push(upConn);
       pathNodes.push(upConn.from);
