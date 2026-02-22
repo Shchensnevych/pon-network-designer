@@ -19,8 +19,15 @@ export function getChainColor(fob) {
   let node = fob;
   while (node && node.type === "FOB" && node.inputConn) {
     const c = node.inputConn;
-    if (c.from.type === "OLT" && c.color) return c.color;
-    if (c.color && c.from.type === "OLT") return c.color;
+    if (c.from.type === "OLT") {
+      // Find what PON port is patched to the first active core of this cable
+      const firstXc = (c.from.crossConnects || []).find(xc => xc.toType === "CABLE" && xc.toId === c.id);
+      if (firstXc) {
+        // Return solid PON color: [Red, Green, Blue, Orange]
+        return ["#ff4444", "#3fb950", "#58a6ff", "#f0883e"][Number(firstXc.fromId) % 4];
+      }
+      return c.color || "#8b949e";
+    }
     node = c.from;
   }
   return "#e0e0e0";
@@ -302,12 +309,55 @@ export function sigIn(fob) {
 }
 
 /**
+ * Calculates signal explicitly mapped through the FOB's Splice Cassette UI
+ */
+function calculateCustomCrossConnectLoss(fob, conn) {
+  // Find where this conn is connected FROM
+  const xc = fob.crossConnects.find(x => x.toType === "CABLE" && x.toId === conn.id);
+  if (!xc) return 0; // Not connected inside the cassette! Returns 0 signal.
+  
+  const base = sigIn(fob);
+  if (xc.fromType === "CABLE") {
+    // Transit splice
+    return base - MECH;
+  }
+  
+  if (xc.fromType === "SPLITTER") {
+    if (xc.fromId === "legacy_fbt") {
+      const fbtL = FBT_LOSSES[fob.fbtType] || { x: 0, y: 0 };
+      const brLoss = xc.fromBranch === "X" ? fbtL.x : fbtL.y;
+      return base - brLoss - MECH;
+    }
+    if (xc.fromId === "legacy_plc") {
+      // Is PLC connected to FBT?
+      const plcInXc = fob.crossConnects.find(x => x.toType === "SPLITTER" && x.toId === "legacy_plc");
+      let plcInSig = base - MECH; // default assumes direct patch to incoming cable, 1 splice
+      
+      if (plcInXc && plcInXc.fromType === "SPLITTER" && plcInXc.fromId === "legacy_fbt") {
+        const fbtL = FBT_LOSSES[fob.fbtType] || { x: 0, y: 0 };
+        const brLoss = plcInXc.fromBranch === "X" ? fbtL.x : fbtL.y;
+        plcInSig = base - brLoss - MECH; // FBT output
+      }
+      
+      const plcLoss = PLC_LOSSES[fob.plcType] || 0;
+      return plcInSig - plcLoss - MECH; // Output pigtail splice
+    }
+  }
+  
+  return 0;
+}
+
+/**
  * Signal on a specific output of a FOB (dBm).
  * @param {FOBNode} fob
  * @param {PONConnection} conn
  * @returns {number}
  */
 export function sigOnOutput(fob, conn) {
+  if (fob.crossConnects && fob.crossConnects.length > 0) {
+    return calculateCustomCrossConnectLoss(fob, conn);
+  }
+
   const base = sigIn(fob);
   if (fob.fbtType && fob.plcType) {
     if (conn.type === "patchcord") {
@@ -453,6 +503,26 @@ export function updateCableColors() {
       /** @type {any} */ (c.polyline).getElement()?.style?.setProperty("filter", `drop-shadow(0 0 4px ${glowColor})`);
     } else {
       /** @type {any} */ (c.polyline).getElement()?.style?.setProperty("filter", "none");
+    }
+
+    if (c.type === "cable") {
+      let newColor = "#e0e0e0";
+      if (c.from && c.from.type === "OLT") {
+        const firstXc = (c.from.crossConnects || []).find(xc => xc.toType === "CABLE" && xc.toId === c.id);
+        if (firstXc) {
+          const PON_COLORS = ["#ff4444", "#3fb950", "#58a6ff", "#f0883e"];
+          newColor = PON_COLORS[Number(firstXc.fromId) % 4];
+        } else {
+          newColor = "#8b949e";
+        }
+      } else if (c.from && c.from.type === "FOB") {
+        newColor = getChainColor(c.from);
+      }
+      
+      if (c.color !== newColor) {
+        c.color = newColor;
+        if (c.polyline) c.polyline.setStyle({ color: newColor });
+      }
     }
   });
 }

@@ -62,6 +62,9 @@ declare global {
     finishFBT: Function;
     finishCombo: Function;
     reassignBranch: Function;
+    openPatchPanel: Function;
+    openCrossConnect: Function;
+    autoTransit: Function;
 
     // main.js
     selectTool: Function;
@@ -123,6 +126,27 @@ declare global {
     _tooltipOffset?: [number, number];
     /** Whether a leader line is active */
     _hasLeader?: boolean;
+    
+    /** Splice Matrix / ODF Matrix data */
+    crossConnects?: CrossConnection[];
+  }
+
+  interface SplitterModule {
+    id: string; // e.g., "plc_1", "fbt_2"
+    type: "FBT" | "PLC";
+    ratio: string; // "10/90", "1x8", etc.
+  }
+
+  interface CrossConnection {
+    id: string;
+    fromType: "PORT" | "CABLE" | "SPLITTER";
+    fromId: string | number; // OLT port number, Cable ID, or Splitter ID
+    fromCore?: number;       // Specific core inside a cable, or branch of a PLC
+    fromBranch?: string;     // String branch (e.g. "X" or "Y" for FBT)
+    
+    toType: "CABLE" | "SPLITTER" | "UNIT";
+    toId: string; // Cable ID, Splitter ID
+    toCore?: number;
   }
 
   interface OLTNode extends PONNodeBase {
@@ -133,16 +157,22 @@ declare global {
     outputPower: number;
     /** Max ONUs per port (typically 64 or 128) */
     maxOnuPerPort: number;
+    
+    /** Patch panel connections mapping PON ports to outgoing cables */
+    crossConnects?: CrossConnection[];
   }
 
   interface FOBNode extends PONNodeBase {
     type: "FOB";
-    /** FBT splitter type: "10/90", "20/80", "30/70", or "" */
-    fbtType: string;
-    /** PLC splitter type: "1:2", "1:4", "1:8", "1:16", "1:32", "1:64" or "" */
-    plcType: string;
-    /** PLC branch assignment: "X" or "Y" for FBT, or "" */
-    plcBranch: string;
+    /** Legacy properties (to be migrated) */
+    fbtType?: string;
+    plcType?: string;
+    plcBranch?: string;
+    
+    /** Independent internal splitter modules */
+    splitters?: SplitterModule[];
+    /** Internal crossing/routing matrix (Splice Cassette) */
+    crossConnects?: CrossConnection[];
   }
 
   interface ONUNode extends PONNodeBase {
@@ -167,11 +197,12 @@ declare global {
     type: "cable" | "patchcord";
     from: PONNode;
     to: PONNode;
+    capacity?: number;
     color: string;
     polyline: _L.Polyline;
     /** OLT port index (0-based) */
     fromPort?: number;
-    /** FBT branch: "X" or "Y" */
+    /** Legacy FBT branch: "X" or "Y" */
     branch?: string;
     /** Distance tooltip on the cable */
     _distTooltip?: _L.Tooltip;
@@ -197,6 +228,10 @@ declare global {
     floors?: number;
     entrances?: number;
     flatsPerFloor?: number;
+
+    // --- NEW INTERNAL ROUTING ---
+    splitters?: SplitterModule[];
+    crossConnects?: CrossConnection[];
   }
 
   interface SerializedConnection {
