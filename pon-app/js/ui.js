@@ -135,12 +135,17 @@ export function openReport() {
   }
 
   // Economic part: grouped equipment prices (for cost estimates)
-  // Helper: extract base name for grouping (e.g., "FOB-03-16" → "FOB-03-16", "FOB-1" → individual)
+  // Helper: extract base name for grouping
   function getBaseName(name, type) {
-    // If name matches pattern like "TYPE-XX-YY" (with multiple segments), group by base
-    const match = name.match(/^([A-Z]+-\d+-\d+)/);
-    if (match) return match[1]; // Group by base pattern
-    // Otherwise, treat each as individual
+    // Якщо ім'я стандартне (OLT, FOB-1, ONU-42) - групуємо їх в "модель не вказана"
+    if (name === type || new RegExp(`^${type}-\\d+$`).test(name)) {
+      return `${type} (модель не вказана)`;
+    }
+    // Якщо кастомна назва має формат типу "FOB-3-12-1" -> зводимо до "FOB-3-12"
+    const match = name.match(/^([a-zA-Zа-яА-ЯіІїЇєЄ0-9_]+-\d+-\d+)/);
+    if (match) return match[1];
+    
+    // В іншому випадку групуємо по точній кастомній назві
     return name;
   }
 
@@ -291,20 +296,20 @@ export function downloadCSV() {
     return `="${escaped}"`;
   }
 
-  function safeCell(v, forceText = false) {
-    const s = String(v ?? "");
-    // Force text format for specific columns (e.g., Signal IN dB) to prevent Excel date conversion
-    if (forceText) {
-      // Use formula format for numeric values to prevent date conversion
-      return excelForceTextCell(s);
+  function safeCell(v) {
+    let s = String(v ?? "");
+    
+    // Замінюємо крапку на кому для десяткових чисел (1.2 -> 1,2 або -15.4 -> -15,4).
+    // У Excel з українською локаллю це розпізнається як число, а не як текст чи дата, 
+    // що дозволяє використовувати формули та сумування по стовпцю.
+    if (/^-?\d+\.\d+$/.test(s)) {
+      s = s.replace('.', ',');
     }
-    // Typical problematic patterns for Excel auto-date: 10/90, 1/2, 12-11, etc.
+
+    // Для дробів типу FBT спліттерів (10/90, 1/2) залишаємо примусовий текст, 
+    // щоб Excel не перетворив "10/90" на жовтень 1990 року.
     if (/^\d{1,2}[\/-]\d{1,4}$/.test(s)) return excelForceTextCell(s);
-    // Also check for numeric values that might be interpreted as dates (e.g., 1.40, 1.4)
-    if (/^\d+\.\d+$/.test(s) && parseFloat(s) < 32) {
-      // Small decimal numbers might be dates (day.month or similar)
-      return excelForceTextCell(s);
-    }
+    
     return csvEscapeCell(s);
   }
 
@@ -319,11 +324,11 @@ export function downloadCSV() {
             safeCell(r.dist),
             safeCell(r.cableLoss),
             safeCell(r.mechLoss),
-            safeCell(r.signalIn, true), // Force text to prevent Excel date conversion
+            safeCell(r.signalIn), 
             safeCell(r.fbt),
             safeCell(r.plc),
             safeCell(r.plcBranch),
-            safeCell(r.signalONU, true), // Force text for signal values
+            safeCell(r.signalONU), 
             safeCell(r.onuCnt),
             safeCell(
               {
@@ -339,7 +344,10 @@ export function downloadCSV() {
 
   // Add economic part: grouped equipment (for cost estimates)
   function getBaseName(name, type) {
-    const match = name.match(/^([A-Z]+-\d+-\d+)/);
+    if (name === type || new RegExp(`^${type}-\\d+$`).test(name)) {
+      return `${type} (модель не вказана)`;
+    }
+    const match = name.match(/^([a-zA-Zа-яА-ЯіІїЇєЄ0-9_]+-\d+-\d+)/);
     if (match) return match[1];
     return name;
   }
@@ -347,22 +355,28 @@ export function downloadCSV() {
   const groupedOlt = {};
   nodes.filter((n) => n.type === "OLT").forEach((n) => {
     const base = getBaseName(n.name, "OLT");
-    if (!groupedOlt[base]) groupedOlt[base] = { name: base, count: 0 };
+    if (!groupedOlt[base]) groupedOlt[base] = { name: base, count: 0, price: 0 };
     groupedOlt[base].count++;
+    const price = typeof n.price === "number" ? n.price : 0;
+    if (price > 0 && groupedOlt[base].price === 0) groupedOlt[base].price = price;
   });
 
   const groupedFob = {};
   nodes.filter((n) => n.type === "FOB").forEach((n) => {
     const base = getBaseName(n.name, "FOB");
-    if (!groupedFob[base]) groupedFob[base] = { name: base, count: 0 };
+    if (!groupedFob[base]) groupedFob[base] = { name: base, count: 0, price: 0 };
     groupedFob[base].count++;
+    const price = typeof n.price === "number" ? n.price : 0;
+    if (price > 0 && groupedFob[base].price === 0) groupedFob[base].price = price;
   });
 
   const groupedOnu = {};
   nodes.filter((n) => n.type === "ONU").forEach((n) => {
     const base = getBaseName(n.name, "ONU");
-    if (!groupedOnu[base]) groupedOnu[base] = { name: base, count: 0 };
+    if (!groupedOnu[base]) groupedOnu[base] = { name: base, count: 0, price: 0 };
     groupedOnu[base].count++;
+    const price = typeof n.price === "number" ? n.price : 0;
+    if (price > 0 && groupedOnu[base].price === 0) groupedOnu[base].price = price;
   });
 
   const fbtCounts = {};
@@ -383,13 +397,16 @@ export function downloadCSV() {
   economicSection += "Обладнання;Кількість;Ціна за од. (₴);Сума (₴)\n";
 
   Object.values(groupedOlt).forEach((g) => {
-    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};;\n`;
+    const total = g.count * g.price;
+    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};${safeCell(g.price > 0 ? g.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
   });
   Object.values(groupedFob).forEach((g) => {
-    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};;\n`;
+    const total = g.count * g.price;
+    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};${safeCell(g.price > 0 ? g.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
   });
   Object.values(groupedOnu).forEach((g) => {
-    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};;\n`;
+    const total = g.count * g.price;
+    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};${safeCell(g.price > 0 ? g.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
   });
   Object.entries(fbtCounts).forEach(([type, count]) => {
     economicSection += `${safeCell(type)};${safeCell(count + " шт.")};;\n`;
