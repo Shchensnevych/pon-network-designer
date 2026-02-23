@@ -94,6 +94,11 @@ export function openPatchPanel(nodeId) {
 
     document.getElementById("cc-modal-save").onclick = () => savePatchPanel(nodeId);
     modal.style.display = "block";
+    
+    // Apply labels immediately
+    setTimeout(() => {
+        if (typeof window.checkOltPorts === "function") window.checkOltPorts(null);
+    }, 10);
 }
 
 function renderOLTPatchUI(node) {
@@ -214,6 +219,11 @@ export function openCrossConnect(nodeId) {
 
     document.getElementById("cc-modal-save").onclick = () => saveCrossConnect(nodeId);
     modal.style.display = "block";
+
+    // Apply labels immediately
+    setTimeout(() => {
+        if (typeof window.checkFobPorts === "function") window.checkFobPorts(null);
+    }, 10);
 }
 
 function getIncomingCorePath(targetFob, cableId, coreIndex) {
@@ -400,7 +410,7 @@ function renderFOBCrossUI(node) {
             <div style="font-weight:bold; color:#58a6ff; margin-bottom:6px;">${name}</div>
             <div style="display:flex; align-items:center; gap:8px;">
                 <span style="font-size:12px;">Вхід (IN):</span>
-                <select class="fob-cross" data-totype="SPLITTER" data-toid="${id}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
+                <select class="fob-cross" data-totype="SPLITTER" data-toid="${id}" data-targetname="${name}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
                     ${sOpt}
                 </select>
             </div>
@@ -449,7 +459,7 @@ function renderFOBCrossUI(node) {
                     <div style="font-size:11px; width:65px; display:flex; align-items:center;">
                         ${getFiberDotHtml(i)} Жила ${i+1}
                     </div>
-                    <select class="fob-cross" data-totype="CABLE" data-toid="${c.id}" data-tocore="${i}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
+                    <select class="fob-cross" data-totype="CABLE" data-toid="${c.id}" data-tocore="${i}" data-targetname="${c.to ? c.to.name : 'Кабель'}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
                         ${sOpt}
                     </select>
                 </div>`;
@@ -471,7 +481,7 @@ function renderFOBCrossUI(node) {
                 <div style="font-size:11px; width:65px; display:flex; align-items:center;">
                     <div style="width:8px;height:8px;border-radius:50%;background:#ffd700;margin-right:6px;box-shadow:0 0 3px #ffd700;"></div> Патчкорд
                 </div>
-                <select class="fob-cross" data-totype="PATCHCORD" data-toid="${c.id}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
+                <select class="fob-cross" data-totype="PATCHCORD" data-toid="${c.id}" data-targetname="${c.to ? c.to.name : 'Юніт'}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
                     ${sOpt}
                 </select>
             </div>`;
@@ -555,9 +565,11 @@ window.updateConnCapacity = function(connId, newCap, nodeId, nodeType) {
     if (nodeType === "OLT") {
         savePatchPanel(nodeId, true);
         document.getElementById("cc-modal-body").innerHTML = renderOLTPatchUI(node);
+        if (typeof window.checkOltPorts === "function") window.checkOltPorts(null);
     } else {
         saveCrossConnect(nodeId, true);
         document.getElementById("cc-modal-body").innerHTML = renderFOBCrossUI(node);
+        if (typeof window.checkFobPorts === "function") window.checkFobPorts(null);
     }
 };
 
@@ -598,7 +610,7 @@ window.checkOltPorts = function(selectElement) {
                 opt.style.color = "";
             } else if (usedVals.has(opt.value)) {
                 // This PON is used by SOME OTHER dropdown
-                opt.disabled = true;
+                opt.disabled = false; // ALLOW reassignment
                 opt.textContent = `PON ${pVal + 1} (ЗАЙНЯТО)`;
                 opt.style.color = "#ff5555";
             } else {
@@ -640,8 +652,8 @@ window.checkFobPorts = function(selectElement) {
         options.forEach(opt => {
             if (opt.value === "") return; // Skip -- Не підключено --
             
-            // Clean up the text content if it already has (ЗАЙНЯТО)
-            let baseText = opt.textContent.replace(" (ЗАЙНЯТО)", "");
+            // Clean up the text content if it already has (ЗАЙНЯТО) or [Зайнято: ...]
+            let baseText = opt.textContent.replace(/ \[(Зайнято|Використовується):.*?\]|\s*\(ЗАЙНЯТО\)/g, "");
             
             if (opt.value === sel.value) {
                 // Currently selected here
@@ -650,8 +662,11 @@ window.checkFobPorts = function(selectElement) {
                 opt.style.color = "";
             } else if (usedVals.has(opt.value)) {
                 // Used SOMEWHERE ELSE
-                opt.disabled = true;
-                opt.textContent = baseText + " (ЗАЙНЯТО)";
+                let usingSelect = Array.from(allSelects).find(s => s !== sel && s.value === opt.value);
+                let usingName = usingSelect ? usingSelect.getAttribute("data-targetname") : "Іншим";
+                
+                opt.disabled = false; // ALLOW reassignment
+                opt.textContent = baseText + ` [Зайнято: ${usingName}]`;
                 opt.style.color = "#ff5555";
             } else {
                 // Free

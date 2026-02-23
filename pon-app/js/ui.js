@@ -12,20 +12,130 @@ import {
   fitNetwork,
 } from "./network.js";
 
+/**
+ * Helper to process and aggregate all network components into a Bill of Materials.
+ * @returns {Array<{category: string, name: string, count: number, unit: string, price: number}>}
+ */
+function buildEconomicData() {
+  const items = [];
+  const add = (category, name, count, unit, price = 0) => {
+    const existing = items.find(i => i.category === category && i.name === name);
+    if (existing) {
+      existing.count += count;
+      if (price > 0 && existing.price === 0) existing.price = price;
+    } else {
+      items.push({ category, name, count, unit, price });
+    }
+  };
+
+  // Helper: extract base name
+  function getBaseName(n, type) {
+    if (n === type || new RegExp(`^${type}-\\d+$`).test(n)) return `${type} (модель не вказана)`;
+    const match = n.match(/^([a-zA-Zа-яА-ЯіІїЇєЄ0-9_]+-\d+-\d+)/);
+    return match ? match[1] : n;
+  }
+
+  // 1. Nodes
+  nodes.forEach(n => {
+    let price = typeof n.price === "number" ? n.price : 0;
+    
+    if (n.type === "OLT") {
+      const portCount = n.ports || 4;
+      let estModel = `OLT (на ${portCount} портів)`;
+      if (price === 0) {
+        add("Активне обладнання", estModel, 1, "шт.", price);
+      } else {
+        add("Активне обладнання", getBaseName(n.name, "OLT"), 1, "шт.", price);
+      }
+    } 
+    else if (n.type === "FOB") {
+      // Estimate FOB size
+      const inOutCables = conns.filter(c => (c.from === n || c.to === n) && c.type === "cable");
+      const dropPatchcords = conns.filter(c => (c.from === n || c.to === n) && c.type === "patchcord");
+      const splitters = /** @type {FOBNode} */ (n).splitters || [];
+      const legacyPlc = /** @type {FOBNode} */ (n).plcType;
+      const legacyFbt = /** @type {FOBNode} */ (n).fbtType;
+      
+      let totalSplices = 0;
+      // Rough estimation: each cable entering means we splice at least 1 core, or maybe transit.
+      // Easiest is to sum up all cores from all connected cables just to get a max capacity
+      inOutCables.forEach(c => totalSplices += (c.capacity || 1));
+      
+      let splCount = splitters.length;
+      if (splCount === 0 && (legacyPlc || legacyFbt)) splCount = (legacyPlc ? 1 : 0) + (legacyFbt ? 1 : 0);
+
+      const cablePorts = inOutCables.length;
+      const dropPorts = dropPatchcords.length;
+      
+      let estModel = "Муфта оптична";
+      if (dropPorts > 0) {
+        estModel = `Бокс PON (на ${Math.max(4, Math.ceil(dropPorts/4)*4)} абон., до ${cablePorts} вводів)`;
+      } else {
+        estModel = `Муфта (до ${cablePorts} вводів, ${Math.max(12, Math.ceil(totalSplices/12)*12)} зварок)`;
+      }
+
+      if (price === 0) {
+        add("Пасивне обладнання", estModel, 1, "шт.", price);
+      } else {
+        add("Пасивне обладнання", getBaseName(n.name, "Крос/Муфта"), 1, "шт.", price);
+      }
+      
+      // 2. Splitters (from FOBs)
+      splitters.forEach(sp => add("Сплітери оптичні", `Сплітер ${sp.type} ${sp.ratio}`, 1, "шт.", 0));
+      if (legacyFbt && !splitters.some(s => s.type === "FBT")) {
+        add("Сплітери оптичні", `Сплітер FBT ${legacyFbt}`, 1, "шт.", 0);
+      }
+      if (legacyPlc && !splitters.some(s => s.type === "PLC")) {
+        add("Сплітери оптичні", `Сплітер PLC ${legacyPlc}`, 1, "шт.", 0);
+      }
+    }
+    else if (n.type === "ONU") {
+      add("Абонентське обладнання", getBaseName(n.name, "ONU"), 1, "шт.", price);
+    }
+    else if (n.type === "MDU") {
+      add("Абонентське обладнання", getBaseName(n.name, "MDU"), 1, "шт.", price);
+    }
+  });
+
+  // 3. Cables & Patchcords
+  conns.forEach(c => {
+    if (c.type === "cable") {
+      const cores = c.capacity || 1;
+      const meters = connKm(c) * 1000;
+      add("Кабелі магістральні", `Кабель оптичний ${cores}F`, meters, "м", 0);
+    } else if (c.type === "patchcord") {
+      // For cross-connect auto-transit or actual UI patches
+      // We can count them by pieces or by length if desired. Usually drop cable is calculated.
+      const meters = connKm(c) * 1000;
+      // Many PONs count drop cables in meters, or as a fixed 100m drop cable "piece". Both work. We'll use meters for accuracy.
+      add("Кабелі абонентські", "Drop-кабель (патчкорд)", meters, "м", 0);
+      add("Монтажні матеріали", "Конектор швидкої фіксації / Патчкорд", 1, "шт.", 0);
+    }
+  });
+
+  return items;
+}
+
+
 function buildReportData() {
   const rows = [];
   nodes
     .filter((n) => n.type === "FOB")
     .forEach((/** @type {FOBNode} */ fob) => {
-      if (!fob.inputConn) {
+      const inCables = conns.filter(x => x.to === fob && x.type === "cable");
+      if (inCables.length === 0) {
         rows.push({ name: fob.name, status: "NOT_CONNECTED" });
         return;
       }
-      const c = fob.inputConn;
+      const c = inCables[0]; // Primary incoming cable
       const dm = connKm(c) * 1000;
       const cLoss = (dm / 1000) * FIBER_DB_KM;
-      const si = sigIn(fob);
-      const so = fob.plcType || fob.fbtType ? sigONU(fob) : null;
+      const si = sigIn(fob) || 0;
+      const so = fob.splitters?.length || fob.plcType || fob.fbtType ? sigONU(fob) : null;
+
+      const splitters = fob.splitters || [];
+      const fbts = splitters.filter(s => s.type === "FBT").map(s => s.ratio).join(", ") || fob.fbtType || "—";
+      const plcs = splitters.filter(s => s.type === "PLC").map(s => s.ratio).join(", ") || fob.plcType || "—";
 
       rows.push({
         name: fob.name,
@@ -35,12 +145,12 @@ function buildReportData() {
         cableLoss: cLoss.toFixed(3),
         mechLoss: MECH,
         signalIn: si.toFixed(2),
-        fbt: fob.fbtType || "—",
-        xLoss: fob.fbtType ? FBT_LOSSES[fob.fbtType].x.toFixed(2) : "—",
-        yLoss: fob.fbtType ? FBT_LOSSES[fob.fbtType].y.toFixed(2) : "—",
-        plc: fob.plcType || "—",
+        fbt: fbts,
+        xLoss: "—",
+        yLoss: "—",
+        plc: plcs,
         plcBranch: fob.plcBranch || "—",
-        plcLoss: fob.plcType ? PLC_LOSSES[fob.plcType].toFixed(2) : "—",
+        plcLoss: "—",
         signalONU: so !== null ? so.toFixed(2) : "—",
         onuCnt: conns.filter((x) => x.from === fob && x.type === "patchcord").reduce((acc, c) => acc + (c.to.type === "MDU" ? (c.to.floors || 0) * (c.to.entrances || 0) * (c.to.flatsPerFloor || 0) : 1), 0),
         status:
@@ -138,147 +248,45 @@ export function openReport() {
     html += `</tbody></table></div>`;
   }
 
-  // Economic part: grouped equipment prices (for cost estimates)
-  // Helper: extract base name for grouping
-  function getBaseName(name, type) {
-    // Якщо ім'я стандартне (OLT, FOB-1, ONU-42) - групуємо їх в "модель не вказана"
-    if (name === type || new RegExp(`^${type}-\\d+$`).test(name)) {
-      return `${type} (модель не вказана)`;
-    }
-    // Якщо кастомна назва має формат типу "FOB-3-12-1" -> зводимо до "FOB-3-12"
-    const match = name.match(/^([a-zA-Zа-яА-ЯіІїЇєЄ0-9_]+-\d+-\d+)/);
-    if (match) return match[1];
-    
-    // В іншому випадку групуємо по точній кастомній назві
-    return name;
-  }
-
-  // Group equipment by base name
-  const groupedOlt = {};
-  nodes.filter((n) => n.type === "OLT").forEach((n) => {
-    const base = getBaseName(n.name, "OLT");
-    if (!groupedOlt[base]) groupedOlt[base] = { name: base, count: 0, price: 0 };
-    groupedOlt[base].count++;
-    const price = typeof n.price === "number" ? n.price : 0;
-    if (price > 0 && groupedOlt[base].price === 0) groupedOlt[base].price = price;
-  });
-
-  const groupedFob = {};
-  nodes.filter((n) => n.type === "FOB").forEach((n) => {
-    const base = getBaseName(n.name, "FOB");
-    if (!groupedFob[base]) groupedFob[base] = { name: base, count: 0, price: 0 };
-    groupedFob[base].count++;
-    const price = typeof n.price === "number" ? n.price : 0;
-    if (price > 0 && groupedFob[base].price === 0) groupedFob[base].price = price;
-  });
-
-  const groupedOnu = {};
-  nodes.filter((n) => n.type === "ONU").forEach((n) => {
-    const base = getBaseName(n.name, "ONU");
-    if (!groupedOnu[base]) groupedOnu[base] = { name: base, count: 0, price: 0 };
-    groupedOnu[base].count++;
-    const price = typeof n.price === "number" ? n.price : 0;
-    if (price > 0 && groupedOnu[base].price === 0) groupedOnu[base].price = price;
-  });
-
-  const groupedMdu = {};
-  nodes.filter((n) => n.type === "MDU").forEach((n) => {
-    const base = getBaseName(n.name, "MDU");
-    if (!groupedMdu[base]) groupedMdu[base] = { name: base, count: 0, price: 0 };
-    groupedMdu[base].count++;
-    const price = typeof n.price === "number" ? n.price : 0;
-    if (price > 0 && groupedMdu[base].price === 0) groupedMdu[base].price = price;
-  });
-
-  // Count splitters by type
-  const fbtCounts = {};
-  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).fbtType).forEach((n) => {
-    const fob = /** @type {FOBNode} */ (n);
-    const key = `FBT ${fob.fbtType}`;
-    fbtCounts[key] = (fbtCounts[key] || 0) + 1;
-  });
-
-  const plcCounts = {};
-  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).plcType).forEach((n) => {
-    const fob = /** @type {FOBNode} */ (n);
-    const key = `PLC ${fob.plcType}`;
-    plcCounts[key] = (plcCounts[key] || 0) + 1;
-  });
-
-  const hasEquipment = Object.keys(groupedOlt).length > 0 || Object.keys(groupedFob).length > 0 || 
-                       Object.keys(groupedOnu).length > 0 || Object.keys(groupedMdu).length > 0 || Object.keys(fbtCounts).length > 0 || 
-                       Object.keys(plcCounts).length > 0;
-
-  if (hasEquipment) {
-    html += `<div class="report-section"><h3>💰 Економічна частина (для кошторису)</h3>`;
+  const econData = buildEconomicData();
+  if (econData.length > 0) {
+    html += `<div class="report-section"><h3>💰 Економічна частина (BOM)</h3>`;
     html += `<div class="info-pill" style="margin-bottom:12px">
-      💡 Вкажіть ціни в Excel для формування кошторису. Обладнання згруповано за типом/назвою.
+      💡 Вкажіть ціни в Excel для формування кошторису. Обладнання згруповано за категоріями, типами та жилками.
     </div>`;
 
     html += `<table style="width:100%;margin-bottom:12px">
-      <thead><tr><th>Обладнання</th><th>Кількість</th><th>Ціна за од. (₴)</th><th>Сума (₴)</th></tr></thead><tbody>`;
+      <thead><tr><th>Категорія</th><th>Назва / Номенклатура</th><th>К-ть</th><th>Од.виміру</th><th>Ціна (₴)</th><th>Сума (₴)</th></tr></thead><tbody>`;
 
-    // OLT
-    Object.values(groupedOlt).forEach((g) => {
-      const total = g.count * g.price;
+    // Group rows by category in the HTML view
+    let currentCat = "";
+    // Custom sort to put cables first, then boxes, then splitters, then ONUs
+    const catOrder = {
+      "Активне обладнання": 1,
+      "Пасивне обладнання": 2,
+      "Сплітери оптичні": 3,
+      "Кабелі магістральні": 4,
+      "Кабелі абонентські": 5,
+      "Абонентське обладнання": 6,
+      "Монтажні матеріали": 7
+    };
+    
+    econData.sort((a,b) => (catOrder[a.category]||99) - (catOrder[b.category]||99) || a.name.localeCompare(b.name));
+
+    econData.forEach((row) => {
+      const total = row.count * row.price;
+      const showCat = row.category !== currentCat;
+      if (showCat) currentCat = row.category;
+      
+      const countLabel = row.unit === "м" ? Math.ceil(row.count) : row.count; // Round meters up
+
       html += `<tr>
-        <td class="td-name">${g.name}</td>
-        <td>${g.count} шт.</td>
-        <td>${g.price > 0 ? g.price.toFixed(2) : ""}</td>
+        <td style="color:#8b949e; font-size:11px;">${showCat ? row.category : ""}</td>
+        <td class="td-name">${row.name}</td>
+        <td><strong>${countLabel}</strong></td>
+        <td style="color:#8b949e; font-size:11px;">${row.unit}</td>
+        <td>${row.price > 0 ? row.price.toFixed(2) : ""}</td>
         <td>${total > 0 ? total.toFixed(2) : ""}</td>
-      </tr>`;
-    });
-
-    // FOB
-    Object.values(groupedFob).forEach((g) => {
-      const total = g.count * g.price;
-      html += `<tr>
-        <td class="td-name">${g.name}</td>
-        <td>${g.count} шт.</td>
-        <td>${g.price > 0 ? g.price.toFixed(2) : ""}</td>
-        <td>${total > 0 ? total.toFixed(2) : ""}</td>
-      </tr>`;
-    });
-
-    // ONU
-    Object.values(groupedOnu).forEach((g) => {
-      const total = g.count * g.price;
-      html += `<tr>
-        <td class="td-name">${g.name}</td>
-        <td>${g.count} шт.</td>
-        <td>${g.price > 0 ? g.price.toFixed(2) : ""}</td>
-        <td>${total > 0 ? total.toFixed(2) : ""}</td>
-      </tr>`;
-    });
-
-    // MDU
-    Object.values(groupedMdu).forEach((g) => {
-      const total = g.count * g.price;
-      html += `<tr>
-        <td class="td-name">${g.name}</td>
-        <td>${g.count} шт.</td>
-        <td>${g.price > 0 ? g.price.toFixed(2) : ""}</td>
-        <td>${total > 0 ? total.toFixed(2) : ""}</td>
-      </tr>`;
-    });
-
-    // FBT Splitters
-    Object.entries(fbtCounts).forEach(([type, count]) => {
-      html += `<tr>
-        <td class="td-name">${type}</td>
-        <td>${count} шт.</td>
-        <td></td>
-        <td></td>
-      </tr>`;
-    });
-
-    // PLC Splitters
-    Object.entries(plcCounts).forEach(([type, count]) => {
-      html += `<tr>
-        <td class="td-name">${type}</td>
-        <td>${count} шт.</td>
-        <td></td>
-        <td></td>
       </tr>`;
     });
 
@@ -366,91 +374,27 @@ export function downloadCSV() {
     )
     .join("\n");
 
-  // Add economic part: grouped equipment (for cost estimates)
-  function getBaseName(name, type) {
-    if (name === type || new RegExp(`^${type}-\\d+$`).test(name)) {
-      return `${type} (модель не вказана)`;
-    }
-    const match = name.match(/^([a-zA-Zа-яА-ЯіІїЇєЄ0-9_]+-\d+-\d+)/);
-    if (match) return match[1];
-    return name;
-  }
+  const econData = buildEconomicData();
+  const catOrder = {
+    "Активне обладнання": 1,
+    "Пасивне обладнання": 2,
+    "Сплітери оптичні": 3,
+    "Кабелі магістральні": 4,
+    "Кабелі абонентські": 5,
+    "Абонентське обладнання": 6,
+    "Монтажні матеріали": 7
+  };
+  econData.sort((a,b) => (catOrder[a.category]||99) - (catOrder[b.category]||99) || a.name.localeCompare(b.name));
 
-  const groupedOlt = {};
-  nodes.filter((n) => n.type === "OLT").forEach((n) => {
-    const base = getBaseName(n.name, "OLT");
-    if (!groupedOlt[base]) groupedOlt[base] = { name: base, count: 0, price: 0 };
-    groupedOlt[base].count++;
-    const price = typeof n.price === "number" ? n.price : 0;
-    if (price > 0 && groupedOlt[base].price === 0) groupedOlt[base].price = price;
-  });
+  let economicSection = "\n\n💰 Економічна частина (BOM для кошторису)\n";
+  economicSection += "Категорія;Номенклатура;Кількість;Од. виміру;Ціна за од. (₴);Сума (₴)\n";
 
-  const groupedFob = {};
-  nodes.filter((n) => n.type === "FOB").forEach((n) => {
-    const base = getBaseName(n.name, "FOB");
-    if (!groupedFob[base]) groupedFob[base] = { name: base, count: 0, price: 0 };
-    groupedFob[base].count++;
-    const price = typeof n.price === "number" ? n.price : 0;
-    if (price > 0 && groupedFob[base].price === 0) groupedFob[base].price = price;
+  econData.forEach((row) => {
+    const total = row.count * row.price;
+    const countLabel = row.unit === "м" ? Math.ceil(row.count) : row.count;
+    economicSection += `${safeCell(row.category)};${safeCell(row.name)};${safeCell(countLabel)};${safeCell(row.unit)};${safeCell(row.price > 0 ? row.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
   });
 
-  const groupedOnu = {};
-  nodes.filter((n) => n.type === "ONU").forEach((n) => {
-    const base = getBaseName(n.name, "ONU");
-    if (!groupedOnu[base]) groupedOnu[base] = { name: base, count: 0, price: 0 };
-    groupedOnu[base].count++;
-    const price = typeof n.price === "number" ? n.price : 0;
-    if (price > 0 && groupedOnu[base].price === 0) groupedOnu[base].price = price;
-  });
-
-  const groupedMdu = {};
-  nodes.filter((n) => n.type === "MDU").forEach((n) => {
-    const base = getBaseName(n.name, "MDU");
-    if (!groupedMdu[base]) groupedMdu[base] = { name: base, count: 0, price: 0 };
-    groupedMdu[base].count++;
-    const price = typeof n.price === "number" ? n.price : 0;
-    if (price > 0 && groupedMdu[base].price === 0) groupedMdu[base].price = price;
-  });
-
-  const fbtCounts = {};
-  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).fbtType).forEach((n) => {
-    const fob = /** @type {FOBNode} */ (n);
-    const key = `FBT ${fob.fbtType}`;
-    fbtCounts[key] = (fbtCounts[key] || 0) + 1;
-  });
-
-  const plcCounts = {};
-  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).plcType).forEach((n) => {
-    const fob = /** @type {FOBNode} */ (n);
-    const key = `PLC ${fob.plcType}`;
-    plcCounts[key] = (plcCounts[key] || 0) + 1;
-  });
-
-  let economicSection = "\n\n💰 Економічна частина (для кошторису)\n";
-  economicSection += "Обладнання;Кількість;Ціна за од. (₴);Сума (₴)\n";
-
-  Object.values(groupedOlt).forEach((g) => {
-    const total = g.count * g.price;
-    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};${safeCell(g.price > 0 ? g.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
-  });
-  Object.values(groupedFob).forEach((g) => {
-    const total = g.count * g.price;
-    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};${safeCell(g.price > 0 ? g.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
-  });
-  Object.values(groupedOnu).forEach((g) => {
-    const total = g.count * g.price;
-    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};${safeCell(g.price > 0 ? g.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
-  });
-  Object.values(groupedMdu).forEach((g) => {
-    const total = g.count * g.price;
-    economicSection += `${safeCell(g.name)};${safeCell(g.count + " шт.")};${safeCell(g.price > 0 ? g.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
-  });
-  Object.entries(fbtCounts).forEach(([type, count]) => {
-    economicSection += `${safeCell(type)};${safeCell(count + " шт.")};;\n`;
-  });
-  Object.entries(plcCounts).forEach(([type, count]) => {
-    economicSection += `${safeCell(type)};${safeCell(count + " шт.")};;\n`;
-  });
   economicSection += "\n💡 Вкажіть ціни в Excel для формування кошторису.\n";
 
   const blob = new Blob(["\uFEFF" + hdr + body + economicSection], {
@@ -543,75 +487,25 @@ export function downloadTXT() {
     )
     .join("\n");
 
-  // Add economic part: grouped equipment (for cost estimates)
-  function getBaseName(name, type) {
-    const match = name.match(/^([A-Z]+-\d+-\d+)/);
-    if (match) return match[1];
-    return name;
-  }
+  const econData = buildEconomicData();
+  const catOrder = {
+    "Активне обладнання": 1,
+    "Пасивне обладнання": 2,
+    "Сплітери оптичні": 3,
+    "Кабелі магістральні": 4,
+    "Кабелі абонентські": 5,
+    "Абонентське обладнання": 6,
+    "Монтажні матеріали": 7
+  };
+  econData.sort((a,b) => (catOrder[a.category]||99) - (catOrder[b.category]||99) || a.name.localeCompare(b.name));
 
-  const groupedOlt = {};
-  nodes.filter((n) => n.type === "OLT").forEach((n) => {
-    const base = getBaseName(n.name, "OLT");
-    if (!groupedOlt[base]) groupedOlt[base] = { name: base, count: 0 };
-    groupedOlt[base].count++;
-  });
-
-  const groupedFob = {};
-  nodes.filter((n) => n.type === "FOB").forEach((n) => {
-    const base = getBaseName(n.name, "FOB");
-    if (!groupedFob[base]) groupedFob[base] = { name: base, count: 0 };
-    groupedFob[base].count++;
-  });
-
-  const groupedOnu = {};
-  nodes.filter((n) => n.type === "ONU").forEach((n) => {
-    const base = getBaseName(n.name, "ONU");
-    if (!groupedOnu[base]) groupedOnu[base] = { name: base, count: 0 };
-    groupedOnu[base].count++;
-  });
-
-  const groupedMdu = {};
-  nodes.filter((n) => n.type === "MDU").forEach((n) => {
-    const base = getBaseName(n.name, "MDU");
-    if (!groupedMdu[base]) groupedMdu[base] = { name: base, count: 0 };
-    groupedMdu[base].count++;
-  });
-
-  const fbtCounts = {};
-  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).fbtType).forEach((n) => {
-    const fob = /** @type {FOBNode} */ (n);
-    const key = `FBT ${fob.fbtType}`;
-    fbtCounts[key] = (fbtCounts[key] || 0) + 1;
-  });
-
-  const plcCounts = {};
-  nodes.filter((n) => n.type === "FOB" && /** @type {FOBNode} */ (n).plcType).forEach((n) => {
-    const fob = /** @type {FOBNode} */ (n);
-    const key = `PLC ${fob.plcType}`;
-    plcCounts[key] = (plcCounts[key] || 0) + 1;
-  });
-
-  const econHeader = ["Обладнання", "Кількість", "Ціна за од. (₴)", "Сума (₴)"];
+  const econHeader = ["Категорія", "Номенклатура", "Кількість", "Од.виміру", "Ціна за од. (₴)", "Сума (₴)"];
   const econTable = [econHeader];
 
-  Object.values(groupedOlt).forEach((g) => {
-    econTable.push([g.name, `${g.count} шт.`, "", ""]);
-  });
-  Object.values(groupedFob).forEach((g) => {
-    econTable.push([g.name, `${g.count} шт.`, "", ""]);
-  });
-  Object.values(groupedOnu).forEach((g) => {
-    econTable.push([g.name, `${g.count} шт.`, "", ""]);
-  });
-  Object.values(groupedMdu).forEach((g) => {
-    econTable.push([g.name, `${g.count} шт.`, "", ""]);
-  });
-  Object.entries(fbtCounts).forEach(([type, count]) => {
-    econTable.push([type, `${count} шт.`, "", ""]);
-  });
-  Object.entries(plcCounts).forEach(([type, count]) => {
-    econTable.push([type, `${count} шт.`, "", ""]);
+  econData.forEach((row) => {
+    const total = row.count * row.price;
+    const countLabel = row.unit === "м" ? Math.ceil(row.count) : row.count;
+    econTable.push([row.category, row.name, String(countLabel), row.unit, row.price > 0 ? row.price.toFixed(2) : "", total > 0 ? total.toFixed(2) : ""]);
   });
 
   if (econTable.length > 1) {
@@ -639,14 +533,17 @@ export function showSuggestions() {
   const issues = [];
 
   nodes
-    .filter((n) => n.type === "FOB" && !n.inputConn)
+    .filter((n) => n.type === "FOB")
     .forEach((fob) => {
-      issues.push({
-        icon: "❌",
-        type: "err",
-        msg: `${fob.name}: не підключений (немає вхідного кабелю)`,
-        nodeId: fob.id,
-      });
+      const inCables = conns.filter(c => c.to === fob && c.type === "cable");
+      if (inCables.length === 0) {
+        issues.push({
+          icon: "❌",
+          type: "err",
+          msg: `${fob.name}: не підключений (немає вхідного кабелю)`,
+          nodeId: fob.id,
+        });
+      }
     });
 
   nodes
@@ -663,23 +560,29 @@ export function showSuggestions() {
     });
 
   nodes
-    .filter((n) => n.type === "FOB" && n.inputConn && (/** @type {FOBNode} */ (n).plcType || /** @type {FOBNode} */ (n).fbtType))
+    .filter((n) => n.type === "FOB")
     .forEach((/** @type {FOBNode} */ fob) => {
-      const sig = sigONU(fob);
-      if (sig < ONU_MIN - 3)
-        issues.push({
-          icon: "❌",
-          type: "err",
-          msg: `${fob.name}: критично слабкий сигнал ONU (${sig.toFixed(1)} дБ)`,
-          nodeId: fob.id,
-        });
-      else if (sig < ONU_MIN)
-        issues.push({
-          icon: "⚠️",
-          type: "warn",
-          msg: `${fob.name}: сигнал на межі порогу (${sig.toFixed(1)} дБ)`,
-          nodeId: fob.id,
-        });
+      const inCables = conns.filter(c => c.to === fob && c.type === "cable");
+      const hasSplitters = (fob.splitters && fob.splitters.length > 0) || fob.fbtType || fob.plcType;
+      if (inCables.length > 0 && hasSplitters) {
+        const sig = sigONU(fob);
+        if (sig === null) return;
+        if (sig < ONU_MIN - 3) {
+          issues.push({
+            icon: "❌",
+            type: "err",
+            msg: `${fob.name}: критично слабкий сигнал ONU (${sig.toFixed(1)} дБ)`,
+            nodeId: fob.id,
+          });
+        } else if (sig < ONU_MIN) {
+          issues.push({
+            icon: "⚠️",
+            type: "warn",
+            msg: `${fob.name}: сигнал на межі порогу (${sig.toFixed(1)} дБ)`,
+            nodeId: fob.id,
+          });
+        }
+      }
     });
 
   nodes
@@ -727,8 +630,10 @@ export function showSuggestions() {
           break;
         }
         visited.add(cur.id);
-        if (!cur.inputConn || cur.inputConn.from.type !== "FOB") break;
-        cur = cur.inputConn.from;
+        const inCables = conns.filter(c => c.to === cur && c.type === "cable");
+        const fromFobCables = inCables.filter(c => c.from && c.from.type === "FOB");
+        if (fromFobCables.length === 0) break;
+        cur = /** @type {FOBNode} */ (fromFobCables[0].from);
       }
     });
 
@@ -808,8 +713,12 @@ export function showTopology() {
         : "";
     const dist = cable ? (connKm(cable) * 1000).toFixed(0) : "?";
     let splParts = [];
-    if (fob.fbtType) splParts.push(`FBT ${fob.fbtType}`);
-    if (fob.plcType) splParts.push(`PLC ${fob.plcType}`);
+    const splitters = fob.splitters || [];
+    splitters.forEach(sp => splParts.push(`${sp.type} ${sp.ratio}`));
+    if (splParts.length === 0) {
+      if (fob.fbtType) splParts.push(`FBT ${fob.fbtType}`);
+      if (fob.plcType) splParts.push(`PLC ${fob.plcType}`);
+    }
     const splitterInfo = splParts.length > 0 ? splParts.join(" + ") : "Транзит";
 
     h += `<div class="topo-branch">`;
@@ -888,20 +797,36 @@ export function showTopology() {
  * @param {FOBNode} fob
  * @returns {number}
  */
+/**
+ * @param {FOBNode} fob
+ * @returns {number}
+ */
 function getTotalLoss(fob) {
-  if (fob.plcType && fob.fbtType) {
-    // Combo: FBT X branch + PLC + mechanical losses
-    const brLoss = fob.plcBranch === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
-    return brLoss + MECH + PLC_LOSSES[fob.plcType] + MECH;
+  let loss = 0;
+  const splitters = fob.splitters || [];
+  
+  splitters.forEach(sp => {
+    if (sp.type === "FBT" && FBT_LOSSES[sp.ratio]) {
+      // Use X branch (tap) as default for FBT
+      loss += FBT_LOSSES[sp.ratio].x + MECH;
+    } else if (sp.type === "PLC" && PLC_LOSSES[sp.ratio]) {
+      loss += PLC_LOSSES[sp.ratio] + MECH;
+    }
+  });
+
+  // Fallback for legacy splitters
+  if (splitters.length === 0) {
+    if (fob.plcType && fob.fbtType) {
+      const brLoss = fob.plcBranch === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
+      loss = brLoss + MECH + PLC_LOSSES[fob.plcType] + MECH;
+    } else if (fob.plcType) {
+      loss = PLC_LOSSES[fob.plcType] + MECH;
+    } else if (fob.fbtType) {
+      loss = FBT_LOSSES[fob.fbtType].x + MECH;
+    }
   }
-  if (fob.plcType) {
-    return PLC_LOSSES[fob.plcType] + MECH;
-  }
-  if (fob.fbtType) {
-    // FBT only: use X branch (tap) as default
-    return FBT_LOSSES[fob.fbtType].x + MECH;
-  }
-  return 0;
+
+  return loss;
 }
 
 // Helper: get loss for selected splitter type in scenario
@@ -937,8 +862,14 @@ function getScenarioLoss(selectedSplitter, originalLoss) {
 function getOLTPort(fob) {
   /** @type {PONNode} */
   let node = fob;
-  while (node && node.inputConn) {
-    const c = node.inputConn;
+  const visited = new Set();
+
+  while (node && !visited.has(node.id)) {
+    visited.add(node.id);
+    const inCables = conns.filter(c => c.to === node && c.type === "cable");
+    if (inCables.length === 0) break;
+
+    const c = inCables[0];
     if (c.from.type === "OLT" && typeof c.fromPort === "number") {
       return { olt: c.from, port: c.fromPort };
     }

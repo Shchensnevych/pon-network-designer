@@ -1945,6 +1945,9 @@ window.refreshNetworkUI = () => {
   nodes.forEach(x => {
     updateNodeLabel(x);
   });
+  conns.forEach(c => {
+    if (c.type === "cable" && typeof updateConnLabel === "function") updateConnLabel(c);
+  });
   if (typeof updateTooltipsVisibility === "function") updateTooltipsVisibility();
   updateStats();
 };
