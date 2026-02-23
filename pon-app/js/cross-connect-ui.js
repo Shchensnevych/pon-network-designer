@@ -1,6 +1,6 @@
 import { nodes, conns } from "./state.js";
 import { FIBER_DB_KM } from "./config.js";
-import { traceOpticalPath, sigFBT, sigPLC, connKm } from "./signal.js";
+import { traceOpticalPath, sigFBT, sigPLC, connKm, sigSplitter } from "./signal.js";
 
 // Modal HTML generation
 function createModalContainer() {
@@ -255,8 +255,9 @@ function renderFOBCrossUI(node) {
     // 1. Cables IN -> Cores
     // 2. Splitters -> Output Branches (X, Y or 1..N)
     
-    // Compile all possible "sources" for dropdowns
-    let sourceOptions = `<option value="">-- ВІЛЬНО --</option>`;
+    // Gather all possible incoming sources for dropdowns
+    // Start with a default empty option
+    let sourceOptions = `<option value="">--- Не підключено ---</option>`;
     
     // Cables in
     inCables.forEach(c => {
@@ -279,10 +280,48 @@ function renderFOBCrossUI(node) {
         }
     });
 
-    // Splitters
+    // Group splitters by type & ratio to enumerate them
+    const splitters = node.splitters || [];
+    const spCounts = {};
+    const spLabels = {};
+
+    splitters.forEach(sp => {
+        const key = `${sp.type}_${sp.ratio}`;
+        spCounts[key] = (spCounts[key] || 0) + 1;
+    });
+
+    const spCurrent = {};
+    splitters.forEach(sp => {
+        const key = `${sp.type}_${sp.ratio}`;
+        if (spCounts[key] > 1) {
+            spCurrent[key] = (spCurrent[key] || 0) + 1;
+            spLabels[sp.id] = `${sp.type} ${sp.ratio} #${spCurrent[key]}`;
+        } else {
+            spLabels[sp.id] = `${sp.type} ${sp.ratio}`;
+        }
+    });
+
+    splitters.forEach(sp => {
+        const label = spLabels[sp.id];
+        if (sp.type === "FBT") {
+            const sx = sigSplitter(node, sp.id, "X");
+            const sy = sigSplitter(node, sp.id, "Y");
+            const sxStr = sx !== null ? ` ⚡${sx.toFixed(1)}дБ` : "";
+            const syStr = sy !== null ? ` ⚡${sy.toFixed(1)}дБ` : "";
+            sourceOptions += `<option value="SPLITTER|${sp.id}|X">🔀 Від: ${label} (Гілка X)${sxStr}</option>`;
+            sourceOptions += `<option value="SPLITTER|${sp.id}|Y">🔀 Від: ${label} (Гілка Y)${syStr}</option>`;
+        } else if (sp.type === "PLC") {
+            const s = sigSplitter(node, sp.id);
+            const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
+            const plcOuts = parseInt(sp.ratio.split("x")[1]) || 2;
+            for(let i=1; i<=plcOuts; i++) {
+                sourceOptions += `<option value="SPLITTER|${sp.id}|${i}">📊 Від: ${label} (Вихід ${i})${sStr}</option>`;
+            }
+        }
+    });
+
     // Include legacy splitters for now: FBT and PLC if they exist.
-    // To cleanly separate them without deep refactoring, we treat them as virtual sources.
-    if (node.fbtType) {
+    if (node.fbtType && !splitters.some(s => s.id === "legacy_fbt")) {
         const sx = sigFBT(node, "X");
         const sy = sigFBT(node, "Y");
         const sxStr = sx !== null ? ` ⚡${sx.toFixed(1)}дБ` : "";
@@ -290,7 +329,7 @@ function renderFOBCrossUI(node) {
         sourceOptions += `<option value="SPLITTER|legacy_fbt|X">🔀 Від: FBT ${node.fbtType} (Гілка X)${sxStr}</option>`;
         sourceOptions += `<option value="SPLITTER|legacy_fbt|Y">🔀 Від: FBT ${node.fbtType} (Гілка Y)${syStr}</option>`;
     }
-    if (node.plcType) {
+    if (node.plcType && !splitters.some(s => s.id === "legacy_plc")) {
         const s = sigPLC(node);
         const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
         const plcOuts = parseInt(node.plcType.split("x")[1]) || 2;
@@ -342,10 +381,20 @@ function renderFOBCrossUI(node) {
         const selVal = existing ? existing.fromType+"|"+existing.fromId+"|"+(existing.fromCore !== undefined ? existing.fromCore : (existing.fromBranch || "")) : "";
         
         let safeSourceOptions = sourceOptions;
+        // Prevent self-loop in the option list!
+        if (id !== "legacy_fbt" && id !== "legacy_plc") {
+            const regex = new RegExp(`<option value="SPLITTER\\|${id}\\|[^>]+>.*?<\\\/option>`, "g");
+            safeSourceOptions = safeSourceOptions.replace(regex, "");
+        }
         if (id === "legacy_fbt") safeSourceOptions = safeSourceOptions.replace(/<option value="SPLITTER\|legacy_fbt[^>]+>.*?<\/option>/g, "");
         if (id === "legacy_plc") safeSourceOptions = safeSourceOptions.replace(/<option value="SPLITTER\|legacy_plc[^>]+>.*?<\/option>/g, "");
         
-        let sOpt = safeSourceOptions.replace(`value="${selVal}"`, `value="${selVal}" selected`);
+        let sOpt = safeSourceOptions;
+        if (selVal) {
+            sOpt = sOpt.replace(`value="${selVal}"`, `value="${selVal}" selected`);
+        } else {
+            sOpt = sOpt.replace(`<option value="">`, `<option value="" selected>`);
+        }
         
         return `<div style="background:#21262d; padding:10px; border-radius:4px; border:1px solid #30363d; margin-bottom:10px;">
             <div style="font-weight:bold; color:#58a6ff; margin-bottom:6px;">${name}</div>
@@ -358,10 +407,14 @@ function renderFOBCrossUI(node) {
         </div>`;
     };
 
-    if (node.fbtType) midHtml += buildSplitterBox("legacy_fbt", "FBT", `FBT (${node.fbtType})`);
-    if (node.plcType) midHtml += buildSplitterBox("legacy_plc", "PLC", `PLC (${node.plcType})`);
+    splitters.forEach(sp => {
+        midHtml += buildSplitterBox(sp.id, sp.type, spLabels[sp.id]);
+    });
+
+    if (node.fbtType && !splitters.some(s => s.id === "legacy_fbt")) midHtml += buildSplitterBox("legacy_fbt", "FBT", `FBT (${node.fbtType})`);
+    if (node.plcType && !splitters.some(s => s.id === "legacy_plc")) midHtml += buildSplitterBox("legacy_plc", "PLC", `PLC (${node.plcType})`);
     
-    if(!node.fbtType && !node.plcType) midHtml += `<div style="text-align:center;color:#8b949e;font-size:12px">Немає сплітерів. Змініть властивості FOB.</div>`;
+    if(splitters.length === 0 && !node.fbtType && !node.plcType) midHtml += `<div style="text-align:center;color:#8b949e;font-size:12px">Немає сплітерів. Змініть властивості FOB.</div>`;
     midHtml += `</div>`;
 
     // Right: OUTGOING
@@ -378,16 +431,47 @@ function renderFOBCrossUI(node) {
                     ${c.type === "cable" ? `<span style="color:#8b949e; font-size:12px;">Жил: <input type="number" min="1" max="144" value="${cores}" style="width:40px; background:#0d1117; color:#c9d1d9; border:1px solid #30363d;" onchange="window.updateConnCapacity('${c.id}', this.value, '${node.id}', 'FOB');"></span>` : ""}
                 </div>
             </div>`;
-        for(let i=0; i<cores; i++) {
-            const existing = (node.crossConnects || []).find(xc => xc.toType === "CABLE" && xc.toId === c.id && xc.toCore === i);
-            const selVal = existing ? existing.fromType+"|"+existing.fromId+"|"+(existing.fromCore !== undefined ? existing.fromCore : (existing.fromBranch || "")) : "";
-            let sOpt = sourceOptions.replace(`value="${selVal}"`, `value="${selVal}" selected`);
+        if (c.type === "cable") {
+            for(let i=0; i<cores; i++) {
+                // Determine pre-selected value
+                let selVal = "";
+                let existing = (node.crossConnects || []).find(xc => xc.toType === "CABLE" && xc.toId === c.id && xc.toCore === i);
+                if (existing) selVal = existing.fromType+"|"+existing.fromId+"|"+(existing.fromCore !== undefined ? existing.fromCore : (existing.fromBranch || ""));
+
+                let sOpt = sourceOptions;
+                if (selVal) {
+                    sOpt = sOpt.replace(`value="${selVal}"`, `value="${selVal}" selected`);
+                } else {
+                    sOpt = sOpt.replace(`<option value="">`, `<option value="" selected>`);
+                }
+
+                outHtml += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
+                    <div style="font-size:11px; width:65px; display:flex; align-items:center;">
+                        ${getFiberDotHtml(i)} Жила ${i+1}
+                    </div>
+                    <select class="fob-cross" data-totype="CABLE" data-toid="${c.id}" data-tocore="${i}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;">
+                        ${sOpt}
+                    </select>
+                </div>`;
+            }
+        } else if (c.type === "patchcord") {
+            // Determine pre-selected value
+            let selVal = "";
+            let existing = (node.crossConnects || []).find(xc => xc.toType === "PATCHCORD" && xc.toId === c.id);
+            if (existing) selVal = existing.fromType+"|"+existing.fromId+"|"+(existing.fromCore !== undefined ? existing.fromCore : (existing.fromBranch || ""));
+
+            let sOpt = sourceOptions;
+            if (selVal) {
+                sOpt = sOpt.replace(`value="${selVal}"`, `value="${selVal}" selected`);
+            } else {
+                sOpt = sOpt.replace(`<option value="">`, `<option value="" selected>`);
+            }
 
             outHtml += `<div style="display:flex; align-items:center; gap:8px; margin-bottom:4px;">
                 <div style="font-size:11px; width:65px; display:flex; align-items:center;">
-                    ${c.type === "cable" ? getFiberDotHtml(i) : ""}Жила ${i+1}
+                    <div style="width:8px;height:8px;border-radius:50%;background:#ffd700;margin-right:6px;box-shadow:0 0 3px #ffd700;"></div> Патчкорд
                 </div>
-                <select class="fob-cross" data-totype="CABLE" data-toid="${c.id}" data-tocore="${i}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;">
+                <select class="fob-cross" data-totype="PATCHCORD" data-toid="${c.id}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;">
                     ${sOpt}
                 </select>
             </div>`;

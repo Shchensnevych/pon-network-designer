@@ -30,7 +30,7 @@ import {
   getChainColor, usedCables, usedPatches, usedOutputs,
   maxOutputs, freeCablePorts, freePatchPorts,
   fobPortStatus, getDistM, connKm, sigIn, 
-  hasOLTPath, sigAtONU, sigONU, sigFBT,
+  hasOLTPath, sigAtONU, sigONU, sigFBT, sigSplitter,
   cntONUport, cntDn, getSignalColor, updateCableColors,
 } from "./signal.js";
 
@@ -592,6 +592,14 @@ export function restoreNetwork(json) {
       if (!n.name) n.name = "FOB";
       if (!n.splitters) n.splitters = [];
       if (!n.crossConnects) n.crossConnects = [];
+      
+      // Auto-migrate legacy splitters to the dynamic array
+      if (n.fbtType && !n.splitters.some(s => s.id === "legacy_fbt")) {
+          n.splitters.push({ id: "legacy_fbt", type: "FBT", ratio: n.fbtType });
+      }
+      if (n.plcType && !n.splitters.some(s => s.id === "legacy_plc")) {
+          n.splitters.push({ id: "legacy_plc", type: "PLC", ratio: n.plcType });
+      }
     }
     if (n.type === "ONU") {
       if (!n.name) n.name = "ONU";
@@ -739,6 +747,7 @@ function addConn(from, to, type) {
     if (from.type === "OLT") {
       // Instead of old showOLTPortSel, we just create the cable and then open Patch Panel
       promptCableCapacity(from, to, type, getChainColor(from), () => {
+         selectTool("select");
          if (typeof window.openPatchPanel === "function") {
              window.openPatchPanel(from.id);
          }
@@ -749,6 +758,7 @@ function addConn(from, to, type) {
     // FOB -> FOB Rules
     const chainColor = getChainColor(from);
     promptCableCapacity(from, to, type, chainColor, () => {
+       selectTool("select");
        if (typeof window.openCrossConnect === "function") window.openCrossConnect(from.id);
     });
     return;
@@ -758,6 +768,7 @@ function addConn(from, to, type) {
       return;
     }
     createConnection(from, to, type, "#ffd700");
+    selectTool("select");
     if (typeof window.openCrossConnect === "function") window.openCrossConnect(from.id);
     return;
   }
@@ -982,8 +993,38 @@ function buildNodeLabelContent(n) {
     const pi = fobPortStatus(n);
     pi.lines.forEach((l) => (L2 += `<br>${l}`));
 
+    const splitters = n.splitters || [];
+    
+    const spCounts = {};
+    const spLabels = {};
+    splitters.forEach(sp => {
+        const key = `${sp.type}_${sp.ratio}`;
+        spCounts[key] = (spCounts[key] || 0) + 1;
+    });
+    const spCurrent = {};
+    splitters.forEach(sp => {
+        const key = `${sp.type}_${sp.ratio}`;
+        if (spCounts[key] > 1) {
+            spCurrent[key] = (spCurrent[key] || 0) + 1;
+            spLabels[sp.id] = `${sp.type} ${sp.ratio} #${spCurrent[key]}`;
+        } else {
+            spLabels[sp.id] = `${sp.type} ${sp.ratio}`;
+        }
+    });
+
     // FBT branch signals
-    if (n.fbtType) {
+    splitters.filter(s => s.type === "FBT").forEach(sp => {
+        const sx = sigSplitter(n, sp.id, "X");
+        const sy = sigSplitter(n, sp.id, "Y");
+        if (sx !== null || sy !== null) {
+            L2 += `<br><span class="lbl-dim">${spLabels[sp.id]}:</span>`;
+            if (sx !== null) L2 += ` <span class="${sigColorClass(sx)}">X:${sx.toFixed(1)}дБ</span>`;
+            if (sy !== null) L2 += ` <span class="${sigColorClass(sy)}">Y:${sy.toFixed(1)}дБ</span>`;
+        }
+    });
+    
+    // Legacy support
+    if (n.fbtType && !splitters.some(s => s.id === "legacy_fbt")) {
       const sx = sigFBT(n, "X");
       const sy = sigFBT(n, "Y");
       if (sx !== null && sy !== null) {
@@ -993,7 +1034,8 @@ function buildNodeLabelContent(n) {
     }
 
     // PLC ONU signal
-    if (n.plcType && n.inputConn) {
+    const hasPlc = splitters.some(s => s.type === "PLC") || n.plcType;
+    if (hasPlc && n.inputConn) {
       const so = sigONU(n);
       if (so !== null) {
         L2 += `<br><span class="${sigColorClass(so)}">→ONU:${so.toFixed(1)}дБ</span>`;
@@ -1001,7 +1043,7 @@ function buildNodeLabelContent(n) {
     }
 
     // Transit indicator
-    if (!n.fbtType && !n.plcType) {
+    if (splitters.length === 0 && !n.fbtType && !n.plcType) {
       L2 += `<br><span class="lbl-transit">→ транзит</span>`;
     }
   } else if (n.type === "ONU" || n.type === "MDU") {
@@ -1371,7 +1413,11 @@ function buildTooltip(n) {
     let t = `<strong style='color:#c084fc'>${n.name}</strong><br>`;
     if (n.inputConn) {
       const si = sigIn(n);
-      t += `📥 IN: <span style='color:${sigClass(si) === "ok" ? "#3fb950" : sigClass(si) === "warn" ? "#d29922" : "#f85149"}'>${si.toFixed(2)} дБ</span><br>`;
+      if (si !== null) {
+        t += `📥 IN: <span style='color:${sigClass(si) === "ok" ? "#3fb950" : sigClass(si) === "warn" ? "#d29922" : "#f85149"}'>${si.toFixed(2)} дБ</span><br>`;
+      } else {
+        t += `📥 IN: <span style='color:#8b949e'>немає сигналу</span><br>`;
+      }
       let branchTag = "";
       if (n.inputConn.branch) branchTag = ` (гілка ${n.inputConn.branch})`;
       else if (n.inputConn.from.type === "FOB" && n.inputConn.from.plcType) branchTag = ` (через PLC)`;
@@ -1498,29 +1544,61 @@ function showProps(n) {
       </div>`;
     }
 
-    h += `<button class="btn" style="margin-top:15px;width:100%;border-color:#58a6ff" onclick="window.openPatchPanel('${n.id}')">🎛️ Оптичний крос (ODF)</button>`;
+    h += `<button class="btn" style="margin-top:15px;width:100%;background:#0d1117;color:#c9d1d9;border:1px solid #58a6ff;padding:8px;border-radius:4px;cursor:pointer;" onmouseover="this.style.background='#161b22'" onmouseout="this.style.background='#0d1117'" onclick="window.openPatchPanel('${n.id}')">🎛️ Оптичний крос (ODF)</button>`;
   } else if (n.type === "FOB") {
-    h += `<div>FBT: <select onchange="updNode('${n.id}','fbtType',this.value)"><option value="">--</option>${Object.keys(
-      FBT_LOSSES,
-    )
-      .map(
-        (k) =>
-          `<option value="${k}" ${n.fbtType === k ? "selected" : ""}>${k}</option>`,
-      )
-      .join("")}</select></div>`;
-    h += `<div>PLC: <select onchange="updNode('${n.id}','plcType',this.value)"><option value="">--</option>${Object.keys(
-      PLC_LOSSES,
-    )
-      .map(
-        (k) =>
-          `<option value="${k}" ${n.plcType === k ? "selected" : ""}>${k}</option>`,
-      )
-      .join("")}</select></div>`;
-    if (n.fbtType && n.plcType) {
-      h += `<div>Гілка PLC: <select onchange="updNode('${n.id}','plcBranch',this.value)"><option value="X" ${n.plcBranch === "X" ? "selected" : ""}>X</option><option value="Y" ${n.plcBranch !== "X" ? "selected" : ""}>Y</option></select></div>`;
+    h += `<div style="margin-top:10px; border:1px solid #30363d; border-radius:6px; background:#161b22; padding:10px;">`;
+    h += `<div style="color:#8b949e; font-size:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
+             <b>⚙️ Дільники</b>
+          </div>`;
+    
+    const splitters = n.splitters || [];
+
+    const spCounts = {};
+    const spLabels = {};
+    splitters.forEach(sp => {
+        const key = `${sp.type}_${sp.ratio}`;
+        spCounts[key] = (spCounts[key] || 0) + 1;
+    });
+    const spCurrent = {};
+    splitters.forEach(sp => {
+        const key = `${sp.type}_${sp.ratio}`;
+        if (spCounts[key] > 1) {
+            spCurrent[key] = (spCurrent[key] || 0) + 1;
+            spLabels[sp.id] = `${sp.type} ${sp.ratio} #${spCurrent[key]}`;
+        } else {
+            spLabels[sp.id] = `${sp.type} ${sp.ratio}`;
+        }
+    });
+
+    if (n.fbtType || n.plcType) {
+        h += `<div style="font-size:11px; color:#d29922; margin-bottom:5px;">⚠️ Є старі дільники. Вони працюють, але краще додати їх через цю панель і перезібрати касету.</div>`;
     }
 
-    h += `<button class="btn" style="margin-top:15px;width:100%;border-color:#c084fc" onclick="window.openCrossConnect('${n.id}')">🪛 Касета (Зварювання)</button>`;
+    splitters.forEach(sp => {
+        const icon = sp.type === "FBT" ? "🔀" : "📊";
+        h += `<div style="background:#21262d; border:1px solid #30363d; padding:4px 8px; border-radius:4px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
+                 <span>${icon} ${spLabels[sp.id]}</span>
+                 <button onclick="window.removeSplitter('${n.id}', '${sp.id}')" style="background:transparent; border:none; color:#f85149; cursor:pointer;" title="Видалити">✕</button>
+              </div>`;
+    });
+
+    h += `<div style="display:flex; gap:5px; margin-top:8px;">`;
+    h += `<select id="add-fbt-sel" style="flex:1; padding:2px; font-size:11px; background:#0d1117; color:#c9d1d9; border:1px solid #30363d;">
+            <option value="">+ FBT</option>
+            ${Object.keys(FBT_LOSSES).map(k => `<option value="${k}">${k}</option>`).join('')}
+          </select>`;
+    h += `<button onclick="const v=document.getElementById('add-fbt-sel').value; if(v) window.addSplitter('${n.id}', 'FBT', v);" style="background:#238636; color:white; border:none; border-radius:3px; cursor:pointer; font-size:11px;">Додати</button>`;
+    h += `</div>`;
+    
+    h += `<div style="display:flex; gap:5px; margin-top:5px;">`;
+    h += `<select id="add-plc-sel" style="flex:1; padding:2px; font-size:11px; background:#0d1117; color:#c9d1d9; border:1px solid #30363d;">
+            <option value="">+ PLC</option>
+            ${Object.keys(PLC_LOSSES).map(k => `<option value="${k}">${k}</option>`).join('')}
+          </select>`;
+    h += `<button onclick="const v=document.getElementById('add-plc-sel').value; if(v) window.addSplitter('${n.id}', 'PLC', v);" style="background:#238636; color:white; border:none; border-radius:3px; cursor:pointer; font-size:11px;">Додати</button>`;
+    h += `</div></div>`;
+
+    h += `<button class="btn" style="margin-top:15px;width:100%;background:#0d1117;color:#c9d1d9;border:1px solid #c084fc;padding:8px;border-radius:4px;cursor:pointer;" onmouseover="this.style.background='#161b22'" onmouseout="this.style.background='#0d1117'" onclick="window.openCrossConnect('${n.id}')">🪛 Касета (Зварювання)</button>`;
 
     if (n.inputConn) {
       const dist = connKm(n.inputConn) * 1000;
@@ -1588,8 +1666,9 @@ function updNode(id, prop, val) {
   saveState();
   n[prop] = val;
   if (prop === "name") updateNodeLabel(n);
-  if (prop === "outputPower") nodes.forEach((x) => updateNodeLabel(x));
-  showProps(n);
+  if (prop === "outputPower") nodes.forEach((x) => updateNodeLabel(x)); // Ensure label changes if node properties change
+  updateNodeLabel(n);
+  saveState(); // This saveState is already present, no need to duplicate
   updateStats();
   if (["fbtType", "plcType", "plcBranch"].includes(prop)) {
     const plcBr = n.plcBranch || "Y";
@@ -1616,6 +1695,48 @@ function updNode(id, prop, val) {
   }
 }
 
+/**
+ * Adds a new splitter to a FOB node
+ * @param {string} id 
+ * @param {"FBT" | "PLC"} type 
+ * @param {string} ratio 
+ */
+export function addSplitter(id, type, ratio) {
+  const n = nodes.find(x => x.id === id);
+  if (!n || n.type !== "FOB") return;
+  if (!n.splitters) n.splitters = [];
+  
+  const prefix = type === "FBT" ? "fbt" : "plc";
+  const newId = `${prefix}_${Math.random().toString(36).substr(2, 4)}`;
+  
+  n.splitters.push({ id: newId, type, ratio });
+  saveState();
+  showProps(n);
+  updateNodeLabel(n);
+}
+
+/**
+ * Removes a splitter from a FOB node
+ * @param {string} nodeId 
+ * @param {string} splitterId 
+ */
+export function removeSplitter(nodeId, splitterId) {
+  const n = nodes.find(x => x.id === nodeId);
+  if (!n || n.type !== "FOB" || !n.splitters) return;
+  
+  if (n.crossConnects && n.crossConnects.some(xc => xc.fromId === splitterId || xc.toId === splitterId)) {
+     if (!confirm("Цей дільник використовується у зварюваннях. При видаленні всі зварювання з ним також будуть видалені. Продовжити?")) {
+        return;
+     }
+     n.crossConnects = n.crossConnects.filter(xc => !(xc.fromId === splitterId || xc.toId === splitterId));
+  }
+  
+  n.splitters = n.splitters.filter(s => s.id !== splitterId);
+  saveState();
+  showProps(n);
+  updateStats();
+  if (typeof window.refreshNetworkUI === "function") window.refreshNetworkUI();
+}
 /**
  * @param {any} n
  * @param {string} branch
@@ -1746,59 +1867,6 @@ export function finishOLT(oid, fid, port) {
   }, { fromPort: port });
 }
 
-function showFOBBranchSel(src, tgt) {
-  const p = document.getElementById("props");
-  if (!p) return;
-  const [x, y] = src.fbtType.split("/");
-  const ux = isBranchFull(src, "X");
-  const uy = isBranchFull(src, "Y");
-
-  p.innerHTML = `<div class="node-card"><h3>Гілка FBT</h3>
-    <button class="port-btn" ${ux ? "disabled" : ""} onclick="finishFBT('${src.id}','${tgt.id}','X')">X (${x}%) ${ux ? "(Full)" : ""}</button>
-    <button class="port-btn" ${uy ? "disabled" : ""} onclick="finishFBT('${src.id}','${tgt.id}','Y')">Y (${y}%) ${uy ? "(Full)" : ""}</button>
-    <button class="del-btn" onclick="selectNodeById('${src.id}')">Скасувати</button></div>`;
-}
-
-export function finishFBT(sid, tid, br) {
-  const src = nodes.find((x) => x.id === sid);
-  const chainColor = getChainColor(/** @type {FOBNode} */ (src));
-  createConnection(src, nodes.find((x) => x.id === tid), "cable", chainColor, {
-    branch: br,
-  });
-}
-
-function showFOBBranchSel_Combo(src, tgt) {
-  const p = document.getElementById("props");
-  if (!p) return;
-  const plcBr = src.plcBranch || "Y";
-  const freeBr = plcBr === "X" ? "Y" : "X";
-
-  const plcFull = isBranchFull(src, plcBr);
-  const freeFull = isBranchFull(src, freeBr);
-
-  p.innerHTML = `<div class="node-card"><h3>FBT+PLC</h3>
-    <button class="port-btn" ${freeFull ? "disabled" : ""} onclick="finishCombo('${src.id}','${tgt.id}','FREE')">FBT гілка ${freeBr} ${freeFull ? "(Full)" : ""}</button>
-    <button class="port-btn" ${plcFull ? "disabled" : ""} onclick="finishCombo('${src.id}','${tgt.id}','PLC')">PLC ${src.plcType} (${plcBr}) ${plcFull ? "(Full)" : ""}</button>
-    <button class="del-btn" onclick="selectNodeById('${src.id}')">Cancel</button>
-  </div>`;
-}
-
-export function finishCombo(sid, tid, type) {
-  const s = nodes.find((x) => x.id === sid);
-  const plcBr = /** @type {any} */ (s).plcBranch || "Y";
-  const chainColor = getChainColor(/** @type {FOBNode} */ (s));
-  if (type === "FREE") {
-    const br = plcBr === "X" ? "Y" : "X";
-    createConnection(s, nodes.find((x) => x.id === tid), "cable", chainColor, {
-      branch: br,
-    });
-  } else {
-    createConnection(s, nodes.find((x) => x.id === tid), "cable", chainColor, {
-      branch: plcBr,
-    });
-  }
-}
-
 export function updateStats() {
   document.getElementById("s-olt").textContent = String(nodes.filter((n) => n.type === "OLT").length);
   document.getElementById("s-fob").textContent = String(nodes.filter((n) => n.type === "FOB").length);
@@ -1820,6 +1888,8 @@ window.refreshNetworkUI = () => {
 };
 
 window.updNode = updNode;
+window.addSplitter = addSplitter;
+window.removeSplitter = removeSplitter;
 window.selectNodeById = (id) => {
   const n = nodes.find((x) => x.id === id);
   if (!n) return;
@@ -1839,6 +1909,4 @@ window.deleteConnById = (id) => {
   if (c) deleteConn(c);
 };
 window.finishOLT = finishOLT;
-window.finishFBT = finishFBT;
-window.finishCombo = finishCombo;
 window.reassignBranch = reassignBranch;

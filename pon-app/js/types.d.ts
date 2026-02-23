@@ -66,6 +66,8 @@ declare global {
     openCrossConnect: Function;
     autoTransit: Function;
     refreshNetworkUI: Function;
+    addSplitter: Function;
+    removeSplitter: Function;
 
     // main.js
     selectTool: Function;
@@ -167,8 +169,11 @@ declare global {
   interface FOBNode extends PONNodeBase {
     type: "FOB";
     /** Legacy properties (to be migrated) */
+    /** @deprecated Use splitters[] + crossConnects[] */
     fbtType?: string;
+    /** @deprecated Use splitters[] + crossConnects[] */
     plcType?: string;
+    /** @deprecated Use splitters[] + crossConnects[] */
     plcBranch?: string;
     
     /** Independent internal splitter modules */

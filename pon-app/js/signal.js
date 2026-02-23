@@ -70,63 +70,33 @@ export function usedOutputs(fob) {
  * @returns {number}
  */
 export function maxOutputs(fob) {
-  if (!fob.plcType && !fob.fbtType) return 1;
-  if (fob.plcType && !fob.fbtType) return parseInt(fob.plcType.split("x")[1]);
-  if (fob.fbtType && !fob.plcType) return 2;
-  if (fob.fbtType && fob.plcType) return 1 + parseInt(fob.plcType.split("x")[1]);
-  return 1;
+  let total = 0;
+  total += (fob.splitters || []).reduce((sum, sp) => {
+      return sum + (sp.type === "PLC" ? (parseInt(sp.ratio.split("x")[1]) || 2) : 2);
+  }, 0);
+  if (fob.fbtType && !(fob.splitters||[]).some(s=>s.id==="legacy_fbt")) total += 2;
+  if (fob.plcType && !(fob.splitters||[]).some(s=>s.id==="legacy_plc")) total += (parseInt(fob.plcType.split("x")[1]) || 2);
+  return total || 1; // At least 1 for transit
 }
 
 /**
- * Free cable ports on the FOB.
+ * Free cable ports calculation (approximated from splice matrix).
  * @param {FOBNode} fob
  * @returns {number}
  */
 export function freeCablePorts(fob) {
-  if (!fob.plcType && !fob.fbtType) return usedCables(fob) === 0 ? 1 : 0;
-  if (fob.plcType && !fob.fbtType) {
-    const max = parseInt(fob.plcType.split("x")[1]);
-    return Math.max(0, max - usedOutputs(fob));
-  }
-  if (fob.fbtType && !fob.plcType) {
-    const x = conns.some((c) => c.from === fob && c.branch === "X");
-    const y = conns.some((c) => c.from === fob && c.branch === "Y");
-    return (x ? 0 : 1) + (y ? 0 : 1);
-  }
-  if (fob.fbtType && fob.plcType) {
-    let free = 0;
-    const freeBr = fob.plcBranch === "X" ? "Y" : "X";
-    if (!conns.some((c) => c.from === fob && c.branch === freeBr)) free++;
-
-    const maxPLC = parseInt(fob.plcType.split("x")[1]);
-    const plcBr = fob.plcBranch || "Y";
-    const usedOnPLC = conns.filter((c) => c.from === fob && c.branch === plcBr).length;
-    free += Math.max(0, maxPLC - usedOnPLC);
-    return free;
-  }
-  return 0;
+  const maxOut = maxOutputs(fob);
+  const usedSplitterOuts = (fob.crossConnects || []).filter(xc => xc.fromType === "SPLITTER").length;
+  return Math.max(0, maxOut - usedSplitterOuts);
 }
 
 /**
- * Free patchcord ports on the FOB.
+ * Free patchcord ports calculation (approximated from splice matrix).
  * @param {FOBNode} fob
  * @returns {number}
  */
 export function freePatchPorts(fob) {
-  if (!fob.plcType && !fob.fbtType) return 0;
-  if (fob.plcType && !fob.fbtType)
-    return Math.max(0, parseInt(fob.plcType.split("x")[1]) - usedOutputs(fob));
-  if (fob.fbtType && !fob.plcType) {
-    const x = conns.some((c) => c.from === fob && c.branch === "X");
-    const y = conns.some((c) => c.from === fob && c.branch === "Y");
-    return (x ? 0 : 1) + (y ? 0 : 1);
-  }
-  if (fob.fbtType && fob.plcType) {
-    const max = parseInt(fob.plcType.split("x")[1]);
-    const plcBr = fob.plcBranch || "Y";
-    return Math.max(0, max - conns.filter((c) => c.from === fob && c.branch === plcBr).length);
-  }
-  return 0;
+  return freeCablePorts(fob);
 }
 
 // ═══════════════════════════════════════════════
@@ -171,37 +141,69 @@ export function fobPortStatus(n) {
     });
   }
 
-  if (n.fbtType) {
-    const xConns = xc.filter(x => x.fromType === "SPLITTER" && x.fromId === "legacy_fbt" && x.fromBranch === "X");
-    const yConns = xc.filter(x => x.fromType === "SPLITTER" && x.fromId === "legacy_fbt" && x.fromBranch === "Y");
-    
-    const xClr = xConns.length ? "#f85149" : "#3fb950"; // Red if busy, Green if free
-    const yClr = yConns.length ? "#f85149" : "#3fb950";
-    
-    const xName = xConns.length ? targetTag(xConns[0].toId) : "";
-    const yName = yConns.length ? targetTag(yConns[0].toId) : "";
+  const splitters = n.splitters || [];
+  const spCounts = {};
+  const spLabels = {};
 
-    lines.push(`<span style="color:#ff6b6b">FBT X: <span style="color:${xClr}">${xConns.length ? "зайнята" + xName : "вільна"}</span></span>`);
-    lines.push(`<span style="color:#ff6b6b">FBT Y: <span style="color:${yClr}">${yConns.length ? "зайнята" + yName : "вільна"}</span></span>`);
-    
-    rich.push(`🔀 FBT ${n.fbtType}: <span style="color:${xClr}">X = ${xConns.length ? "зайн." : "вільн."}</span>${xName} | <span style="color:${yClr}">Y = ${yConns.length ? "зайн." : "вільн."}</span>${yName}`);
+  splitters.forEach(sp => {
+      const key = `${sp.type}_${sp.ratio}`;
+      spCounts[key] = (spCounts[key] || 0) + 1;
+  });
+
+  const spCurrent = {};
+  splitters.forEach(sp => {
+      const key = `${sp.type}_${sp.ratio}`;
+      if (spCounts[key] > 1) {
+          spCurrent[key] = (spCurrent[key] || 0) + 1;
+          spLabels[sp.id] = `${sp.type} ${sp.ratio} #${spCurrent[key]}`;
+      } else {
+          spLabels[sp.id] = `${sp.type} ${sp.ratio}`;
+      }
+  });
+
+  const renderSplitterStatus = (spId, spType, spRatio, legacyLabel = "") => {
+      const spName = legacyLabel || spLabels[spId] || `${spType} ${spRatio}`;
+      if (spType === "FBT") {
+          const xConns = xc.filter(x => x.fromType === "SPLITTER" && x.fromId === spId && x.fromBranch === "X");
+          const yConns = xc.filter(x => x.fromType === "SPLITTER" && x.fromId === spId && x.fromBranch === "Y");
+          
+          const xClr = xConns.length ? "#f85149" : "#3fb950"; // Red if busy, Green if free
+          const yClr = yConns.length ? "#f85149" : "#3fb950";
+          
+          const xName = xConns.length ? targetTag(xConns[0].toId) : "";
+          const yName = yConns.length ? targetTag(yConns[0].toId) : "";
+
+          lines.push(`<span style="color:#ff6b6b">${spName} X: <span style="color:${xClr}">${xConns.length ? "зайнята" + xName : "вільна"}</span></span>`);
+          lines.push(`<span style="color:#ff6b6b">${spName} Y: <span style="color:${yClr}">${yConns.length ? "зайнята" + yName : "вільна"}</span></span>`);
+          
+          rich.push(`🔀 ${spName}: <span style="color:${xClr}">X = ${xConns.length ? "зайн." : "вільн."}</span>${xName} | <span style="color:${yClr}">Y = ${yConns.length ? "зайн." : "вільн."}</span>${yName}`);
+      } else if (spType === "PLC") {
+          const plcMax = parseInt(spRatio.split("x")[1]) || 2;
+          const plcConns = xc.filter(x => x.fromType === "SPLITTER" && x.fromId === spId);
+          const plcUsed = plcConns.length;
+          const plcFree = plcMax - plcUsed;
+          const clr = plcFree > 0 ? "#3fb950" : "#f85149";
+          
+          lines.push(`<span style="color:#c084fc">${spName}: <span style="color:${clr}">${plcUsed}/${plcMax} зайнято</span></span>`);
+          
+          const targets = [...new Set(plcConns.map(x => {
+              const c = conns.find(cf => cf.id === x.toId);
+              return c ? c.to.name : "";
+          }))].filter(Boolean).join(", ");
+          
+          rich.push(`📊 ${spName}: ${plcUsed}/${plcMax} (<span style="color:${clr}">вільно: ${plcFree}</span>)${targets ? `<br>  └ ${targets}` : ""}`);
+      }
+  };
+
+  splitters.forEach(sp => {
+      renderSplitterStatus(sp.id, sp.type, sp.ratio);
+  });
+  
+  if (n.fbtType && !splitters.some(s => s.id === "legacy_fbt")) {
+      renderSplitterStatus("legacy_fbt", "FBT", n.fbtType, `FBT ${n.fbtType}`);
   }
-
-  if (n.plcType) {
-    const plcMax = parseInt(n.plcType.split("x")[1]);
-    const plcConns = xc.filter(x => x.fromType === "SPLITTER" && x.fromId === "legacy_plc");
-    const plcUsed = plcConns.length;
-    const plcFree = plcMax - plcUsed;
-    const clr = plcFree > 0 ? "#3fb950" : "#f85149";
-    
-    lines.push(`<span style="color:#c084fc">PLC ${n.plcType}: <span style="color:${clr}">${plcUsed}/${plcMax} зайнято</span></span>`);
-    
-    const targets = [...new Set(plcConns.map(x => {
-        const c = conns.find(cf => cf.id === x.toId);
-        return c ? c.to.name : "";
-    }))].filter(Boolean).join(", ");
-    
-    rich.push(`📊 PLC ${n.plcType}: ${plcUsed}/${plcMax} (<span style="color:${clr}">вільно: ${plcFree}</span>)${targets ? `<br>  └ ${targets}` : ""}`);
+  if (n.plcType && !splitters.some(s => s.id === "legacy_plc")) {
+      renderSplitterStatus("legacy_plc", "PLC", n.plcType, `PLC ${n.plcType}`);
   }
 
   return { lines, rich, details: [] };
@@ -293,11 +295,18 @@ export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
       }
 
     } else if (xc.fromType === "SPLITTER") {
-      if (xc.fromId === "legacy_fbt") {
-        const loss = xc.fromBranch === "X" ? FBT_LOSSES[String(fob.fbtType)].x : FBT_LOSSES[String(fob.fbtType)].y;
-        accumulatedLoss += loss + MECH;
-      } else if (xc.fromId === "legacy_plc") {
-        accumulatedLoss += PLC_LOSSES[fob.plcType] + MECH;
+      const splitters = fob.splitters || [];
+      const sp = splitters.find(s => s.id === xc.fromId) || 
+                 (xc.fromId === "legacy_fbt" ? { type: "FBT", ratio: fob.fbtType } : 
+                  xc.fromId === "legacy_plc" ? { type: "PLC", ratio: fob.plcType } : null);
+      
+      if (sp) {
+          if (sp.type === "FBT") {
+            const loss = xc.fromBranch === "X" ? (FBT_LOSSES[sp.ratio] ? FBT_LOSSES[sp.ratio].x : 0) : (FBT_LOSSES[sp.ratio] ? FBT_LOSSES[sp.ratio].y : 0);
+            accumulatedLoss += loss + MECH;
+          } else if (sp.type === "PLC") {
+            accumulatedLoss += (PLC_LOSSES[sp.ratio] || 0) + MECH;
+          }
       }
 
       // Continue tracing back from the splitter's INPUT
@@ -391,11 +400,7 @@ export function trueSigAtONU(onu) {
  * @returns {number | null}
  */
 export function sigFBT(fob, branch) {
-  if (!fob.fbtType) return null;
-  const s = traceOpticalPath(fob, "SPLITTER", "legacy_fbt", undefined);
-  if (s === null) return null;
-  const loss = branch === "X" ? FBT_LOSSES[String(fob.fbtType)].x : FBT_LOSSES[String(fob.fbtType)].y;
-  return s - loss - MECH;
+  return sigSplitter(fob, "legacy_fbt", branch);
 }
 
 /**
@@ -404,27 +409,61 @@ export function sigFBT(fob, branch) {
  * @returns {number | null}
  */
 export function sigPLC(fob) {
-  if (!fob.plcType) return null;
-  const s = traceOpticalPath(fob, "SPLITTER", "legacy_plc", undefined);
-  if (s === null) return null;
-  return s - PLC_LOSSES[fob.plcType] - MECH;
+  return sigSplitter(fob, "legacy_plc");
 }
 
 /**
- * Expected theoretical signal at ONU for a FOB (for Scenario calculation).
+ * Common method for any splitter type.
+ * @param {FOBNode} fob
+ * @param {string} splitterId
+ * @param {string} [branch]
+ */
+export function sigSplitter(fob, splitterId, branch) {
+  const s = traceOpticalPath(fob, "SPLITTER", splitterId, undefined);
+  if (s === null) return null;
+  
+  const splitters = fob.splitters || [];
+  const sp = splitters.find(sx => sx.id === splitterId) || 
+             (splitterId === "legacy_fbt" ? { type: "FBT", ratio: fob.fbtType } : 
+              splitterId === "legacy_plc" ? { type: "PLC", ratio: fob.plcType } : null);
+              
+  if (!sp) return null;
+  
+  if (sp.type === "FBT") {
+      const loss = branch === "X" ? (FBT_LOSSES[sp.ratio] ? FBT_LOSSES[sp.ratio].x : 0) : (FBT_LOSSES[sp.ratio] ? FBT_LOSSES[sp.ratio].y : 0);
+      return s - loss - MECH;
+  } else if (sp.type === "PLC") {
+      return s - (PLC_LOSSES[sp.ratio] || 0) - MECH;
+  }
+  return null;
+}
+
+/**
+ * Expected theoretical worst signal out of any splitter in FOB
  * @param {FOBNode} fob
  * @returns {number | null}
  */
 export function sigONU(fob) {
-  const sIn = sigIn(fob);
-  if (sIn === null) return null;
-  if (fob.fbtType && fob.plcType) {
-    const bLoss = fob.plcBranch === "X" ? FBT_LOSSES[String(fob.fbtType)].x : FBT_LOSSES[String(fob.fbtType)].y;
-    return sIn - bLoss - MECH - PLC_LOSSES[fob.plcType] - MECH;
-  }
-  if (fob.plcType) return sIn - PLC_LOSSES[fob.plcType] - MECH;
-  if (fob.fbtType) return sIn;
-  return sIn;
+  let minSig = Infinity;
+  const splitters = fob.splitters || [];
+  let found = false;
+  
+  const checkSp = (id, type) => {
+     if (type === "FBT") {
+         const sx = sigSplitter(fob, id, "X"), sy = sigSplitter(fob, id, "Y");
+         if (sx !== null) { minSig = Math.min(minSig, sx); found = true; }
+         if (sy !== null) { minSig = Math.min(minSig, sy); found = true; }
+     } else {
+         const s = sigSplitter(fob, id);
+         if (s !== null) { minSig = Math.min(minSig, s); found = true; }
+     }
+  };
+  
+  splitters.forEach(sp => checkSp(sp.id, sp.type));
+  if (fob.fbtType && !splitters.some(s=>s.id==="legacy_fbt")) checkSp("legacy_fbt", "FBT");
+  if (fob.plcType && !splitters.some(s=>s.id==="legacy_plc")) checkSp("legacy_plc", "PLC");
+
+  return found ? minSig : null;
 }
 
 /**
