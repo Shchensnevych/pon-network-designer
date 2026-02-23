@@ -192,19 +192,34 @@ export function fobPortStatus(n) {
           const plcFree = plcMax - plcUsed;
           const clr = plcFree > 0 ? "#3fb950" : "#f85149";
           
-          const targets = [...new Set(plcConns.map(x => {
+          const targetsRaw = [...new Set(plcConns.map(x => {
               if (x.toType === "SPLITTER") {
                   const spTarget = splitters.find(s => s.id === x.toId) || 
                                    (x.toId === "legacy_plc" ? { id: "legacy_plc", type: "PLC", ratio: n.plcType || "" } : null);
-                  return spTarget ? (spLabels[spTarget.id] || (spTarget.type + " " + spTarget.ratio)) : "Сплітер";
+                  return spTarget ? { type: "SPLITTER", name: (spLabels[spTarget.id] || (spTarget.type + " " + spTarget.ratio)) } : { type: "SPLITTER", name: "Сплітер" };
               }
               const c = conns.find(cf => cf.id === x.toId);
-              return c ? (c.type === "patchcord" ? c.to.name : `К: ${c.to.name}`) : "";
-          }))].filter(Boolean).join(", ");
+              return c && c.to ? { type: c.to.type, name: c.to.name } : null;
+          }))].filter(Boolean);
           
-          const tgtLabel = targets ? ` <span style="color:#8b949e">[${targets}]</span>` : "";
+          let onuCnt = 0, mduCnt = 0;
+          let otherArr = [];
+          targetsRaw.forEach(t => {
+              if (t.type === "ONU") onuCnt++;
+              else if (t.type === "MDU") mduCnt++;
+              else if (t.type === "SPLITTER") otherArr.push(t.name);
+              else otherArr.push(`К: ${t.name}`);
+          });
+          
+          let tagArr = [];
+          if (onuCnt > 0) tagArr.push(`ONU x${onuCnt}`);
+          if (mduCnt > 0) tagArr.push(`MDU x${mduCnt}`);
+          if (otherArr.length > 0) tagArr.push(...otherArr);
+          const targetStr = tagArr.join(", ");
+          
+          const tgtLabel = targetStr ? ` <span style="color:#8b949e">[${targetStr}]</span>` : "";
           lines.push(`<span style="color:#c084fc">${spName}: <span style="color:${clr}">${plcUsed}/${plcMax} зайнято</span>${tgtLabel}</span>`);
-          rich.push(`📊 ${spName}: ${plcUsed}/${plcMax} (<span style="color:${clr}">вільно: ${plcFree}</span>)${targets ? `<br>  └ ${targets}` : ""}`);
+          rich.push(`📊 ${spName}: ${plcUsed}/${plcMax} (<span style="color:${clr}">вільно: ${plcFree}</span>)${targetStr ? `<br>  └ ${targetStr}` : ""}`);
       }
   };
 

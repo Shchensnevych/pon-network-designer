@@ -724,12 +724,10 @@ export async function showTopology() {
 
   // Build Mermaid Syntax
   let m = `graph TD\n`;
-  m += `  classDef olt fill:#1f3a5f,stroke:#58a6ff,stroke-width:2px,color:#ffffff;\n`;
-  m += `  classDef fob fill:#3d2f1f,stroke:#d29922,stroke-width:1px,color:#ffffff;\n`;
-  m += `  classDef onu fill:#1f3b28,stroke:#3fb950,stroke-width:1px,color:#ffffff;\n`;
-  m += `  classDef mdu fill:#3c1e70,stroke:#d2a8ff,stroke-width:1px,color:#ffffff;\n`;
-  m += `  classDef port fill:#21262d,stroke:#30363d,stroke-width:1px,color:#8b949e,font-size:10px;\n`;
-  m += `  classDef default fill:#161b22,stroke:#30363d,color:#c9d1d9;\n`;
+  m += `  classDef default fill:#161b22,stroke:#30363d,stroke-width:1px,color:#c9d1d9;\n`;
+  m += `  classDef olt fill:#0d1117,stroke:#58a6ff,stroke-width:2px,color:#c9d1d9,rx:20,ry:20;\n`;
+  m += `  classDef fob fill:#161b22,stroke:#30363d,stroke-width:1px,color:#c9d1d9,rx:20,ry:20;\n`;
+  m += `  classDef subs fill:#161b22,stroke:#3fb950,stroke-width:1px,color:#c9d1d9,rx:20,ry:20;\n`;
   
   let nodeIdx = 0;
   function safeId(str) { return "N" + str.replace(/[^a-zA-Z0-9]/g, "") + "_" + (nodeIdx++); }
@@ -818,25 +816,37 @@ export async function showTopology() {
 
     // Downstream patchcords (ONUs / MDUs)
     const onus = conns.filter(c => c.from === fob && c.type === "patchcord").map(c => c.to).filter(Boolean);
-    onus.forEach(onu => {
-        const oId = safeId(onu.id);
-        const onuSig = hasOLTPath(fob) ? sigONU(fob) : null;
-        const oSigStr = onuSig !== null ? `⚡ ${onuSig.toFixed(1)} дБ` : "No Sig";
+    if (onus.length > 0) {
+        const gId = safeId(fob.id + "_subs");
+        let lines = [];
         
-        let extra = "";
-        let style = "onu";
-        let icon = "🏠";
-        if (onu.type === "MDU") {
-            style = "mdu";
-            icon = "🏢";
-            extra = `<br/><small>П:${onu.entrances||1}, Пов:${onu.floors||1}, Кв:${onu.flatsPerFloor||1}</small>`;
+        let onuLinks = onus.filter(o => o.type === "ONU").map(o => `<a href="#focus" data-focus-id="${o.id}" class="mm-subs-link">${o.name}</a>`);
+        let mduLinks = onus.filter(o => o.type === "MDU").map(o => `<a href="#focus" data-focus-id="${o.id}" class="mm-subs-link-mdu">${o.name}</a>`);
+        
+        if (onuLinks.length > 0) {
+            const chunks = [];
+            for (let i = 0; i < onuLinks.length; i += 4) {
+                 chunks.push(onuLinks.slice(i, i+4).join(", "));
+            }
+            lines.push(`🏠 <b>ONU (${onuLinks.length}):</b><br/>` + chunks.join("<br/>"));
         }
         
-        m += `  ${oId}(["${icon} ${onu.name}<br/><b>${oSigStr}</b>${extra}"]):::${style}\n`;
-        m += `  click ${oId} "javascript:window.focusNode('${onu.id}')" "Показати на карті"\n`;
-        m += `  ${fId} -.-> ${oId}\n`; // Dotted line for patchcords
-    });
-  }
+        if (mduLinks.length > 0) {
+            const chunks = [];
+            for (let i = 0; i < mduLinks.length; i += 4) {
+                 chunks.push(mduLinks.slice(i, i+4).join(", "));
+            }
+            lines.push(`🏢 <b>MDU (${mduLinks.length}):</b><br/>` + chunks.join("<br/>"));
+        }
+        
+        const onuSig = hasOLTPath(fob) ? sigONU(fob) : null;
+        const sColor = onuSig !== null ? (onuSig >= -25 ? "#3fb950" : onuSig >= -28 ? "#d29922" : "#f85149") : "#8b949e";
+        const oSigStr = onuSig !== null ? `⚡ ${onuSig.toFixed(1)} дБ` : "No Sig";
+        
+        m += `  ${gId}(["${lines.join("<br/>")}<br/><b style='color:${sColor};'>${oSigStr}</b>"]):::subs\n`;
+        m += `  ${fId} -.-> ${gId}\n`;
+    }
+}
 
   // Iterate OLTs
   olts.forEach(olt => {
@@ -896,6 +906,20 @@ export async function showTopology() {
       container.innerHTML = svg;
       
       const svgElement = container.querySelector('svg');
+      
+      // Delegated click listener for HTML nodes stripped by DOMPurify
+      container.addEventListener("click", (e) => {
+          const target = /** @type {HTMLElement} */ (e.target).closest("a[data-focus-id]");
+          if (target) {
+              e.preventDefault();
+              e.stopPropagation();
+              const id = target.getAttribute("data-focus-id");
+              if (id && typeof window.focusNode === "function") {
+                  window.focusNode(id);
+              }
+          }
+      });
+      
       if (svgElement) {
           svgElement.setAttribute("height", "100%");
           svgElement.setAttribute("width", "100%");

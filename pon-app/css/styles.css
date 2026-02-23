@@ -1020,8 +1020,12 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 /* Custom SVG Pan Zoom Controls overrides */
+#svg-pan-zoom-controls * {
+  opacity: 1 !important;
+}
+
 #svg-pan-zoom-controls path {
-  fill: #c9d1d9 !important;
+  fill: #f0f6fc !important;
   stroke: none !important;
   transition: fill 0.2s;
 }
@@ -1031,13 +1035,15 @@ input[type="number"]::-webkit-inner-spin-button {
 }
 
 #svg-pan-zoom-controls rect {
-  fill: #21262d !important;
+  fill: #30363d !important;
   stroke: #58a6ff !important;
-  stroke-width: 1.5px;
+  stroke-width: 1.5px !important;
+  rx: 4px !important;
+  ry: 4px !important;
 }
 
 #svg-pan-zoom-controls rect:hover {
-  fill: #30363d !important;
+  fill: #3c444d !important;
 }
 
 /* Mermaid custom Edge HTML Label styling */
@@ -1065,6 +1071,44 @@ input[type="number"]::-webkit-inner-spin-button {
   padding: 3px 6px;
   border-radius: 4px;
   margin: 2px;
+}
+
+.mm-subs-link {
+  display: inline-block !important;
+  color: #c9d1d9 !important;
+  background: #21262d !important;
+  border: 1px solid #30363d !important;
+  padding: 2px 6px !important;
+  border-radius: 10px !important;
+  text-decoration: none !important;
+  font-size: 11px !important;
+  margin: 2px 1px !important;
+  transition: all 0.2s !important;
+}
+
+.mm-subs-link:hover {
+  background: #30363d !important;
+  border-color: #58a6ff !important;
+  color: #58a6ff !important;
+}
+
+.mm-subs-link-mdu {
+  display: inline-block !important;
+  color: #c9d1d9 !important;
+  background: #2b213d !important;
+  border: 1px solid #4a3375 !important;
+  padding: 2px 6px !important;
+  border-radius: 10px !important;
+  text-decoration: none !important;
+  font-size: 11px !important;
+  margin: 2px 1px !important;
+  transition: all 0.2s !important;
+}
+
+.mm-subs-link-mdu:hover {
+  background: #3c2e55 !important;
+  border-color: #bc8cff !important;
+  color: #bc8cff !important;
 }
 
 table {
