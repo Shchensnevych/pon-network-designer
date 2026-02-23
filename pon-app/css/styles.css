@@ -1019,6 +1019,54 @@ input[type="number"]::-webkit-inner-spin-button {
   border-bottom: 1px solid #21262d;
 }
 
+/* Custom SVG Pan Zoom Controls overrides */
+#svg-pan-zoom-controls path {
+  fill: #c9d1d9 !important;
+  stroke: none !important;
+  transition: fill 0.2s;
+}
+
+#svg-pan-zoom-controls path:hover {
+  fill: #ffffff !important;
+}
+
+#svg-pan-zoom-controls rect {
+  fill: #21262d !important;
+  stroke: #58a6ff !important;
+  stroke-width: 1.5px;
+}
+
+#svg-pan-zoom-controls rect:hover {
+  fill: #30363d !important;
+}
+
+/* Mermaid custom Edge HTML Label styling */
+.mm-fiber-dot {
+  display: inline-block;
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+  margin-right: 4px;
+}
+.mm-fiber-text {
+  color: #c9d1d9 !important;
+  margin-right: 4px;
+  font-size: 11px;
+}
+.mm-fiber-sig {
+  font-weight: bold;
+  font-size: 11px;
+}
+.mm-edge-label-box {
+  display: inline-flex;
+  align-items: center;
+  background: rgba(22, 27, 34, 0.95) !important;
+  border: 1px solid #58a6ff !important;
+  padding: 3px 6px;
+  border-radius: 4px;
+  margin: 2px;
+}
+
 table {
   width: 100%;
   border-collapse: collapse;

@@ -693,26 +693,56 @@ export function focusNode(id) {
   }, 50);
 }
 
-export function showTopology() {
-  let html = `<div class="report-section"><h3>🌳 Топологія мережі (Натисніть на елемент для переходу)</h3>`;
+export async function showTopology() {
+  if (typeof window.focusNode === 'undefined') {
+      window.focusNode = focusNode;
+  }
+  const modalBody = document.getElementById("modal-body");
+  const h2 = document.getElementById("modal-overlay")?.querySelector("h2");
+  if (h2) h2.textContent = "🗺️ Картограма Мережі (Mermaid)";
+  
+  // Basic container
+  modalBody.innerHTML = `
+    <div class="report-section" style="display: flex; flex-direction: column; flex: 1; margin: 0; padding: 0;">
+      <div style="margin-bottom: 10px; display: flex; justify-content: space-between; flex-shrink: 0;">
+        <h3 style="margin: 0;">🗺️ Топологія (Діаграма)</h3>
+        <span style="font-size:12px; color:#8b949e;">💡 Використовуйте мишу для прокручування та масштабування графіка.</span>
+      </div>
+      <div id="mermaid-container" style="height: 70vh; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; position: relative;">
+        <!-- SVG will be injected here -->
+      </div>
+    </div>
+  `;
+
+  document.getElementById("modal-overlay")?.classList.add("open");
+
+  const olts = nodes.filter((n) => n.type === "OLT");
+  if (olts.length === 0) {
+    document.getElementById("mermaid-container").innerHTML = `<div style="text-align:center;color:#6e7681;padding:20px;margin-top:20px;">Немає OLT у мережі</div>`;
+    return;
+  }
+
+  // Build Mermaid Syntax
+  let m = `graph TD\n`;
+  m += `  classDef olt fill:#1f3a5f,stroke:#58a6ff,stroke-width:2px,color:#ffffff;\n`;
+  m += `  classDef fob fill:#3d2f1f,stroke:#d29922,stroke-width:1px,color:#ffffff;\n`;
+  m += `  classDef onu fill:#1f3b28,stroke:#3fb950,stroke-width:1px,color:#ffffff;\n`;
+  m += `  classDef mdu fill:#3c1e70,stroke:#d2a8ff,stroke-width:1px,color:#ffffff;\n`;
+  m += `  classDef port fill:#21262d,stroke:#30363d,stroke-width:1px,color:#8b949e,font-size:10px;\n`;
+  m += `  classDef default fill:#161b22,stroke:#30363d,color:#c9d1d9;\n`;
+  
+  let nodeIdx = 0;
+  function safeId(str) { return "N" + str.replace(/[^a-zA-Z0-9]/g, "") + "_" + (nodeIdx++); }
 
   /**
    * @param {FOBNode} fob
    * @param {PONConnection} cable
+   * @param {string} parentId
    */
-  function renderFobTree(fob, cable) {
-    let h = "";
-    const sig = hasOLTPath(fob) ? sigIn(fob) : null;
-    const sigStr = sig !== null ? sig.toFixed(1) : "?";
-    const cls =
-      sig !== null
-        ? sigClass(sig) === "ok"
-          ? "sig-ok"
-          : sigClass(sig) === "warn"
-          ? "sig-warn"
-          : "sig-err"
-        : "";
-    const dist = cable ? (connKm(cable) * 1000).toFixed(0) : "?";
+  function renderMermaidFob(fob, cable, parentId) {
+    const fId = safeId(fob.id);
+    
+    // Fob Details
     let splParts = [];
     const splitters = fob.splitters || [];
     splitters.forEach(sp => splParts.push(`${sp.type} ${sp.ratio}`));
@@ -721,136 +751,179 @@ export function showTopology() {
       if (fob.plcType) splParts.push(`PLC ${fob.plcType}`);
     }
     const splitterInfo = splParts.length > 0 ? splParts.join(" + ") : "Транзит";
-
-    h += `<div class="topo-branch">`;
-    // Add cable diagnostics if available
-    let cableHtml = "";
-    if (cable && cable.capacity) {
-        const cLoss = connKm(cable) * FIBER_DB_KM;
-        let activeCores = [];
-        const FIBER_COLORS = [
-          "#0d6efd", "#fd7e14", "#198754", "#8b4513", 
-          "#6c757d", "#ffffff", "#dc3545", "#000000", 
-          "#ffc107", "#6f42c1", "#d63384", "#0dcaf0"
-        ];
-        
-        for (let i = 0; i < cable.capacity; i++) {
-           let s = null;
-           if (cable.from.type === "OLT") {
-               const oltXc = (cable.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === cable.id && x.toCore === i);
-               if (oltXc) s = cable.from.outputPower - cLoss;
-           } else if (cable.from.type === "FOB") {
-               const upstream = traceOpticalPath(cable.from, "CABLE", cable.id, i);
-               if (upstream !== null) s = upstream - cLoss;
-           }
-           if (s !== null) {
-               const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
-               const dotColor = FIBER_COLORS[i % 12];
-               const bdr = dotColor === "#000000" ? "border: 1px solid #777;" : "border: 1px solid rgba(255,255,255,0.2);";
-               activeCores.push(`<span style="display:inline-flex; align-items:center; font-size:10px; background:#161b22; padding:2px 6px; border-radius:4px; border:1px solid #30363d;">
-                   <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${dotColor}; ${bdr} margin-right:4px;"></span>
-                   <span style="color:#c9d1d9; margin-right:4px;">${i+1}</span>
-                   <span style="color:${sColor}; font-weight:bold;">⚡ ${s.toFixed(1)} дБ</span>
-               </span>`);
-           }
-        }
-        if (activeCores.length > 0) {
-            cableHtml = `<div style="font-size:10px; color:#8b949e; margin-left:25px; margin-bottom:6px; margin-top:4px;">
-                <div style="margin-bottom:4px;">⮡ Кабель ${cable.capacity}F (${dist}м, Затухання: -${cLoss.toFixed(2)}дБ):</div>
-                <div style="display:flex; flex-wrap:wrap; gap:4px; margin-left:14px;">${activeCores.join("")}</div>
-            </div>`;
-        } else {
-            cableHtml = `<div style="font-size:10px; color:#8b949e; margin-left:25px; margin-bottom:4px; margin-top:4px;">⮡ Кабель ${cable.capacity}F (${dist}м) — Немає активного сигналу</div>`;
-        }
-    }
     
-    h += cableHtml;
-    h += `<div class="topo-node topo-fob" style="cursor:pointer" onclick="focusNode('${fob.id}')" title="Показати на карті">📦 ${fob.name} <span class="topo-info">(${splitterInfo}, <span class="${cls}">${sigStr} дБ</span>)</span></div>`;
-
-
-    const downCables = conns.filter(
-      (c) => c.from === fob && c.type === "cable",
-    );
-    downCables.forEach((dc) => {
-      if (dc.to) h += renderFobTree(/** @type {FOBNode} */ (dc.to), dc);
-    });
-
-    const onus = conns
-      .filter((c) => c.from === fob && c.type === "patchcord")
-      .map((c) => c.to)
-      .filter(Boolean);
-    if (onus.length > 0) {
-      h += `<div class="topo-onus">`;
-      onus.forEach((onu) => {
-        const onuSig = hasOLTPath(fob) ? sigONU(fob) : null;
-        const onuSigStr = onuSig !== null ? onuSig.toFixed(1) : "?";
-        const onuCls =
-          onuSig !== null
-            ? sigClass(onuSig) === "ok"
-              ? "sig-ok"
-              : sigClass(onuSig) === "warn"
-              ? "sig-warn"
-              : "sig-err"
-            : "";
-        let mduInfo = "";
-        if (onu.type === "MDU") {
-            const ent = onu.entrances || 1;
-            const flr = onu.floors || 1;
-            const apt = onu.flatsPerFloor || 1;
-            mduInfo = ` <span style="color:#8b949e; font-size:10px;">[Під'їздів: ${ent}, Поверхів: ${flr}, Квартир/пов: ${apt} (Всього: ${ent*flr*apt})]</span>`;
+    const sig = hasOLTPath(fob) ? sigIn(fob) : null;
+    const sigStr = sig !== null ? `⚡ ${sig.toFixed(1)} дБ` : "No Sig";
+    
+    // Fob node
+    m += `  ${fId}(["📦 ${fob.name}<br/><small>${splitterInfo}</small><br/><b>${sigStr}</b>"]):::fob\n`;
+    m += `  click ${fId} "javascript:window.focusNode('${fob.id}')" "Показати на карті"\n`;
+    
+    // Edge from parent
+    if (parentId) {
+        let edgeText = "";
+        if (cable && cable.capacity) {
+            const cLoss = connKm(cable) * FIBER_DB_KM;
+            let activeCoresHtml = "";
+            const FIBER_COLORS = [
+                "#58a6ff", // Blue
+                "#ff9632", // Orange
+                "#3fb950", // Green
+                "#b07b46", // Brown
+                "#8b949e", // Slate
+                "#ffffff", // White
+                "#f85149", // Red
+                "#000000", // Black
+                "#e3b341", // Yellow
+                "#bc8cff", // Violet
+                "#ff80b5", // Rose
+                "#56d364"  // Aqua
+            ];
+            
+            for (let i = 0; i < cable.capacity; i++) {
+               let s = null;
+               let portStr = "";
+               if (cable.from.type === "OLT") {
+                   const oltXc = (cable.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === cable.id && x.toCore === i);
+                   if (oltXc) {
+                       s = cable.from.outputPower - cLoss;
+                       portStr = `<span style="color:#8b949e; font-size:9px; margin-right:2px;">(P${parseInt(String(oltXc.fromId))+1})</span>`;
+                   }
+               } else if (cable.from.type === "FOB") {
+                   const upstream = traceOpticalPath(cable.from, "CABLE", cable.id, i);
+                   if (upstream !== null) s = upstream - cLoss;
+               }
+               if (s !== null) {
+                   const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
+                   const dotColor = FIBER_COLORS[i % 12];
+                   let bdr = dotColor === "#000000" ? "border: 1px solid #777;" : "border: 1px solid rgba(255,255,255,0.2);";
+                   if (dotColor === "#000000") bdr += " box-shadow: 0 0 2px #fff;";
+                   
+                   activeCoresHtml += `<span class='mm-edge-label-box'><span class='mm-fiber-dot' style='background:${dotColor} !important; ${bdr}'></span><span class='mm-fiber-text'>${i+1}</span>${portStr}<span class='mm-fiber-sig' style='color:${sColor} !important;'>⚡${s.toFixed(1)}</span></span>`;
+               }
+            }
+            const dist = (connKm(cable) * 1000).toFixed(0);
+            const loss = cLoss.toFixed(2);
+            let coresDiv = activeCoresHtml ? `<br/><div style='display:flex; flex-wrap:wrap; justify-content:center; max-width:160px; margin-top:4px;'>${activeCoresHtml}</div>` : "";
+            edgeText = `|"<div style='text-align:center; font-size:11px;'><b style='color:#58a6ff;'>${cable.capacity}F</b> (${dist}м / -${loss}дБ)${coresDiv}</div>"|`;
         }
-        h += `<div class="topo-node topo-onu" style="cursor:pointer" onclick="focusNode('${onu.id}')" title="Показати на карті">🏠 ${onu.name} <span class="${onuCls}">(${onuSigStr} дБ)</span>${mduInfo}</div>`;
-      });
-      h += `</div>`;
+        m += `  ${parentId} --> ${edgeText} ${fId}\n`;
     }
-    h += `</div>`;
-    return h;
-  }
 
-  const olts = nodes.filter((n) => n.type === "OLT");
-  if (olts.length === 0) {
-    html += `<div style="text-align:center;color:#6e7681;padding:20px">Немає OLT у мережі</div>`;
-  } else {
-    olts.forEach((olt) => {
-      html += `<div class="topo-tree">`;
-      html += `<div class="topo-node topo-olt" style="cursor:pointer" onclick="focusNode('${olt.id}')" title="Показати на карті">🔷 ${olt.name} <span class="topo-info">(${olt.outputPower} дБ, ${olt.ports} порт${olt.ports > 1 ? "ів" : ""})</span></div>`;
+    // Downstream cables
+    const downCables = conns.filter(c => c.from === fob && c.type === "cable");
+    downCables.forEach(dc => {
+      if (dc.to) renderMermaidFob(/** @type {FOBNode} */ (dc.to), dc, fId);
+    });
 
-      for (let p = 0; p < olt.ports; p++) {
-        // Find which cables are connected to this PON port via crossConnects
-        const portConnections = (olt.crossConnects || []).filter(xc => xc.fromType === "PORT" && parseInt(String(xc.fromId)) === p && xc.toType === "CABLE");
+    // Downstream patchcords (ONUs / MDUs)
+    const onus = conns.filter(c => c.from === fob && c.type === "patchcord").map(c => c.to).filter(Boolean);
+    onus.forEach(onu => {
+        const oId = safeId(onu.id);
+        const onuSig = hasOLTPath(fob) ? sigONU(fob) : null;
+        const oSigStr = onuSig !== null ? `⚡ ${onuSig.toFixed(1)} дБ` : "No Sig";
         
-        // Also support legacy cables that might still use fromPort (if any)
-        const legacyCables = conns.filter(c => c.from === olt && c.type === "cable" && c.fromPort === p);
+        let extra = "";
+        let style = "onu";
+        let icon = "🏠";
+        if (onu.type === "MDU") {
+            style = "mdu";
+            icon = "🏢";
+            extra = `<br/><small>П:${onu.entrances||1}, Пов:${onu.floors||1}, Кв:${onu.flatsPerFloor||1}</small>`;
+        }
         
-        // Collect unique cable IDs connected to this port
-        const connectedCableIds = new Set(portConnections.map(xc => xc.toId));
-        legacyCables.forEach(c => connectedCableIds.add(c.id));
-        
-        if (connectedCableIds.size === 0) continue;
-        
-        html += `<div class="topo-branch">`;
-        html += `<div class="topo-port">🔌 Порт PON ${p + 1}</div>`;
-        
-        connectedCableIds.forEach(cableId => {
-          const cable = conns.find(c => c.id === cableId);
-          if (cable && cable.to) {
-            html += renderFobTree(/** @type {FOBNode} */ (cable.to), cable);
-          }
-        });
-        
-        html += `</div>`;
-      }
-      html += `</div>`;
+        m += `  ${oId}(["${icon} ${onu.name}<br/><b>${oSigStr}</b>${extra}"]):::${style}\n`;
+        m += `  click ${oId} "javascript:window.focusNode('${onu.id}')" "Показати на карті"\n`;
+        m += `  ${fId} -.-> ${oId}\n`; // Dotted line for patchcords
     });
   }
-  html += `</div>`;
 
-  document.getElementById("modal-body").innerHTML = html;
-  const h2 = document
-    .getElementById("modal-overlay")
-    .querySelector("h2");
-  if (h2) h2.textContent = "🌳 Топологія";
-  document.getElementById("modal-overlay")?.classList.add("open");
+  // Iterate OLTs
+  olts.forEach(olt => {
+      const oltId = safeId(olt.id);
+      m += `  ${oltId}(["🔷 ${olt.name}<br/><b>Output: ${olt.outputPower} дБ</b><br/><small>${olt.ports} PON порт(ів)</small>"]):::olt\n`;
+      m += `  click ${oltId} "javascript:window.focusNode('${olt.id}')" "Показати на карті"\n`;
+      
+      const connectedCableIds = new Set();
+      (olt.crossConnects || []).forEach(xc => {
+          if (xc.toType === "CABLE") connectedCableIds.add(String(xc.toId));
+      });
+      conns.filter(c => c.from === olt && c.type === "cable").forEach(c => connectedCableIds.add(String(c.id)));
+      
+      connectedCableIds.forEach(cableId => {
+          const cable = conns.find(c => String(c.id) === cableId);
+          if (cable && cable.to) {
+              renderMermaidFob(/** @type {FOBNode} */ (cable.to), cable, oltId);
+          }
+      });
+  });
+
+  try {
+      // @ts-ignore
+      if (typeof mermaid === "undefined") {
+          document.getElementById("mermaid-container").innerHTML = `<div style="padding:20px; color:#ff5555;">Помилка: Бібліотека Mermaid не завантажена. Перевірте підключення до Інтернету.</div>`;
+          return;
+      }
+      
+      // @ts-ignore
+      mermaid.initialize({ 
+        startOnLoad: false, 
+        theme: 'base', 
+        securityLevel: 'loose',
+        themeVariables: {
+          primaryColor: '#161b22',
+          primaryTextColor: '#c9d1d9',
+          primaryBorderColor: '#30363d',
+          lineColor: '#58a6ff',
+          secondaryColor: '#21262d',
+          tertiaryColor: '#0d1117',
+          nodeBorder: '#58a6ff',
+          clusterBkg: '#0d1117',
+          clusterBorder: '#30363d',
+          fontSize: '12px',
+          fontFamily: 'system-ui, -apple-system, sans-serif'
+        },
+        flowchart: {
+          htmlLabels: true,
+          curve: 'basis'
+        }
+      });
+      
+      // Render
+      const container = document.getElementById("mermaid-container");
+      // @ts-ignore
+      const { svg } = await mermaid.render('mermaid-svg-chart', m);
+      container.innerHTML = svg;
+      
+      const svgElement = container.querySelector('svg');
+      if (svgElement) {
+          svgElement.setAttribute("height", "100%");
+          svgElement.setAttribute("width", "100%");
+          svgElement.style.width = "100%";
+          svgElement.style.height = "100%";
+          svgElement.style.maxWidth = "none"; // Override mermaid default max-width
+          svgElement.style.maxHeight = "none";
+          // Important: remove the hardcoded viewBox if panning takes over, or let svgPanZoom handle it.
+          
+          // Add pan/zoom
+          // @ts-ignore
+          if (typeof svgPanZoom !== "undefined") {
+            // @ts-ignore
+            svgPanZoom(svgElement, {
+                zoomEnabled: true,
+                controlIconsEnabled: true,
+                fit: true,
+                center: true,
+                minZoom: 0.1,
+                maxZoom: 10
+            });
+          }
+      }
+      
+  } catch (err) {
+      console.error("Mermaid Render Error:", err, "\nCode:\n", m);
+      document.getElementById("mermaid-container").innerHTML = `<div style="padding:20px; color:#ff5555;">Помилка рендерингу топології.<br><small>${err.message}</small></div>`;
+  }
 }
 
 // Helper: calculate total loss for current FOB splitter setup

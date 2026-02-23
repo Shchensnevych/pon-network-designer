@@ -3,7 +3,7 @@
 // Pure functions that compute signal levels, losses, port status, distances.
 
 import { FBT_LOSSES, PLC_LOSSES, MECH, ONU_MIN, FIBER_DB_KM } from "./config.js";
-import { conns, map } from "./state.js";
+import { nodes, conns, map } from "./state.js";
 
 // ═══════════════════════════════════════════════
 //  CHAIN COLOR
@@ -482,16 +482,74 @@ export function sigONU(fob) {
 }
 
 /**
+ * Helper: Traces the optical path strictly to find the originating OLT and Port.
+ * @param {FOBNode} currentFob 
+ * @param {string} targetType 
+ * @param {string} targetId 
+ * @param {number|string|undefined} targetCore 
+ * @returns {{ olt: OLTNode, port: number } | null}
+ */
+export function getOltPortForPath(currentFob, targetType, targetId, targetCore) {
+  let fob = currentFob;
+  let type = targetType;
+  let id = targetId;
+  let core = targetCore;
+
+  while (fob && fob.type === "FOB") {
+    const xc = (fob.crossConnects || []).find(
+      x => x.toType === type && x.toId === id && 
+           (type === "PATCHCORD" || core === undefined || x.toCore === core || x.toBranch === core)
+    );
+    if (!xc) return null;
+
+    if (xc.fromType === "CABLE") {
+      const inCable = conns.find(c => c.id === xc.fromId);
+      if (!inCable) return null;
+      
+      if (inCable.from.type === "OLT") {
+        const olt = inCable.from;
+        const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === inCable.id && x.toCore === xc.fromCore);
+        if (!oltXc) return null;
+        return { olt, port: parseInt(String(oltXc.fromId)) };
+      } else if (inCable.from.type === "FOB") {
+        fob = inCable.from;
+        type = "CABLE";
+        id = String(inCable.id);
+        core = xc.fromCore;
+      } else {
+        return null;
+      }
+    } else if (xc.fromType === "SPLITTER") {
+      type = "SPLITTER";
+      id = String(xc.fromId);
+      core = undefined;
+    } else {
+      return null;
+    }
+  }
+  return null;
+}
+
+/**
  * Count ONUs on a specific OLT port.
  * @param {OLTNode} olt
  * @param {number} port
  * @returns {number}
  */
 export function cntONUport(olt, port) {
-  const xcList = (olt.crossConnects || []).filter(xc => parseInt(String(xc.fromId)) === port && xc.toType === "CABLE");
-  
-  // Actually simulating downstream devices per port is complex now. Let's just return the number of cores spliced to this port.
-  return xcList.length;
+  let count = 0;
+  for (const onu of nodes) {
+      if (onu.type === "ONU" || onu.type === "MDU") {
+          const patch = conns.find(x => x.to === onu && x.type === "patchcord");
+          if (patch && patch.from && patch.from.type === "FOB") {
+              const origin = getOltPortForPath(patch.from, "PATCHCORD", patch.id, 0);
+              if (origin && origin.olt === olt && origin.port === port) {
+                  count += cntDn(onu);
+              }
+          }
+      }
+  }
+  return count;
 }
 
 /**
