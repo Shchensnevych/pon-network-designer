@@ -876,9 +876,9 @@ function updateConnLabel(c) {
       ? L.latLng((flat[mid - 1].lat + flat[mid].lat) / 2, (flat[mid - 1].lng + flat[mid].lng) / 2)
       : flat[mid];
   const dist = connKm(c) * 1000;
-  let contentHtml = `<div style="text-align:center; font-weight:bold;">${dist.toFixed(1)} м</div>`;
+  let contentHtml = `<div style="text-align:center; font-weight:bold; font-size:11px; line-height:1.1;">${dist.toFixed(0)} м</div>`;
   if (c.capacity) {
-      contentHtml += `<div style="text-align:center; font-size:10px; color:#58a6ff; margin-bottom:2px;">${c.capacity} жил</div>`;
+      contentHtml += `<div style="text-align:center; font-size:9px; color:#58a6ff; line-height:1; margin-bottom:1px;">${c.capacity} жил</div>`;
   }
 
   let signalsHtml = "";
@@ -904,20 +904,20 @@ function updateConnLabel(c) {
               const dotColor = FIBER_COLORS[i % 12];
               const bdr = dotColor === "#000000" ? "border: 1px solid #777;" : "border: 1px solid rgba(255,255,255,0.2);";
               
-              activeCores.push(`<div style="display:inline-flex; align-items:center; font-size:10px; margin: 2px 4px;">
-                  <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${dotColor}; ${bdr} margin-right:4px;"></span>
-                  <span style="color:#c9d1d9; margin-right:4px;">${i+1}</span>
-                  <span style="color:${sColor}; font-weight:bold;">⚡ ${s.toFixed(1)} дБ</span>
+              activeCores.push(`<div style="display:inline-flex; align-items:center; font-size:9px; margin:0px; padding:1px 3px; background:rgba(255,255,255,0.05); border-radius:2px; line-height:1;">
+                  <span style="display:inline-block; width:5px; height:5px; border-radius:50%; background:${dotColor}; ${bdr} margin-right:2px;"></span>
+                  <span style="color:#c9d1d9; margin-right:2px;">${i+1}</span>
+                  <span style="color:${sColor}; font-weight:bold;">⚡${s.toFixed(1)} дБ</span>
               </div>`);
           }
       }
       if (activeCores.length > 0) {
-          signalsHtml = `<div style="display:flex; flex-wrap:wrap; justify-content:center; max-width:180px; padding-top:2px;">${activeCores.join("")}</div>`;
+          signalsHtml = `<div style="display:flex; flex-wrap:wrap; justify-content:center; max-width:140px; gap:2px; padding-top:1px;">${activeCores.join("")}</div>`;
       }
   }
   
   if (signalsHtml) {
-      contentHtml += `<div style="margin-top:2px; padding-top:2px; border-top:1px solid #30363d;">${signalsHtml}</div>`;
+      contentHtml += `<div style="margin-top:1px; padding-top:2px; border-top:1px solid rgba(255,255,255,0.1);">${signalsHtml}</div>`;
   }
 
   c._distTooltip = L.tooltip({

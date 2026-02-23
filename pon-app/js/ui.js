@@ -11,6 +11,7 @@ import {
   connKm,
   fitNetwork,
 } from "./network.js";
+import { traceOpticalPath } from "./signal.js";
 
 /**
  * Helper to process and aggregate all network components into a Bill of Materials.
@@ -722,7 +723,50 @@ export function showTopology() {
     const splitterInfo = splParts.length > 0 ? splParts.join(" + ") : "Транзит";
 
     h += `<div class="topo-branch">`;
-    h += `<div class="topo-node topo-fob" style="cursor:pointer" onclick="focusNode('${fob.id}')" title="Показати на карті">📦 ${fob.name} <span class="topo-info">(${splitterInfo}, ${dist}м, <span class="${cls}">${sigStr} дБ</span>)</span></div>`;
+    // Add cable diagnostics if available
+    let cableHtml = "";
+    if (cable && cable.capacity) {
+        const cLoss = connKm(cable) * FIBER_DB_KM;
+        let activeCores = [];
+        const FIBER_COLORS = [
+          "#0d6efd", "#fd7e14", "#198754", "#8b4513", 
+          "#6c757d", "#ffffff", "#dc3545", "#000000", 
+          "#ffc107", "#6f42c1", "#d63384", "#0dcaf0"
+        ];
+        
+        for (let i = 0; i < cable.capacity; i++) {
+           let s = null;
+           if (cable.from.type === "OLT") {
+               const oltXc = (cable.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === cable.id && x.toCore === i);
+               if (oltXc) s = cable.from.outputPower - cLoss;
+           } else if (cable.from.type === "FOB") {
+               const upstream = traceOpticalPath(cable.from, "CABLE", cable.id, i);
+               if (upstream !== null) s = upstream - cLoss;
+           }
+           if (s !== null) {
+               const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
+               const dotColor = FIBER_COLORS[i % 12];
+               const bdr = dotColor === "#000000" ? "border: 1px solid #777;" : "border: 1px solid rgba(255,255,255,0.2);";
+               activeCores.push(`<span style="display:inline-flex; align-items:center; font-size:10px; background:#161b22; padding:2px 6px; border-radius:4px; border:1px solid #30363d;">
+                   <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${dotColor}; ${bdr} margin-right:4px;"></span>
+                   <span style="color:#c9d1d9; margin-right:4px;">${i+1}</span>
+                   <span style="color:${sColor}; font-weight:bold;">⚡ ${s.toFixed(1)} дБ</span>
+               </span>`);
+           }
+        }
+        if (activeCores.length > 0) {
+            cableHtml = `<div style="font-size:10px; color:#8b949e; margin-left:25px; margin-bottom:6px; margin-top:4px;">
+                <div style="margin-bottom:4px;">⮡ Кабель ${cable.capacity}F (${dist}м, Затухання: -${cLoss.toFixed(2)}дБ):</div>
+                <div style="display:flex; flex-wrap:wrap; gap:4px; margin-left:14px;">${activeCores.join("")}</div>
+            </div>`;
+        } else {
+            cableHtml = `<div style="font-size:10px; color:#8b949e; margin-left:25px; margin-bottom:4px; margin-top:4px;">⮡ Кабель ${cable.capacity}F (${dist}м) — Немає активного сигналу</div>`;
+        }
+    }
+    
+    h += cableHtml;
+    h += `<div class="topo-node topo-fob" style="cursor:pointer" onclick="focusNode('${fob.id}')" title="Показати на карті">📦 ${fob.name} <span class="topo-info">(${splitterInfo}, <span class="${cls}">${sigStr} дБ</span>)</span></div>`;
+
 
     const downCables = conns.filter(
       (c) => c.from === fob && c.type === "cable",
@@ -748,7 +792,14 @@ export function showTopology() {
               ? "sig-warn"
               : "sig-err"
             : "";
-        h += `<div class="topo-node topo-onu" style="cursor:pointer" onclick="focusNode('${onu.id}')" title="Показати на карті">🏠 ${onu.name} <span class="${onuCls}">(${onuSigStr} дБ)</span></div>`;
+        let mduInfo = "";
+        if (onu.type === "MDU") {
+            const ent = onu.entrances || 1;
+            const flr = onu.floors || 1;
+            const apt = onu.flatsPerFloor || 1;
+            mduInfo = ` <span style="color:#8b949e; font-size:10px;">[Під'їздів: ${ent}, Поверхів: ${flr}, Квартир/пов: ${apt} (Всього: ${ent*flr*apt})]</span>`;
+        }
+        h += `<div class="topo-node topo-onu" style="cursor:pointer" onclick="focusNode('${onu.id}')" title="Показати на карті">🏠 ${onu.name} <span class="${onuCls}">(${onuSigStr} дБ)</span>${mduInfo}</div>`;
       });
       h += `</div>`;
     }
@@ -765,15 +816,28 @@ export function showTopology() {
       html += `<div class="topo-node topo-olt" style="cursor:pointer" onclick="focusNode('${olt.id}')" title="Показати на карті">🔷 ${olt.name} <span class="topo-info">(${olt.outputPower} дБ, ${olt.ports} порт${olt.ports > 1 ? "ів" : ""})</span></div>`;
 
       for (let p = 0; p < olt.ports; p++) {
-        const portCables = conns.filter(
-          (c) => c.from === olt && c.type === "cable" && c.fromPort === p,
-        );
-        if (portCables.length === 0) continue;
+        // Find which cables are connected to this PON port via crossConnects
+        const portConnections = (olt.crossConnects || []).filter(xc => xc.fromType === "PORT" && parseInt(String(xc.fromId)) === p && xc.toType === "CABLE");
+        
+        // Also support legacy cables that might still use fromPort (if any)
+        const legacyCables = conns.filter(c => c.from === olt && c.type === "cable" && c.fromPort === p);
+        
+        // Collect unique cable IDs connected to this port
+        const connectedCableIds = new Set(portConnections.map(xc => xc.toId));
+        legacyCables.forEach(c => connectedCableIds.add(c.id));
+        
+        if (connectedCableIds.size === 0) continue;
+        
         html += `<div class="topo-branch">`;
-        html += `<div class="topo-port">🔌 Порт ${p + 1}</div>`;
-        portCables.forEach((cable) => {
-          if (cable.to) html += renderFobTree(/** @type {FOBNode} */ (cable.to), cable);
+        html += `<div class="topo-port">🔌 Порт PON ${p + 1}</div>`;
+        
+        connectedCableIds.forEach(cableId => {
+          const cable = conns.find(c => c.id === cableId);
+          if (cable && cable.to) {
+            html += renderFobTree(/** @type {FOBNode} */ (cable.to), cable);
+          }
         });
+        
         html += `</div>`;
       }
       html += `</div>`;
