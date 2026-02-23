@@ -13,12 +13,12 @@ function createModalContainer() {
       background-color: rgba(0,0,0,0.85);
     `;
     modal.innerHTML = `
-      <div style="background-color: #0d1117; margin: 5% auto; padding: 20px; border: 1px solid #30363d; border-radius: 8px; width: 80%; max-width: 1000px; color: #c9d1d9; font-family: sans-serif; height: 80vh; display: flex; flex-direction: column;">
-        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; padding-bottom: 10px; margin-bottom: 20px;">
+      <div style="background-color: #0d1117; margin: 2% auto; padding: 20px; border: 1px solid #30363d; border-radius: 8px; width: 85%; max-width: 1200px; color: #c9d1d9; font-family: sans-serif; height: 85vh; display: flex; flex-direction: column;">
+        <div style="display: flex; justify-content: space-between; align-items: center; border-bottom: 1px solid #30363d; padding-bottom: 10px; margin-bottom: 10px;">
           <h2 id="cc-modal-title" style="margin: 0; color: #58a6ff;">Налаштування маршрутизації</h2>
           <span id="cc-modal-close" style="color: #8b949e; float: right; font-size: 28px; font-weight: bold; cursor: pointer;">&times;</span>
         </div>
-        <div id="cc-modal-body" style="flex: 1; overflow-y: auto; display: flex; gap: 20px;">
+        <div id="cc-modal-body" style="flex: 1; overflow-y: hidden; display: flex; gap: 15px;">
             <!-- UI populated dynamically -->
         </div>
         <div style="border-top: 1px solid #30363d; padding-top: 20px; display: flex; justify-content: flex-end; gap: 10px;">
@@ -98,7 +98,7 @@ export function openPatchPanel(nodeId) {
 
 function renderOLTPatchUI(node) {
     // Left side: PON Ports
-    let inHtml = `<div style="flex: 1; border: 1px solid #30363d; border-radius: 6px; padding: 15px; background: #161b22;">
+    let inHtml = `<div style="flex: 1; border: 1px solid #30363d; border-radius: 6px; padding: 15px; background: #161b22; overflow-y: auto; overflow-x: hidden;">
         <h3 style="margin-top:0; color: #8b949e; text-align:center;">🔴 Порти PON (IN)</h3>
         <div style="display:flex; flex-direction:column; gap:10px;">
     `;
@@ -111,7 +111,7 @@ function renderOLTPatchUI(node) {
 
     // Right side: Outgoing Cables
     const outCables = conns.filter(c => c.from === node && c.type === "cable");
-    let outHtml = `<div style="flex: 1; border: 1px solid #30363d; border-radius: 6px; padding: 15px; background: #161b22;">
+    let outHtml = `<div style="flex: 1; border: 1px solid #30363d; border-radius: 6px; padding: 15px; background: #161b22; overflow-y: auto; overflow-x: hidden;">
         <h3 style="margin-top:0; color: #8b949e; text-align:center;">🟢 Магістралі (OUT)</h3>
         <div style="display:flex; flex-direction:column; gap:10px;">
     `;
@@ -341,12 +341,12 @@ function renderFOBCrossUI(node) {
     // --- HTML Structure ---
     
     // Left: INCOMING
-    let inHtml = `<div style="flex: 1; border: 1px solid #30363d; border-radius: 6px; padding: 15px; background: #161b22; overflow-y:auto;">
-        <h3 style="margin-top:0; color: #8b949e; text-align:center;">📥 Входи (IN)</h3>`;
+    let inHtml = `<div style="flex: 0.7; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto; overflow-x:hidden;">
+        <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">📥 Входи (IN)</h3>`;
     inCables.forEach(c => {
         const cores = c.capacity || 1;
         inHtml += `<div style="background:#21262d; padding:8px; border-radius:4px; border:1px solid #30363d; margin-bottom:8px;">
-            <div style="font-weight:bold; color:#58a6ff; margin-bottom:4px; font-size:12px;">Від: ${c.from.name}</div>`;
+            <div style="font-weight:bold; color:#58a6ff; margin-bottom:6px; font-size:12px;">Від: ${c.from.name}</div>`;
         for(let i=0; i<cores; i++) {
             let coreSigHtml = "";
             let s = null;
@@ -373,8 +373,8 @@ function renderFOBCrossUI(node) {
     inHtml += `</div>`;
 
     // Middle: DEVICES (Splitters)
-    let midHtml = `<div style="flex: 1.5; border: 1px solid #30363d; border-radius: 6px; padding: 15px; background: #161b22; overflow-y:auto;">
-        <h3 style="margin-top:0; color: #8b949e; text-align:center;">📦 Сплітери</h3>`;
+    let midHtml = `<div style="flex: 1.4; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto; overflow-x:hidden;">
+        <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">📦 Сплітери</h3>`;
         
     const buildSplitterBox = (id, type, name) => {
         const existing = (node.crossConnects || []).find(xc => xc.toType === "SPLITTER" && xc.toId === id);
@@ -400,7 +400,7 @@ function renderFOBCrossUI(node) {
             <div style="font-weight:bold; color:#58a6ff; margin-bottom:6px;">${name}</div>
             <div style="display:flex; align-items:center; gap:8px;">
                 <span style="font-size:12px;">Вхід (IN):</span>
-                <select class="fob-cross" data-totype="SPLITTER" data-toid="${id}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;">
+                <select class="fob-cross" data-totype="SPLITTER" data-toid="${id}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
                     ${sOpt}
                 </select>
             </div>
@@ -418,12 +418,12 @@ function renderFOBCrossUI(node) {
     midHtml += `</div>`;
 
     // Right: OUTGOING
-    let outHtml = `<div style="flex: 1.5; border: 1px solid #30363d; border-radius: 6px; padding: 15px; background: #161b22; overflow-y:auto;">
-        <h3 style="margin-top:0; color: #8b949e; text-align:center;">📤 Виходи (OUT)</h3>`;
+    let outHtml = `<div style="flex: 1.9; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto; overflow-x:hidden;">
+        <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">📤 Виходи (OUT)</h3>`;
     
     outConns.forEach(c => {
         const cores = c.capacity || 1;
-        outHtml += `<div style="background:#21262d; padding:10px; border-radius:4px; border:1px solid #30363d; margin-bottom:10px;">
+        outHtml += `<div style="background:#21262d; padding:8px; border-radius:4px; border:1px solid #30363d; margin-bottom:8px;">
             <div style="font-weight:bold; color:#3fb950; margin-bottom:6px; font-size:12px; display:flex; justify-content:space-between; align-items:center;">
                 <span>До: ${c.to ? c.to.name : "?"} <span style="color:#8b949e;font-size:10px">(${c.type === "cable" ? "Кабель" : "Патчкорд"})</span></span>
                 <div style="display:flex; gap:6px; align-items:center;">
@@ -449,7 +449,7 @@ function renderFOBCrossUI(node) {
                     <div style="font-size:11px; width:65px; display:flex; align-items:center;">
                         ${getFiberDotHtml(i)} Жила ${i+1}
                     </div>
-                    <select class="fob-cross" data-totype="CABLE" data-toid="${c.id}" data-tocore="${i}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;">
+                    <select class="fob-cross" data-totype="CABLE" data-toid="${c.id}" data-tocore="${i}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
                         ${sOpt}
                     </select>
                 </div>`;
@@ -471,7 +471,7 @@ function renderFOBCrossUI(node) {
                 <div style="font-size:11px; width:65px; display:flex; align-items:center;">
                     <div style="width:8px;height:8px;border-radius:50%;background:#ffd700;margin-right:6px;box-shadow:0 0 3px #ffd700;"></div> Патчкорд
                 </div>
-                <select class="fob-cross" data-totype="PATCHCORD" data-toid="${c.id}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;">
+                <select class="fob-cross" data-totype="PATCHCORD" data-toid="${c.id}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
                     ${sOpt}
                 </select>
             </div>`;
@@ -611,6 +611,58 @@ window.checkOltPorts = function(selectElement) {
     });
 };
 
+window.checkFobPorts = function(selectElement) {
+    const allSelects = document.querySelectorAll(".fob-cross");
+    
+    // 1. Clear duplicates if this was a new selection
+    if (selectElement && selectElement.value !== "") {
+        let duplicateFound = false;
+        allSelects.forEach(sel => {
+            if (sel !== selectElement && sel.value === selectElement.value) {
+                sel.value = ""; // Clear previous selection
+                duplicateFound = true;
+            }
+        });
+        if (duplicateFound) {
+            selectElement.style.border = "1px solid #dc3545"; // Flash red
+            setTimeout(() => selectElement.style.border = "1px solid #30363d", 1000);
+        }
+    }
+
+    // 2. Re-evaluate all dropdowns to update disabled/busy states dynamically
+    const usedVals = new Set();
+    allSelects.forEach(sel => {
+        if (sel.value !== "") usedVals.add(sel.value);
+    });
+
+    allSelects.forEach(sel => {
+        const options = sel.querySelectorAll("option");
+        options.forEach(opt => {
+            if (opt.value === "") return; // Skip -- Не підключено --
+            
+            // Clean up the text content if it already has (ЗАЙНЯТО)
+            let baseText = opt.textContent.replace(" (ЗАЙНЯТО)", "");
+            
+            if (opt.value === sel.value) {
+                // Currently selected here
+                opt.disabled = false;
+                opt.textContent = baseText;
+                opt.style.color = "";
+            } else if (usedVals.has(opt.value)) {
+                // Used SOMEWHERE ELSE
+                opt.disabled = true;
+                opt.textContent = baseText + " (ЗАЙНЯТО)";
+                opt.style.color = "#ff5555";
+            } else {
+                // Free
+                opt.disabled = false;
+                opt.textContent = baseText;
+                opt.style.color = "";
+            }
+        });
+    });
+};
+
 window.autoTransit = function(outCableId, nodeId) {
     try {
         const node = nodes.find(n => n.id === nodeId);
@@ -632,26 +684,40 @@ window.autoTransit = function(outCableId, nodeId) {
         let cross = node.crossConnects || [];
         const inCable = inCables[0]; // Take the main trunk
         
-        const maxCore = Math.min(inCable.capacity || 1, outCable.capacity || 1);
+        const inCap = inCable.capacity || 1;
+        const outCap = outCable.capacity || 1;
         
         let transferred = 0;
-        for (let i = 0; i < maxCore; i++) {
-            // Only map if Out-core is free AND In-core is free
-            const outUsed = cross.find(xc => xc.toType === "CABLE" && xc.toId === outCableId && xc.toCore === i);
-            const inUsed = cross.find(xc => xc.fromType === "CABLE" && xc.fromId === inCable.id && xc.fromCore === i);
-            
-            if (!outUsed && !inUsed) {
-                cross.push({
-                    id: "xc_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
-                    fromType: "CABLE",
-                    fromId: inCable.id,
-                    fromCore: i,
-                    toType: "CABLE",
-                    toId: outCableId,
-                    toCore: i
-                });
-                transferred++;
+        let inIdx = 0;
+        let outIdx = 0;
+        
+        // Find first free out core, find first free in core, link them.
+        while (inIdx < inCap && outIdx < outCap) {
+            const inUsed = cross.find(xc => xc.fromType === "CABLE" && xc.fromId === inCable.id && xc.fromCore === inIdx);
+            if (inUsed) {
+                inIdx++;
+                continue;
             }
+            
+            const outUsed = cross.find(xc => xc.toType === "CABLE" && xc.toId === outCableId && xc.toCore === outIdx);
+            if (outUsed) {
+                outIdx++;
+                continue;
+            }
+            
+            // Both are free, map them
+            cross.push({
+                id: "xc_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
+                fromType: "CABLE",
+                fromId: inCable.id,
+                fromCore: inIdx,
+                toType: "CABLE",
+                toId: outCableId,
+                toCore: outIdx
+            });
+            transferred++;
+            inIdx++;
+            outIdx++;
         }
         
         if (transferred === 0) {

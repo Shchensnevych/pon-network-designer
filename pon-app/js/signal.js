@@ -115,13 +115,6 @@ export function fobPortStatus(n) {
 
   const xc = n.crossConnects || [];
   
-  // Helper to format cable core counts
-  const targetTag = (cId) => {
-      const c = conns.find(x => x.id === cId);
-      if (!c || !c.to) return "";
-      return c.type === "patchcord" ? ` (${c.to.name})` : ` [К: ${c.to.name}]`;
-  };
-
   const activeTransits = xc.filter(x => x.fromType === "CABLE" && x.toType === "CABLE");
   const used = activeTransits.length;
   
@@ -161,6 +154,21 @@ export function fobPortStatus(n) {
       }
   });
 
+  const getTargetTag = (xcEntry) => {
+      if (xcEntry.toType === "SPLITTER") {
+          const spTarget = splitters.find(s => s.id === xcEntry.toId) || 
+                           (xcEntry.toId === "legacy_plc" ? { id: "legacy_plc", type: "PLC", ratio: n.plcType || "" } : 
+                            xcEntry.toId === "legacy_fbt" ? { id: "legacy_fbt", type: "FBT", ratio: n.fbtType || "" } : null);
+          if (spTarget) {
+              return ` [🔀 ${spLabels[spTarget.id] || (spTarget.type + " " + spTarget.ratio)}]`;
+          }
+          return ` [🔀 Сплітер]`;
+      }
+      const c = conns.find(x => x.id === xcEntry.toId);
+      if (!c || !c.to) return "";
+      return c.type === "patchcord" ? ` (${c.to.name})` : ` [К: ${c.to.name}]`;
+  };
+
   const renderSplitterStatus = (spId, spType, spRatio, legacyLabel = "") => {
       const spName = legacyLabel || spLabels[spId] || `${spType} ${spRatio}`;
       if (spType === "FBT") {
@@ -170,8 +178,8 @@ export function fobPortStatus(n) {
           const xClr = xConns.length ? "#f85149" : "#3fb950"; // Red if busy, Green if free
           const yClr = yConns.length ? "#f85149" : "#3fb950";
           
-          const xName = xConns.length ? targetTag(xConns[0].toId) : "";
-          const yName = yConns.length ? targetTag(yConns[0].toId) : "";
+          const xName = xConns.length ? getTargetTag(xConns[0]) : "";
+          const yName = yConns.length ? getTargetTag(yConns[0]) : "";
 
           lines.push(`<span style="color:#ff6b6b">${spName} X: <span style="color:${xClr}">${xConns.length ? "зайнята" + xName : "вільна"}</span></span>`);
           lines.push(`<span style="color:#ff6b6b">${spName} Y: <span style="color:${yClr}">${yConns.length ? "зайнята" + yName : "вільна"}</span></span>`);
@@ -184,13 +192,18 @@ export function fobPortStatus(n) {
           const plcFree = plcMax - plcUsed;
           const clr = plcFree > 0 ? "#3fb950" : "#f85149";
           
-          lines.push(`<span style="color:#c084fc">${spName}: <span style="color:${clr}">${plcUsed}/${plcMax} зайнято</span></span>`);
-          
           const targets = [...new Set(plcConns.map(x => {
+              if (x.toType === "SPLITTER") {
+                  const spTarget = splitters.find(s => s.id === x.toId) || 
+                                   (x.toId === "legacy_plc" ? { id: "legacy_plc", type: "PLC", ratio: n.plcType || "" } : null);
+                  return spTarget ? (spLabels[spTarget.id] || (spTarget.type + " " + spTarget.ratio)) : "Сплітер";
+              }
               const c = conns.find(cf => cf.id === x.toId);
-              return c ? c.to.name : "";
+              return c ? (c.type === "patchcord" ? c.to.name : `К: ${c.to.name}`) : "";
           }))].filter(Boolean).join(", ");
           
+          const tgtLabel = targets ? ` <span style="color:#8b949e">[${targets}]</span>` : "";
+          lines.push(`<span style="color:#c084fc">${spName}: <span style="color:${clr}">${plcUsed}/${plcMax} зайнято</span>${tgtLabel}</span>`);
           rich.push(`📊 ${spName}: ${plcUsed}/${plcMax} (<span style="color:${clr}">вільно: ${plcFree}</span>)${targets ? `<br>  └ ${targets}` : ""}`);
       }
   };
@@ -254,7 +267,7 @@ export function connKm(c) {
 /**
  * Trace the physical optical path backward from a specific point to the OLT.
  * @param {FOBNode} currentFob 
- * @param {string} targetType "CABLE" | "SPLITTER"
+ * @param {string} targetType "CABLE" | "SPLITTER" | "PATCHCORD"
  * @param {string} targetId
  * @param {number|string|undefined} targetCore
  * @returns {number | null} The dBm arriving at this point, or null if no path.
@@ -268,8 +281,10 @@ export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
   let accumulatedLoss = 0;
 
   while (fob && fob.type === "FOB") {
+    // If we're tracing from a patchcord, we don't need a core match
     const xc = (fob.crossConnects || []).find(
-      x => x.toType === type && x.toId === id && (core === undefined || x.toCore === core || x.toBranch === core)
+      x => x.toType === type && x.toId === id && 
+           (type === "PATCHCORD" || core === undefined || x.toCore === core || x.toBranch === core)
     );
     if (!xc) return null; // Path physically broken
 
@@ -373,7 +388,7 @@ export function sigAtONU(onu) {
   const c = conns.find((x) => x.to === onu && x.type === "patchcord");
   if (!c || c.from.type !== "FOB") return null;
   
-  const s = traceOpticalPath(c.from, "CABLE", c.id, 0);
+  const s = traceOpticalPath(c.from, "PATCHCORD", c.id, 0);
   if (s === null) return null;
   return s; // traceOpticalPath already accounts for upstream length, but wait...
   // traceOpticalPath accounts for upstream splicing, but we must subtract the loss of THIS final patchcord!
@@ -386,7 +401,7 @@ export function trueSigAtONU(onu) {
   const c = conns.find((x) => x.to === onu && x.type === "patchcord");
   if (!c || c.from.type !== "FOB") return null;
   
-  const s = traceOpticalPath(c.from, "CABLE", c.id, 0); // Traces back looking for what feeds `c.id` core 0
+  const s = traceOpticalPath(c.from, "PATCHCORD", c.id, 0); // Traces back looking for what feeds `c.id`
   if (s === null) return null;
   
   const patchLoss = connKm(c) * FIBER_DB_KM;

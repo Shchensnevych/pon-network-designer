@@ -31,7 +31,7 @@ import {
   maxOutputs, freeCablePorts, freePatchPorts,
   fobPortStatus, getDistM, connKm, sigIn, 
   hasOLTPath, sigAtONU, sigONU, sigFBT, sigSplitter,
-  cntONUport, cntDn, getSignalColor, updateCableColors,
+  cntONUport, cntDn, getSignalColor, updateCableColors, traceOpticalPath
 } from "./signal.js";
 
 // Signal path highlighting & animation — extracted to signal-path.js
@@ -876,14 +876,57 @@ function updateConnLabel(c) {
       ? L.latLng((flat[mid - 1].lat + flat[mid].lat) / 2, (flat[mid - 1].lng + flat[mid].lng) / 2)
       : flat[mid];
   const dist = connKm(c) * 1000;
-  const capLabel = c.capacity ? `<br><span style="font-size:10px; color:#58a6ff;">${c.capacity} жил</span>` : "";
+  let contentHtml = `<div style="text-align:center; font-weight:bold;">${dist.toFixed(1)} м</div>`;
+  if (c.capacity) {
+      contentHtml += `<div style="text-align:center; font-size:10px; color:#58a6ff; margin-bottom:2px;">${c.capacity} жил</div>`;
+  }
+
+  let signalsHtml = "";
+  if (c.capacity) {
+      const activeCores = [];
+      const FIBER_COLORS = [
+          "#0d6efd", "#fd7e14", "#198754", "#8b4513", 
+          "#6c757d", "#ffffff", "#dc3545", "#000000", 
+          "#ffc107", "#6f42c1", "#d63384", "#0dcaf0"
+      ];
+      
+      for (let i = 0; i < c.capacity; i++) {
+          let s = null;
+          if (c.from.type === "OLT") {
+              const oltXc = (c.from.crossConnects || []).find(/** @type {any} */(x) => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
+              if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
+          } else if (c.from.type === "FOB") {
+              const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
+              if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
+          }
+          if (s !== null) {
+              const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
+              const dotColor = FIBER_COLORS[i % 12];
+              const bdr = dotColor === "#000000" ? "border: 1px solid #777;" : "border: 1px solid rgba(255,255,255,0.2);";
+              
+              activeCores.push(`<div style="display:inline-flex; align-items:center; font-size:10px; margin: 2px 4px;">
+                  <span style="display:inline-block; width:6px; height:6px; border-radius:50%; background:${dotColor}; ${bdr} margin-right:4px;"></span>
+                  <span style="color:#c9d1d9; margin-right:4px;">${i+1}</span>
+                  <span style="color:${sColor}; font-weight:bold;">⚡ ${s.toFixed(1)} дБ</span>
+              </div>`);
+          }
+      }
+      if (activeCores.length > 0) {
+          signalsHtml = `<div style="display:flex; flex-wrap:wrap; justify-content:center; max-width:180px; padding-top:2px;">${activeCores.join("")}</div>`;
+      }
+  }
+  
+  if (signalsHtml) {
+      contentHtml += `<div style="margin-top:2px; padding-top:2px; border-top:1px solid #30363d;">${signalsHtml}</div>`;
+  }
+
   c._distTooltip = L.tooltip({
     permanent: true,
     direction: "top",
     className: "conn-dist-label",
     offset: [0, -5],
   })
-    .setContent(`${dist.toFixed(1)} м${capLabel}`)
+    .setContent(contentHtml)
     .setLatLng(midPt)
     .addTo(map);
 }
@@ -1056,12 +1099,31 @@ function buildNodeLabelContent(n) {
         let tag = "";
         
         if (conn.from.crossConnects) {
-           const xc = conn.from.crossConnects.find(x => x.toType === "CABLE" && x.toId === conn.id);
+           const xc = conn.from.crossConnects.find(x => x.toType === "PATCHCORD" && x.toId === conn.id);
            if (xc) {
               if (xc.fromType === "SPLITTER") {
-                 let spName = xc.fromId === "legacy_plc" ? "PLC" : (xc.fromId === "legacy_fbt" ? "FBT" : "Сплітер");
+                 let spName = "Сплітер";
+                 if (xc.fromId === "legacy_plc") {
+                     spName = `PLC ${/** @type {any} */(conn.from).plcType || ""}`;
+                 }
+                 else if (xc.fromId === "legacy_fbt") {
+                     spName = `FBT ${/** @type {any} */(conn.from).fbtType || ""}`;
+                 }
+                 else if (/** @type {any} */(conn.from).splitters) {
+                    const splitters = /** @type {any} */(conn.from).splitters;
+                    const sp = splitters.find(/** @type {any} */(s) => s.id === xc.fromId);
+                    if (sp) {
+                        const sameType = splitters.filter(/** @type {any} */(s) => s.type === sp.type && s.ratio === sp.ratio);
+                        if (sameType.length > 1) {
+                            const idx = sameType.findIndex(/** @type {any} */(s) => s.id === sp.id) + 1;
+                            spName = `${sp.type} ${sp.ratio} #${idx}`;
+                        } else {
+                            spName = `${sp.type} ${sp.ratio}`;
+                        }
+                    }
+                 }
                  let port = xc.fromCore !== undefined ? xc.fromCore : xc.fromBranch;
-                 tag += `[${spName} ${port}]`;
+                 tag += `[${spName.trim()} (${port})]`;
               } else if (xc.fromType === "CABLE") {
                  let inConn = conns.find(c => c.id === xc.fromId);
                  let srcName = inConn ? inConn.from.name : "?";

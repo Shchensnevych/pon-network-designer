@@ -147,7 +147,7 @@ declare global {
     fromCore?: number;       // Specific core inside a cable, or branch of a PLC
     fromBranch?: string;     // String branch (e.g. "X" or "Y" for FBT)
     
-    toType: "CABLE" | "SPLITTER" | "UNIT";
+    toType: "CABLE" | "SPLITTER" | "UNIT" | "PATCHCORD";
     toId: string; // Cable ID, Splitter ID
     toCore?: number;
     toBranch?: string;
