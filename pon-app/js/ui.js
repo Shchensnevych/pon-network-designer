@@ -1015,60 +1015,66 @@ function getScenarioLoss(selectedSplitter, originalLoss) {
   return 0;
 }
 
-// Helper: find OLT port for a FOB by tracing back through connections
-/**
- * @param {FOBNode} fob
- * @returns {{ olt: PONNode, port: number } | null}
- */
-function getOLTPort(fob) {
-  /** @type {PONNode} */
-  let node = fob;
-  const visited = new Set();
-
-  while (node && !visited.has(node.id)) {
-    visited.add(node.id);
-    const inCables = conns.filter(c => c.to === node && c.type === "cable");
-    if (inCables.length === 0) break;
-
-    const c = inCables[0];
-    if (c.from.type === "OLT" && typeof c.fromPort === "number") {
-      return { olt: c.from, port: c.fromPort };
-    }
-    node = c.from;
-    if (node.type !== "FOB") break;
-  }
-  return null;
-}
+// Helper no longer needed globally, will be inlined.
 
 export function showScenarioCompare() {
   const current = [];
-  nodes
-    .filter(
-      (n) => n.type === "FOB" && n.inputConn && (/** @type {FOBNode} */ (n).plcType || /** @type {FOBNode} */ (n).fbtType),
-    )
-    .forEach((/** @type {FOBNode} */ fob) => {
-      const sig = hasOLTPath(fob) ? sigIn(fob) : null;
-      const onuSig = hasOLTPath(fob) ? sigONU(fob) : null;
-      const onus = conns.filter(
-        (c) => c.from === fob && c.type === "patchcord",
-      ).length;
-      const oltInfo = getOLTPort(fob);
-      current.push({
-        fobId: fob.id,
-        name: fob.name,
-        splitter: fob.plcType
-          ? `PLC ${fob.plcType}`
-          : fob.fbtType
-          ? `FBT ${fob.fbtType}`
-          : "Транзит",
-        sigIn: sig,
-        sigONU: onuSig,
-        onus,
-        origLoss: getTotalLoss(fob),
-        oltName: oltInfo?.olt?.name || "?",
-        oltPort: oltInfo?.port !== undefined ? oltInfo.port + 1 : null, // 1-based for display
-      });
+  
+  nodes.filter(n => n.type === "FOB").forEach((/** @type {FOBNode} */ fob) => {
+    const splitters = fob.splitters || [];
+    let spList = [...splitters];
+    if (fob.fbtType && !spList.some(s => s.id === "legacy_fbt")) {
+        spList.push({ id: "legacy_fbt", type: "FBT", ratio: fob.fbtType });
+    }
+    if (fob.plcType && !spList.some(s => s.id === "legacy_plc")) {
+        spList.push({ id: "legacy_plc", type: "PLC", ratio: fob.plcType });
+    }
+    
+    if (spList.length === 0) return;
+    
+    let oltName = "?";
+    let oltPort = null;
+    let climb = fob;
+    const visited = new Set();
+    while (climb && climb.inputConn && !visited.has(climb.id)) {
+       visited.add(climb.id);
+       if (climb.inputConn.from.type === "OLT") {
+          oltName = climb.inputConn.from.name || "OLT";
+          const xc = (climb.inputConn.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === climb.inputConn.id);
+          if (xc) oltPort = parseInt(String(xc.fromId)) + 1;
+          break;
+       }
+       climb = /** @type {FOBNode} */ (climb.inputConn.from);
+    }
+
+    spList.forEach((sp, idx) => {
+       const sigInSp = hasOLTPath(fob) ? sigIn(fob) : null;
+       
+       let origLoss = 0;
+       if (sp.type === "PLC") origLoss = (PLC_LOSSES[sp.ratio] || 0) + MECH;
+       if (sp.type === "FBT") origLoss = FBT_LOSSES[sp.ratio] ? FBT_LOSSES[sp.ratio].x + MECH : 0;
+       
+       const sigOutSp = sigInSp !== null ? sigInSp - origLoss : null;
+       
+       let label = `${sp.type} ${sp.ratio}`;
+       if (spList.filter(s => s.type === sp.type && s.ratio === sp.ratio).length > 1) {
+           label += ` #${idx+1}`;
+       }
+
+       current.push({
+         fobId: fob.id,
+         spId: sp.id,
+         name: fob.name,
+         splitter: label,
+         spType: sp.type,
+         sigIn: sigInSp,
+         sigOut: sigOutSp,
+         origLoss: origLoss,
+         oltName: oltName,
+         oltPort: oltPort,
+       });
     });
+  });
 
   // Available splitter options for dropdown
   const splitterOptions = [
@@ -1087,31 +1093,31 @@ export function showScenarioCompare() {
   ];
 
   // Function to recalculate scenario row
-  function recalcRow(fobId, selectedSplitter) {
-    const item = current.find((c) => c.fobId === fobId);
+  function recalcRow(fobId, spId, selectedSplitter) {
+    const item = current.find((c) => c.fobId === fobId && c.spId === spId);
     if (!item) return null;
 
     const lossNew = getScenarioLoss(selectedSplitter, item.origLoss);
-    const delta = lossNew - item.origLoss;
-    const newSigIn = item.sigIn !== null ? item.sigIn - delta : null;
-    const newSigONU = item.sigONU !== null ? item.sigONU - delta : null;
+    
+    const newSigIn = item.sigIn; 
+    const newSigOut = item.sigIn !== null ? item.sigIn - lossNew : null;
+    const visualDelta = newSigOut !== null && item.sigOut !== null ? newSigOut - item.sigOut : 0;
+    
     const newSplitter = selectedSplitter === "keep" ? item.splitter : selectedSplitter;
 
     return {
       ...item,
       newSplitter,
       newSigIn,
-      newSigONU,
-      delta,
+      newSigOut,
+      delta: visualDelta,
       lossNew,
     };
   }
 
-  // Function to update table row (find by fobId to handle grouped rows)
+  // Function to update table row
   function updateRow(rowIndex, result) {
-    // Try to find row by fobId first (more reliable with grouping)
-    let row = document.querySelector(`tr[data-fob-id="${result.fobId}"]`);
-    // Fallback to index if not found
+    let row = document.querySelector(`tr[data-fob-id="${result.fobId}"][data-sp-id="${result.spId}"]`);
     if (!row) {
       const allRows = document.querySelectorAll(`#scenario-table tbody tr:not(.scenario-group-header)`);
       row = allRows[rowIndex];
@@ -1121,37 +1127,34 @@ export function showScenarioCompare() {
     const cIn = result.sigIn !== null
       ? sigClass(result.sigIn) === "ok" ? "sig-ok"
       : sigClass(result.sigIn) === "warn" ? "sig-warn"
-      : "sig-err"
-      : "";
-    const cOnu = result.sigONU !== null
-      ? sigClass(result.sigONU) === "ok" ? "sig-ok"
-      : sigClass(result.sigONU) === "warn" ? "sig-warn"
-      : "sig-err"
-      : "";
+      : "sig-err" : "";
+    const cOut = result.sigOut !== null
+      ? sigClass(result.sigOut) === "ok" ? "sig-ok"
+      : sigClass(result.sigOut) === "warn" ? "sig-warn"
+      : "sig-err" : "";
+      
     const nIn = result.newSigIn !== null
       ? sigClass(result.newSigIn) === "ok" ? "sig-ok"
       : sigClass(result.newSigIn) === "warn" ? "sig-warn"
-      : "sig-err"
-      : "";
-    const nOnu = result.newSigONU !== null
-      ? sigClass(result.newSigONU) === "ok" ? "sig-ok"
-      : sigClass(result.newSigONU) === "warn" ? "sig-warn"
-      : "sig-err"
-      : "";
+      : "sig-err" : "";
+    const nOut = result.newSigOut !== null
+      ? sigClass(result.newSigOut) === "ok" ? "sig-ok"
+      : sigClass(result.newSigOut) === "warn" ? "sig-warn"
+      : "sig-err" : "";
+      
     const dStr = result.delta > 0 ? `+${result.delta.toFixed(1)}` : result.delta.toFixed(1);
-    const dCls = result.delta > 0 ? "sig-err" : result.delta < 0 ? "sig-ok" : "";
+    const dCls = result.delta < 0 ? "sig-err" : result.delta > 0 ? "sig-ok" : "";
 
-    // Update cells (structure: 0=FOB, 1=Зараз, 2=Сигнал FOB, 3=Сигнал ONU, 4=select, 5=Новий FOB, 6=Новий ONU, 7=Зміна)
     const cells = row.querySelectorAll("td");
     if (cells.length >= 8) {
       cells[2].className = cIn;
       cells[2].textContent = result.sigIn !== null ? result.sigIn.toFixed(1) : "—";
-      cells[3].className = cOnu;
-      cells[3].textContent = result.sigONU !== null ? result.sigONU.toFixed(1) : "—";
+      cells[3].className = cOut;
+      cells[3].textContent = result.sigOut !== null ? result.sigOut.toFixed(1) : "—";
       cells[5].className = nIn;
       cells[5].textContent = result.newSigIn !== null ? result.newSigIn.toFixed(1) : "—";
-      cells[6].className = nOnu;
-      cells[6].textContent = result.newSigONU !== null ? result.newSigONU.toFixed(1) : "—";
+      cells[6].className = nOut;
+      cells[6].textContent = result.newSigOut !== null ? result.newSigOut.toFixed(1) : "—";
       cells[7].className = dCls;
       cells[7].textContent = `${dStr} дБ`;
     }
@@ -1186,8 +1189,8 @@ export function showScenarioCompare() {
       </button>
     </div>
     <table id="scenario-table"><thead><tr>
-      <th>FOB</th><th>Зараз</th><th>Сигнал FOB</th><th>Сигнал ONU</th>
-      <th>Сценарний сплітер</th><th>Новий FOB</th><th>Новий ONU</th><th>Зміна</th>
+      <th>FOB</th><th>Зараз</th><th>Вхід сплітера</th><th>Вихід (гілка)</th>
+      <th>Сценарний варіант</th><th>Новий Вхід</th><th>Новий Вихід</th><th>Δ Сигналу</th>
     </tr></thead><tbody>`;
 
   let globalRowIdx = 0;
@@ -1197,51 +1200,49 @@ export function showScenarioCompare() {
     // Add group header row
     html += `<tr class="scenario-group-header" style="background:rgba(88,166,255,0.1);border-top:2px solid #58a6ff;">
       <td colspan="8" style="padding:8px 12px;font-weight:600;color:#58a6ff;font-size:12px;">
-        🔌 ${groupKey} (${groupItems.length} FOB${groupItems.length !== 1 ? "ів" : ""})
+        🔌 ${groupKey} (${groupItems.length} сплітерів)
       </td>
     </tr>`;
 
     groupItems.forEach((item) => {
     const defaultSplitter = "keep"; // Default: keep current splitter
-    const result = recalcRow(item.fobId, defaultSplitter);
+    const result = recalcRow(item.fobId, item.spId, defaultSplitter);
 
     const cIn = item.sigIn !== null
       ? sigClass(item.sigIn) === "ok" ? "sig-ok"
       : sigClass(item.sigIn) === "warn" ? "sig-warn"
-      : "sig-err"
-      : "";
-    const cOnu = item.sigONU !== null
-      ? sigClass(item.sigONU) === "ok" ? "sig-ok"
-      : sigClass(item.sigONU) === "warn" ? "sig-warn"
-      : "sig-err"
-      : "";
+      : "sig-err" : "";
+    const cOut = item.sigOut !== null
+      ? sigClass(item.sigOut) === "ok" ? "sig-ok"
+      : sigClass(item.sigOut) === "warn" ? "sig-warn"
+      : "sig-err" : "";
+      
     const nIn = result.newSigIn !== null
       ? sigClass(result.newSigIn) === "ok" ? "sig-ok"
       : sigClass(result.newSigIn) === "warn" ? "sig-warn"
-      : "sig-err"
-      : "";
-    const nOnu = result.newSigONU !== null
-      ? sigClass(result.newSigONU) === "ok" ? "sig-ok"
-      : sigClass(result.newSigONU) === "warn" ? "sig-warn"
-      : "sig-err"
-      : "";
+      : "sig-err" : "";
+    const nOut = result.newSigOut !== null
+      ? sigClass(result.newSigOut) === "ok" ? "sig-ok"
+      : sigClass(result.newSigOut) === "warn" ? "sig-warn"
+      : "sig-err" : "";
+      
     const dStr = result.delta > 0 ? `+${result.delta.toFixed(1)}` : result.delta.toFixed(1);
-    const dCls = result.delta > 0 ? "sig-err" : result.delta < 0 ? "sig-ok" : "";
+    const dCls = result.delta < 0 ? "sig-err" : result.delta > 0 ? "sig-ok" : "";
 
       const optionsHtml = splitterOptions.map(opt => 
         `<option value="${opt.value}" ${opt.value === defaultSplitter ? "selected" : ""}>${opt.label}</option>`
       ).join("");
 
-      html += `<tr data-fob-id="${item.fobId}">
+      html += `<tr data-fob-id="${item.fobId}" data-sp-id="${item.spId}">
         <td class="td-name">${item.name}</td>
         <td>${item.splitter}</td>
         <td class="${cIn}">${item.sigIn !== null ? item.sigIn.toFixed(1) : "—"}</td>
-        <td class="${cOnu}">${item.sigONU !== null ? item.sigONU.toFixed(1) : "—"}</td>
-        <td><select class="scenario-splitter-select" data-row="${item._originalIdx}" data-fob-id="${item.fobId}" style="min-width:120px;padding:4px 6px;font-size:11px">
+        <td class="${cOut}">${item.sigOut !== null ? item.sigOut.toFixed(1) : "—"}</td>
+        <td><select class="scenario-splitter-select" data-row="${item._originalIdx}" data-fob-id="${item.fobId}" data-sp-id="${item.spId}" style="min-width:120px;padding:4px 6px;font-size:11px">
           ${optionsHtml}
         </select></td>
         <td class="${nIn}">${result.newSigIn !== null ? result.newSigIn.toFixed(1) : "—"}</td>
-        <td class="${nOnu}">${result.newSigONU !== null ? result.newSigONU.toFixed(1) : "—"}</td>
+        <td class="${nOut}">${result.newSigOut !== null ? result.newSigOut.toFixed(1) : "—"}</td>
         <td class="${dCls}">${dStr} дБ</td>
       </tr>`;
       
@@ -1259,13 +1260,12 @@ export function showScenarioCompare() {
   // Function to reset all selections to "keep"
   function resetAllSelections() {
     current.forEach((item) => {
-      const select = document.querySelector(`.scenario-splitter-select[data-fob-id="${item.fobId}"]`);
+      const select = document.querySelector(`.scenario-splitter-select[data-fob-id="${item.fobId}"][data-sp-id="${item.spId}"]`);
       if (select) {
         /** @type {HTMLSelectElement} */ (select).value = "keep";
-        const result = recalcRow(item.fobId, "keep");
+        const result = recalcRow(item.fobId, item.spId, "keep");
         if (result) {
-          // Find row index in DOM (excluding group headers)
-          const row = document.querySelector(`tr[data-fob-id="${item.fobId}"]`);
+          const row = document.querySelector(`tr[data-fob-id="${item.fobId}"][data-sp-id="${item.spId}"]`);
           if (row) {
             const allRows = Array.from(document.querySelectorAll("#scenario-table tbody tr:not(.scenario-group-header)"));
             const domRowIdx = allRows.indexOf(row);
@@ -1284,11 +1284,11 @@ export function showScenarioCompare() {
       const tgt = /** @type {HTMLSelectElement} */ (e.target);
       const rowIdx = parseInt(tgt.dataset.row || "0");
       const fobId = tgt.dataset.fobId || current[rowIdx]?.fobId;
+      const spId = tgt.dataset.spId || current[rowIdx]?.spId;
       const selected = tgt.value;
-      const result = recalcRow(fobId, selected);
+      const result = recalcRow(fobId, spId, selected);
       if (result) {
-        // Find the actual row in DOM by fobId
-        const row = document.querySelector(`tr[data-fob-id="${fobId}"]`);
+        const row = document.querySelector(`tr[data-fob-id="${fobId}"][data-sp-id="${spId}"]`);
         if (row) {
           const allRows = Array.from(document.querySelectorAll("#scenario-table tbody tr:not(.scenario-group-header)"));
           const domRowIdx = allRows.indexOf(row);
@@ -1301,12 +1301,7 @@ export function showScenarioCompare() {
   });
 
   // Attach event listener to reset button
-  const resetBtn = document.getElementById("scenario-reset-btn");
-  if (resetBtn) {
-    resetBtn.addEventListener("click", () => {
-      resetAllSelections();
-    });
-  }
+  document.getElementById("scenario-reset-btn")?.addEventListener("click", resetAllSelections);
 
   const h2 = document
     .getElementById("modal-overlay")
