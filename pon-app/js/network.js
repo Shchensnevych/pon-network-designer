@@ -5,7 +5,6 @@
 import {
   FBT_LOSSES,
   PLC_LOSSES,
-  MECH,
   ONU_MIN,
   FIBER_DB_KM,
   fobCounter,
@@ -27,11 +26,11 @@ import { nodes, conns, map, setMap } from "./state.js";
 
 // Signal calculations — extracted to signal.js (~320 lines removed)
 import {
-  getChainColor, usedCables, usedPatches, usedOutputs,
-  maxOutputs, freeCablePorts, freePatchPorts,
-  fobPortStatus, getDistM, connKm, sigIn, 
+  getChainColor, usedOutputs,
+  freeCablePorts, freePatchPorts,
+  fobPortStatus, connKm, sigIn, 
   hasOLTPath, sigAtONU, sigONU, sigFBT, sigSplitter,
-  cntONUport, cntDn, getSignalColor, updateCableColors, traceOpticalPath
+  cntONUport, updateCableColors, traceOpticalPath
 } from "./signal.js";
 
 // Signal path highlighting & animation — extracted to signal-path.js
@@ -622,7 +621,7 @@ export function restoreNetwork(json) {
     n.marker.on("dragstart", () => {
       n._isDragging = true;
     });
-    n.marker.on("drag", (e) => onNodeDrag(n));
+    n.marker.on("drag", () => onNodeDrag(n));
     n.marker.on("dragend", () => {
       // Зняти прапорець драгу
       n._isDragging = false;
@@ -706,21 +705,7 @@ export function redo() {
   restoreNetwork(redoHistory.pop());
 }
 
-function updateConnections(node) {
-  conns.forEach((c) => {
-    if (c.from === node || c.to === node) {
-      c.polyline.setLatLngs(/** @type {import('leaflet').LatLngExpression[]} */ ([[c.from.lat, c.from.lng], [c.to.lat, c.to.lng]]));
-      // Refresh distance label
-      if (c.type === "cable") updateConnLabel(c);
-    }
-  });
-  // Refresh labels (distances changed)
-  nodes.forEach((x) => updateNodeLabel(x));
-  refreshSignalAnim();
-  // Refresh signal path highlight if active
-  if (selNode && hasActiveGlow()) highlightSignalPath(selNode);
-}
-
+// updateConnections removed
 // ═══════════════════════════════════════════════
 //  CONNECTIONS LOGIC
 // ═══════════════════════════════════════════════
@@ -1510,7 +1495,6 @@ function buildTooltip(n) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
       if (conn?.from) t += `📦 FOB: ${conn.from.name}<br>`;
       
-      let xcTag = false;
       if (conn?.from?.crossConnects) {
          const xc = conn.from.crossConnects.find(x => x.toType === "CABLE" && x.toId === conn.id);
          if (xc) {
@@ -1518,13 +1502,11 @@ function buildTooltip(n) {
                let spName = xc.fromId === "legacy_plc" ? "PLC" : (xc.fromId === "legacy_fbt" ? "FBT" : "Сплітер");
                let port = xc.fromCore !== undefined ? xc.fromCore + 1 : xc.fromBranch;
                t += `🔗 Від: ${spName} (Вихід ${port})<br>`;
-               xcTag = true;
             } else if (xc.fromType === "CABLE") {
                let inConn = conns.find(c => c.id === xc.fromId);
                let srcName = inConn ? inConn.from.name : "?";
                let srcCap = inConn && inConn.capacity ? ` з ${inConn.capacity}` : "";
                t += `🔗 Транзит: ${srcName} (Жила ${(xc.fromCore || 0) + 1}${srcCap})<br>`;
-               xcTag = true;
             }
          }
       }
@@ -1540,7 +1522,6 @@ function buildTooltip(n) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
       if (conn?.from) t += `📦 FOB: ${conn.from.name}<br>`;
       
-      let xcTag = false;
       if (conn?.from?.crossConnects) {
          const xc = conn.from.crossConnects.find(x => x.toType === "CABLE" && x.toId === conn.id);
          if (xc) {
@@ -1548,12 +1529,10 @@ function buildTooltip(n) {
                let spName = xc.fromId === "legacy_plc" ? "PLC" : (xc.fromId === "legacy_fbt" ? "FBT" : "Сплітер");
                let port = xc.fromCore !== undefined ? xc.fromCore : xc.fromBranch;
                t += `🔀 Від: ${spName} (Вихід ${port})<br>`;
-               xcTag = true;
             } else if (xc.fromType === "CABLE") {
                let inConn = conns.find(c => c.id === xc.fromId);
                let srcName = inConn ? inConn.from.name : "?";
                t += `🔀 Транзит: ${srcName} (Жила ${(xc.fromCore || 0) + 1})<br>`;
-               xcTag = true;
             }
          }
       }
@@ -1686,7 +1665,7 @@ function showProps(n) {
     const fP = freePatchPorts(n);
 
     // We now use pure optical tracing, no legacy branch dropdowns
-    const outConns = conns.filter((c) => c.from === n);
+    // inConns removed
 
     h += `<div style="font-size:10px;margin-top:6px;border-top:1px solid #30363d;padding-top:4px">
       Free Cable: ${fC} <br> Free ONU: ${fP}
@@ -1900,24 +1879,7 @@ function showConnCtx(e, c) {
                  <div class="ctx-item danger" onclick="deleteConnById('${c.id}')">🗑️ Видалити з'єднання</div>`;
 }
 
-function showOLTPortSel(olt, fob) {
-  const p = document.getElementById("props");
-  if (!p) return;
-  const usedPorts = conns
-    .filter((c) => c.from === olt && c.type === "cable")
-    .map((c) => ({ port: c.fromPort, to: c.to?.name || "?" }));
-  let h = `<div class="node-card"><h3>Порт OLT</h3><div class="port-grid">`;
-  for (let i = 0; i < olt.ports; i++) {
-    const used = usedPorts.find((u) => u.port === i);
-    if (used) {
-      h += `<button class="port-btn" disabled title="Зайнятий: ${used.to}" style="opacity:0.4">Порт ${i + 1} 🔒</button>`;
-    } else {
-      h += `<button class="port-btn" onclick="finishOLT('${olt.id}','${fob.id}',${i})">Порт ${i + 1}</button>`;
-    }
-  }
-  h += `</div><button class="del-btn" onclick="showSelectedProps()">Скасувати</button></div>`;
-  p.innerHTML = h;
-}
+// showOLTPortSel removed
 
 export function finishOLT(oid, fid, port) {
   const o = nodes.find((x) => x.id === oid);

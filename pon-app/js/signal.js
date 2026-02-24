@@ -111,7 +111,6 @@ export function freePatchPorts(fob) {
 export function fobPortStatus(n) {
   const lines = [];
   const rich = [];
-  const details = [];
 
   const xc = n.crossConnects || [];
   

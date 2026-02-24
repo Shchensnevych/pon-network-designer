@@ -40,7 +40,6 @@ import {
   toggleAutoSave,
   updateAutoSaveInterval,
   updateMaxBackups,
-  loadSettings,
   renderBackupsList,
   restoreBackup,
   deleteBackup,

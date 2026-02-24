@@ -2,7 +2,7 @@
 // Signal path highlighting & signal animation overlays.
 // Extracted from network.js — pure visualization, no business logic.
 import { nodes, conns, map } from "./state.js";
-import { traceOpticalPath, hasOLTPath } from "./signal.js";
+import { hasOLTPath } from "./signal.js";
 
 // ═══════════════════════════════════════════════
 //  SIGNAL PATH HIGHLIGHTING

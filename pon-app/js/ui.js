@@ -9,7 +9,6 @@ import {
   hasOLTPath,
   cntONUport,
   connKm,
-  fitNetwork,
 } from "./network.js";
 import { traceOpticalPath } from "./signal.js";
 
@@ -953,42 +952,7 @@ export async function showTopology() {
 // Helper: calculate total loss for current FOB splitter setup
 // For FBT+PLC combo: returns X branch + PLC loss + 2x MECH
 // For PLC-only: returns PLC loss + MECH
-// For FBT-only: returns X branch loss + MECH (tap branch)
-/**
- * @param {FOBNode} fob
- * @returns {number}
- */
-/**
- * @param {FOBNode} fob
- * @returns {number}
- */
-function getTotalLoss(fob) {
-  let loss = 0;
-  const splitters = fob.splitters || [];
-  
-  splitters.forEach(sp => {
-    if (sp.type === "FBT" && FBT_LOSSES[sp.ratio]) {
-      // Use X branch (tap) as default for FBT
-      loss += FBT_LOSSES[sp.ratio].x + MECH;
-    } else if (sp.type === "PLC" && PLC_LOSSES[sp.ratio]) {
-      loss += PLC_LOSSES[sp.ratio] + MECH;
-    }
-  });
-
-  // Fallback for legacy splitters
-  if (splitters.length === 0) {
-    if (fob.plcType && fob.fbtType) {
-      const brLoss = fob.plcBranch === "X" ? FBT_LOSSES[fob.fbtType].x : FBT_LOSSES[fob.fbtType].y;
-      loss = brLoss + MECH + PLC_LOSSES[fob.plcType] + MECH;
-    } else if (fob.plcType) {
-      loss = PLC_LOSSES[fob.plcType] + MECH;
-    } else if (fob.fbtType) {
-      loss = FBT_LOSSES[fob.fbtType].x + MECH;
-    }
-  }
-
-  return loss;
-}
+// Legacy getTotalLoss removed, Fob Stats now handles splitters.
 
 // Helper: get loss for selected splitter type in scenario
 // "keep" = keep original, "PLC 1x8" = PLC only, "FBT 10/90" = FBT only (X branch)
