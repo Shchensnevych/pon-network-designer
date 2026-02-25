@@ -735,27 +735,77 @@ export async function showTopology() {
    * @param {FOBNode} fob
    * @param {PONConnection} cable
    * @param {string} parentId
+   * @param {string} incomingCoreNodeId - The exact Node ID inside the parent FOB that feeds this cable
    */
-  function renderMermaidFob(fob, cable, parentId) {
+  function renderMermaidFob(fob, cable, parentId, incomingCoreNodeId) {
     const fId = safeId(fob.id);
     
-    // Fob Details
-    let splParts = [];
-    const splitters = fob.splitters || [];
-    splitters.forEach(sp => splParts.push(`${sp.type} ${sp.ratio}`));
-    if (splParts.length === 0) {
-      if (fob.fbtType) splParts.push(`FBT ${fob.fbtType}`);
-      if (fob.plcType) splParts.push(`PLC ${fob.plcType}`);
-    }
-    const splitterInfo = splParts.length > 0 ? splParts.join(" + ") : "Транзит";
-    
+    // Fallback info for the subgraph title
     const sig = hasOLTPath(fob) ? sigIn(fob) : null;
     const sigStr = sig !== null ? `⚡ ${sig.toFixed(1)} дБ` : "No Sig";
+
+    m += `  subgraph ${fId} ["📦 ${fob.name} (${sigStr})"]\n`;
+    m += `    direction TB\n`;
     
-    // Fob node
-    m += `  ${fId}(["📦 ${fob.name}<br/><small>${splitterInfo}</small><br/><b>${sigStr}</b>"]):::fob\n`;
+    // Plot Splitters as internal nodes
+    const splitters = fob.splitters || [];
+    const spNodes = {}; // map splitter id to mermaid node id
+    
+    if (splitters.length === 0) {
+       // If no splitters, show a Transit node
+       spNodes["transit"] = `${fId}_transit`;
+       m += `    ${spNodes["transit"]}(["Транзит"]):::fob\n`;
+    } else {
+       splitters.forEach(sp => {
+           const spNid = `${fId}_sp_${safeId(sp.id)}`;
+           spNodes[sp.id] = spNid;
+           m += `    ${spNid}(["${sp.type} ${sp.ratio}"]):::fob\n`;
+           m += `    click ${spNid} "javascript:window.focusNode('${fob.id}')" "Показати муфту"\n`;
+       });
+       
+       // Draw internal cross-connects between splitters
+       const xc = fob.crossConnects || [];
+       xc.forEach(x => {
+           if (x.fromType === "SPLITTER" && x.toType === "SPLITTER") {
+               const fromNid = spNodes[x.fromId];
+               const toNid = spNodes[x.toId];
+               if (fromNid && toNid) {
+                   const edgeLbl = x.fromBranch ? x.fromBranch : `${(x.fromCore||0)+1}`;
+                   m += `    ${fromNid} -- "${edgeLbl}" --> ${toNid}\n`;
+               }
+           }
+       });
+       
+       // Add Transit node if there are CABLE->CABLE transit splices
+       const hasTransit = xc.some(x => x.fromType === "CABLE" && x.toType === "CABLE");
+       if (hasTransit) {
+           spNodes["transit"] = `${fId}_transit`;
+           m += `    ${spNodes["transit"]}(["Транзит"]):::fob\n`;
+       }
+    }
+    m += `  end\n`;
     m += `  click ${fId} "javascript:window.focusNode('${fob.id}')" "Показати на карті"\n`;
     
+    // Determine the entry point "Node" for the incoming cable.
+    // If there are splitters, usually it's the first one, or "transit" if it's a pure transit cable.
+    // To be precise, we check what the cable feeds via crossConnects.
+    let entryNodes = new Set();
+    const xcIn = fob.crossConnects || [];
+    if (cable) {
+        // Find what incoming cable's active cores connect to
+        const incomingXcs = xcIn.filter(x => x.fromType === "CABLE" && x.fromId === cable.id);
+        incomingXcs.forEach(x => {
+            if (x.toType === "SPLITTER" && spNodes[x.toId]) entryNodes.add(spNodes[x.toId]);
+            else if (x.toType === "CABLE" && spNodes["transit"]) entryNodes.add(spNodes["transit"]);
+        });
+    }
+    // Fallback if no specific connection found
+    if (entryNodes.size === 0) {
+        if (splitters.length > 0) entryNodes.add(spNodes[splitters[0].id]);
+        else if (spNodes["transit"]) entryNodes.add(spNodes["transit"]);
+        else entryNodes.add(fId); // Fallback to subgraph
+    }
+
     // Edge from parent
     if (parentId) {
         let edgeText = "";
@@ -763,18 +813,8 @@ export async function showTopology() {
             const cLoss = connKm(cable) * FIBER_DB_KM;
             let activeCoresHtml = "";
             const FIBER_COLORS = [
-                "#58a6ff", // Blue
-                "#ff9632", // Orange
-                "#3fb950", // Green
-                "#b07b46", // Brown
-                "#8b949e", // Slate
-                "#ffffff", // White
-                "#f85149", // Red
-                "#000000", // Black
-                "#e3b341", // Yellow
-                "#bc8cff", // Violet
-                "#ff80b5", // Rose
-                "#56d364"  // Aqua
+                "#58a6ff", "#ff9632", "#3fb950", "#b07b46", "#8b949e", "#ffffff",
+                "#f85149", "#000000", "#e3b341", "#bc8cff", "#ff80b5", "#56d364"
             ];
             
             for (let i = 0; i < cable.capacity; i++) {
@@ -804,46 +844,83 @@ export async function showTopology() {
             let coresDiv = activeCoresHtml ? `<br/><div style='display:flex; flex-wrap:wrap; justify-content:center; max-width:160px; margin-top:4px;'>${activeCoresHtml}</div>` : "";
             edgeText = `|"<div style='text-align:center; font-size:11px;'><b style='color:#58a6ff;'>${cable.capacity}F</b> (${dist}м / -${loss}дБ)${coresDiv}</div>"|`;
         }
-        m += `  ${parentId} --> ${edgeText} ${fId}\n`;
+        
+        // Draw incoming cable to the entry nodes
+        const actualParent = incomingCoreNodeId || parentId;
+        entryNodes.forEach(en => {
+            m += `  ${actualParent} --> ${edgeText} ${en}\n`;
+        });
     }
 
     // Downstream cables
     const downCables = conns.filter(c => c.from === fob && c.type === "cable");
     downCables.forEach(dc => {
-      if (dc.to) renderMermaidFob(/** @type {FOBNode} */ (dc.to), dc, fId);
+      // Find which internal node feeds this cable
+      const dcXc = (fob.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === dc.id);
+      let outNodeId = fId; // default to subgraph
+      if (dcXc) {
+          if (dcXc.fromType === "SPLITTER" && spNodes[dcXc.fromId]) outNodeId = spNodes[dcXc.fromId];
+          else if (dcXc.fromType === "CABLE" && spNodes["transit"]) outNodeId = spNodes["transit"];
+      } else if (spNodes["transit"]) outNodeId = spNodes["transit"];
+      else if (splitters.length > 0) outNodeId = spNodes[splitters[splitters.length-1].id]; // default to last splitter
+
+      if (dc.to) renderMermaidFob(/** @type {FOBNode} */ (dc.to), dc, fId, outNodeId);
     });
 
     // Downstream patchcords (ONUs / MDUs)
-    const onus = conns.filter(c => c.from === fob && c.type === "patchcord").map(c => c.to).filter(Boolean);
-    if (onus.length > 0) {
-        const gId = safeId(fob.id + "_subs");
-        let lines = [];
+    const patchcords = conns.filter(c => c.from === fob && c.type === "patchcord");
+    if (patchcords.length > 0) {
+        // Group patchcords by their source node (splitter or transit) inside this FOB
+        const groups = {};
         
-        let onuLinks = onus.filter(o => o.type === "ONU").map(o => `<a href="#focus" data-focus-id="${o.id}" class="mm-subs-link">${o.name}</a>`);
-        let mduLinks = onus.filter(o => o.type === "MDU").map(o => `<a href="#focus" data-focus-id="${o.id}" class="mm-subs-link-mdu">${o.name}</a>`);
-        
-        if (onuLinks.length > 0) {
-            const chunks = [];
-            for (let i = 0; i < onuLinks.length; i += 4) {
-                 chunks.push(onuLinks.slice(i, i+4).join(", "));
+        patchcords.forEach(pc => {
+            const pcXc = (fob.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === pc.id);
+            let srcNodeId = fId;
+            if (pcXc) {
+                if (pcXc.fromType === "SPLITTER" && spNodes[pcXc.fromId]) srcNodeId = spNodes[pcXc.fromId];
+                else if (pcXc.fromType === "CABLE" && spNodes["transit"]) srcNodeId = spNodes["transit"];
+            } else if (splitters.length > 0) srcNodeId = spNodes[splitters[splitters.length-1].id];
+            
+            if (!groups[srcNodeId]) groups[srcNodeId] = [];
+            groups[srcNodeId].push(pc.to);
+        });
+
+        // Loop through grouped destinations and generate blocks
+        Object.keys(groups).forEach((srcNodeId, index) => {
+            const onus = groups[srcNodeId].filter(Boolean);
+            if (onus.length === 0) return;
+
+            const gId = safeId(fob.id + "_subs_" + index);
+            let lines = [];
+            
+            let onuLinks = onus.filter(o => o.type === "ONU").map(o => `<a href="#focus" data-focus-id="${o.id}" class="mm-subs-link">${o.name}</a>`);
+            let mduLinks = onus.filter(o => o.type === "MDU").map(o => `<a href="#focus" data-focus-id="${o.id}" class="mm-subs-link-mdu">${o.name}</a>`);
+            
+            if (onuLinks.length > 0) {
+                const chunks = [];
+                for (let i = 0; i < onuLinks.length; i += 4) {
+                     chunks.push(onuLinks.slice(i, i+4).join(", "));
+                }
+                lines.push(`🏠 <b>ONU (${onuLinks.length}):</b><br/>` + chunks.join("<br/>"));
             }
-            lines.push(`🏠 <b>ONU (${onuLinks.length}):</b><br/>` + chunks.join("<br/>"));
-        }
-        
-        if (mduLinks.length > 0) {
-            const chunks = [];
-            for (let i = 0; i < mduLinks.length; i += 4) {
-                 chunks.push(mduLinks.slice(i, i+4).join(", "));
+            
+            if (mduLinks.length > 0) {
+                const chunks = [];
+                for (let i = 0; i < mduLinks.length; i += 4) {
+                     chunks.push(mduLinks.slice(i, i+4).join(", "));
+                }
+                lines.push(`🏢 <b>MDU (${mduLinks.length}):</b><br/>` + chunks.join("<br/>"));
             }
-            lines.push(`🏢 <b>MDU (${mduLinks.length}):</b><br/>` + chunks.join("<br/>"));
-        }
-        
-        const onuSig = hasOLTPath(fob) ? sigONU(fob) : null;
-        const sColor = onuSig !== null ? (onuSig >= -25 ? "#3fb950" : onuSig >= -28 ? "#d29922" : "#f85149") : "#8b949e";
-        const oSigStr = onuSig !== null ? `⚡ ${onuSig.toFixed(1)} дБ` : "No Sig";
-        
-        m += `  ${gId}(["${lines.join("<br/>")}<br/><b style='color:${sColor};'>${oSigStr}</b>"]):::subs\n`;
-        m += `  ${fId} -.-> ${gId}\n`;
+            
+            // To compute correct signal for this block, trace one ONU
+            const sampleOnu = onus[0];
+            const onuSig = hasOLTPath(fob) ? sigONU(sampleOnu) : null;
+            const sColor = onuSig !== null ? (onuSig >= -25 ? "#3fb950" : onuSig >= -28 ? "#d29922" : "#f85149") : "#8b949e";
+            const oSigStr = onuSig !== null ? `⚡ ${onuSig.toFixed(1)} дБ` : "No Sig";
+            
+            m += `  ${gId}(["${lines.join("<br/>")}<br/><b style='color:${sColor};'>${oSigStr}</b>"]):::subs\n`;
+            m += `  ${srcNodeId} -.-> ${gId}\n`;
+        });
     }
 }
 
@@ -862,7 +939,7 @@ export async function showTopology() {
       connectedCableIds.forEach(cableId => {
           const cable = conns.find(c => String(c.id) === cableId);
           if (cable && cable.to) {
-              renderMermaidFob(/** @type {FOBNode} */ (cable.to), cable, oltId);
+              renderMermaidFob(/** @type {FOBNode} */ (cable.to), cable, oltId, undefined);
           }
       });
   });
