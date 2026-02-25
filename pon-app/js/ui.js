@@ -8,6 +8,7 @@ import {
   sigONU,
   hasOLTPath,
   cntONUport,
+  sigAtONU,
   connKm,
 } from "./network.js";
 import { traceOpticalPath } from "./signal.js";
@@ -914,7 +915,7 @@ export async function showTopology() {
             
             // To compute correct signal for this block, trace one ONU
             const sampleOnu = onus[0];
-            const onuSig = hasOLTPath(fob) ? sigONU(sampleOnu) : null;
+            const onuSig = hasOLTPath(fob) ? sigAtONU(sampleOnu) : null;
             const sColor = onuSig !== null ? (onuSig >= -25 ? "#3fb950" : onuSig >= -28 ? "#d29922" : "#f85149") : "#8b949e";
             const oSigStr = onuSig !== null ? `⚡ ${onuSig.toFixed(1)} дБ` : "No Sig";
             

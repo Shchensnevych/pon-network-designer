@@ -43,7 +43,7 @@ import {
 import "./cross-connect-ui.js";
 
 // Re-export for main.js and ui.js compatibility
-export { nodes, conns, connKm, sigIn, sigONU, hasOLTPath, cntONUport };
+export { nodes, conns, connKm, sigIn, sigONU, hasOLTPath, cntONUport, sigAtONU };
 export { toggleSignalAnim };
 
 // Local state — stays in this module (no need for setter functions)
