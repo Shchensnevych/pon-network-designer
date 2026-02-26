@@ -719,19 +719,15 @@ function addConn(from, to, type) {
   // Basic Checks
   if (type === "cable") {
     if (!["OLT", "FOB"].includes(from.type)) {
-      alert("Магістраль: OLT/FOB → FOB");
+      alert("Магістраль: OLT/FOB → FOB/MDU");
       return;
     }
-    if (to.type !== "FOB") {
-      alert("Магістраль має йти до FOB!");
+    if (to.type !== "FOB" && to.type !== "MDU") {
+      alert("Магістраль має йти до FOB або MDU!");
       return;
     }
     if (from === to) {
       alert("Не можна з’єднати елемент сам із собою!");
-      return;
-    }
-    if (to.inputConn) {
-      alert(`Box ${to.name} вже має вхід!`);
       return;
     }
 
@@ -1523,12 +1519,13 @@ function buildTooltip(n) {
     return t;
   } else if (n.type === "MDU") {
     const s = sigAtONU(n);
-    const conn = conns.find((c) => c.to === n && c.type === "patchcord");
+    const conn = conns.find((c) => c.to === n && (c.type === "patchcord" || c.type === "cable"));
     let t = `<strong style='color:#a371f7'>${n.name}</strong><br>`;
     if (s !== null) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
       const fromIcon = (conn?.from?.type === "FOB" && /** @type {any} */(conn.from).subtype === "MUFTA") ? "🛢️ Муфта" : "📦 FOB";
-      if (conn?.from) t += `${fromIcon}: ${conn.from.name}<br>`;
+      const fromTypeLabel = conn?.type === "cable" ? "Кабель" : "Від";
+      if (conn?.from) t += `${fromIcon}: ${conn.from.name} (${fromTypeLabel})<br>`;
       
       if (conn?.from?.crossConnects) {
          const xc = conn.from.crossConnects.find(x => x.toType === "CABLE" && x.toId === conn.id);
@@ -1536,12 +1533,15 @@ function buildTooltip(n) {
             if (xc.fromType === "SPLITTER") {
                let spName = xc.fromId === "legacy_plc" ? "PLC" : (xc.fromId === "legacy_fbt" ? "FBT" : "Сплітер");
                let port = xc.fromCore !== undefined ? xc.fromCore : xc.fromBranch;
-               t += `🔀 Від: ${spName} (Вихід ${port})<br>`;
+               t += `🔀 ${fromTypeLabel}: ${spName} (Вихід ${port})<br>`;
             } else if (xc.fromType === "CABLE") {
                let inConn = conns.find(c => c.id === xc.fromId);
                let srcName = inConn ? inConn.from.name : "?";
                t += `🔀 Транзит: ${srcName} (Жила ${(xc.fromCore || 0) + 1})<br>`;
             }
+         } else if (conn.type === "cable") {
+             // For cable without a direct trunk cross-connect we just show it's connected
+            t += `🔌 Підключений напряму кабелем<br>`;
          }
       }
     } else {
@@ -1691,7 +1691,40 @@ function showProps(n) {
     h += `<div style="margin-bottom:6px">Поверхів: <input type="number" value="${n.floors}" min="1" max="50" style="width:55px" onchange="updNode('${n.id}','floors', parseInt(this.value))"></div>`;
     h += `<div style="margin-bottom:6px">Під'їздів: <input type="number" value="${n.entrances}" min="1" max="20" style="width:55px" onchange="updNode('${n.id}','entrances', parseInt(this.value))"></div>`;
     h += `<div style="margin-bottom:8px">Кв. на поверсі: <input type="number" value="${n.flatsPerFloor}" min="1" max="20" style="width:55px" onchange="updNode('${n.id}','flatsPerFloor', parseInt(this.value))"></div>`;
-    h += `<div class="info-pill" style="margin-top:4px;background:#2d333b">Всього квартир: <b style="color:#58a6ff">${totalAbon}</b></div>`;
+    const arch = n.architecture || "FTTH";
+    const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 50;
+    const activeAbon = Math.ceil(totalAbon * (pen / 100));
+
+    h += `<div style="margin-top:10px;margin-bottom:6px;border-top:1px solid #30363d;padding-top:10px;">
+      <label>Архітектура: 
+        <select onchange="updNode('${n.id}','architecture', this.value); showProps(nodes.find(x=>x.id==='${n.id}'))" style="width:80px;background:#161b22;color:#fff;border:1px solid #30363d;border-radius:4px;padding:2px">
+          <option value="FTTH" ${arch === "FTTH" ? "selected" : ""}>FTTH</option>
+          <option value="FTTB" ${arch === "FTTB" ? "selected" : ""}>FTTB</option>
+        </select>
+      </label>
+    </div>`;
+
+    if (arch === "FTTB") {
+        h += `<div style="margin-bottom:8px">
+          <label style="display:block;margin-bottom:4px">Діючі підключення (штук / відсоток):</label>
+          <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
+             <div style="flex:1; display:flex; align-items:center; background:#0d1117; border:1px solid #30363d; border-radius:4px; overflow:hidden;">
+                 <input type="number" id="mdu-act-flats-${n.id}" value="${activeAbon}" min="0" max="${totalAbon}" style="width:100%; border:none; background:transparent; color:#58a6ff; font-weight:bold; text-align:center; padding:4px;"
+                        onchange="const val=Math.min(Math.max(parseInt(this.value)||0, 0), ${totalAbon}); this.value=val; const pct = ${totalAbon} > 0 ? Math.round((val/${totalAbon})*100) : 0; document.getElementById('mdu-pen-val-${n.id}').value=pct; updNode('${n.id}','penetrationRate', pct); showProps(nodes.find(x=>x.id==='${n.id}'));">
+                 <span style="padding:4px 8px; font-size:11px; color:#8b949e; background:#21262d; border-left:1px solid #30363d;">кв.</span>
+             </div>
+             
+             <div style="flex:1; display:flex; align-items:center; background:#0d1117; border:1px solid #30363d; border-radius:4px; overflow:hidden;">
+                 <input type="number" id="mdu-pen-val-${n.id}" value="${pen}" min="0" max="100" style="width:100%; border:none; background:transparent; color:#c9d1d9; text-align:center; padding:4px;"
+                        onchange="const val=Math.min(Math.max(parseInt(this.value)||0, 0), 100); this.value=val; const act = Math.ceil(${totalAbon} * (val/100)); document.getElementById('mdu-act-flats-${n.id}').value=act; updNode('${n.id}','penetrationRate', val); showProps(nodes.find(x=>x.id==='${n.id}'));">
+                 <span style="padding:4px 8px; font-size:11px; color:#8b949e; background:#21262d; border-left:1px solid #30363d;">%</span>
+             </div>
+          </div>
+          <div style="font-size:10px; color:#8b949e; text-align:center; margin-top:6px;">Загальний фонд: ${totalAbon} кв.</div>
+        </div>`;
+    } else {
+       h += `<button class="tool-btn" style="width:100%;margin-top:10px;justify-content:center;background:#238636" onclick="window.openMDUInternalTopology && window.openMDUInternalTopology('${n.id}')">⚙️ Схема під'їзду (FTTH)</button>`;
+    }
 
     const s = sigAtONU(n);
     if (s !== null) {
@@ -1717,6 +1750,7 @@ function updNode(id, prop, val) {
   n[prop] = val;
   if (prop === "name") updateNodeLabel(n);
   if (prop === "outputPower") nodes.forEach((x) => updateNodeLabel(x)); // Ensure label changes if node properties change
+  if (prop === "architecture") showProps(n); // Refresh panel to show/hide MDU topology button
   updateNodeLabel(n);
   saveState(); // This saveState is already present, no need to duplicate
   updateStats();
@@ -1903,7 +1937,14 @@ export function finishOLT(oid, fid, port) {
 export function updateStats() {
   document.getElementById("s-olt").textContent = String(nodes.filter((n) => n.type === "OLT").length);
   document.getElementById("s-fob").textContent = String(nodes.filter((n) => n.type === "FOB").length);
-  document.getElementById("s-onu").textContent = String(nodes.filter((n) => n.type === "ONU").length);
+  
+  let onuCnt = nodes.filter((n) => n.type === "ONU").length;
+  nodes.filter((n) => n.type === "MDU").forEach(mdu => {
+     const pen = typeof mdu.penetrationRate === "number" ? mdu.penetrationRate : 100;
+     onuCnt += Math.ceil(((mdu.floors || 0) * (mdu.entrances || 0) * (mdu.flatsPerFloor || 0)) * (pen / 100));
+  });
+  document.getElementById("s-onu").textContent = String(onuCnt);
+
   document.getElementById("s-conn").textContent = String(conns.length);
   updateCableColors();
   refreshSignalAnim();

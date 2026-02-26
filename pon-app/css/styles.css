@@ -1940,3 +1940,81 @@ select.patch-select {
   scrollbar-width: thin;
   scrollbar-color: #30363d #0d1117;
 }
+
+/* ── Primary Action Buttons in Properties Panel ── */
+.btn-primary-odf {
+  margin-top: 15px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: center;
+  transition: all 0.2s ease;
+  background: #1f6feb; /* Vibrant blue */
+  color: #ffffff;
+  border: 1px solid #388bfd;
+  box-shadow: 0 4px 12px rgba(31, 111, 235, 0.2);
+}
+.btn-primary-odf:hover {
+  background: #388bfd;
+  box-shadow: 0 6px 16px rgba(56, 139, 253, 0.4);
+  transform: translateY(-1px);
+}
+.btn-primary-odf:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(31, 111, 235, 0.2);
+}
+
+.btn-primary-fob {
+  margin-top: 15px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: center;
+  transition: all 0.2s ease;
+  background: #8957e5; /* Vibrant purple */
+  color: #ffffff;
+  border: 1px solid #a371f7;
+  box-shadow: 0 4px 12px rgba(137, 87, 229, 0.2);
+}
+.btn-primary-fob:hover {
+  background: #a371f7;
+  box-shadow: 0 6px 16px rgba(163, 113, 247, 0.4);
+  transform: translateY(-1px);
+}
+.btn-primary-fob:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(137, 87, 229, 0.2);
+}
+
+.btn-primary-mdu {
+  display: flex;
+  justify-content: center;
+  margin-top: 10px;
+  width: 100%;
+  padding: 10px;
+  border-radius: 6px;
+  cursor: pointer;
+  font-weight: 600;
+  font-size: 13px;
+  text-align: center;
+  transition: all 0.2s ease;
+  background: #238636; /* Vibrant green */
+  color: #ffffff;
+  border: 1px solid #2ea043;
+  box-shadow: 0 4px 12px rgba(35, 134, 54, 0.2);
+}
+.btn-primary-mdu:hover {
+  background: #2ea043;
+  box-shadow: 0 6px 16px rgba(46, 160, 67, 0.4);
+  transform: translateY(-1px);
+}
+.btn-primary-mdu:active {
+  transform: translateY(0);
+  box-shadow: 0 2px 6px rgba(35, 134, 54, 0.2);
+}
