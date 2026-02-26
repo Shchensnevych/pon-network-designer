@@ -35,9 +35,11 @@ export const ONU_MIN = -26;
 /** @type {number} */
 export let FIBER_DB_KM = 0.4;
 
-// Node counters (for naming FOB / ONU)
+// Node counters (for naming FOB / ONU / MDU / MUFTA)
 /** @type {number} */
 export let fobCounter = 1;
+/** @type {number} */
+export let muftaCounter = 1;
 /** @type {number} */
 export let onuCounter = 1;
 /** @type {number} */
@@ -46,6 +48,11 @@ export let mduCounter = 1;
 /** @returns {number} */
 export function nextFobNumber() {
   return fobCounter++;
+}
+
+/** @returns {number} */
+export function nextMuftaNumber() {
+  return muftaCounter++;
 }
 
 /** @returns {number} */
@@ -58,10 +65,11 @@ export function nextMduNumber() {
   return mduCounter++;
 }
 
-/** @param {{ fobCounter?: number, onuCounter?: number, mduCounter?: number } | null} next */
+/** @param {{ fobCounter?: number, muftaCounter?: number, onuCounter?: number, mduCounter?: number } | null} next */
 export function setCounters(next) {
   if (!next) return;
   if (typeof next.fobCounter === "number") fobCounter = next.fobCounter;
+  if (typeof next.muftaCounter === "number") muftaCounter = next.muftaCounter;
   if (typeof next.onuCounter === "number") onuCounter = next.onuCounter;
   if (typeof next.mduCounter === "number") mduCounter = next.mduCounter;
 }
@@ -88,6 +96,13 @@ export const iconOLT = L.divIcon({
 export const iconFOB = L.divIcon({
   html: '<div style="background:#ff6b6b;width:14px;height:14px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>',
   className: "icon-fob",
+  iconSize: [14, 14],
+  iconAnchor: [7, 7],
+});
+
+export const iconMUFTA = L.divIcon({
+  html: '<div style="background:#8b949e;width:14px;height:14px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>',
+  className: "icon-mufta",
   iconSize: [14, 14],
   iconAnchor: [7, 7],
 });

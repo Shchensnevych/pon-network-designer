@@ -168,6 +168,9 @@ declare global {
 
   interface FOBNode extends PONNodeBase {
     type: "FOB";
+    /** Optional explicit subtype to differentiate splice closures from boxes */
+    subtype?: "MUFTA";
+    
     /** Legacy properties (to be migrated) */
     /** @deprecated Use splitters[] + crossConnects[] */
     fbtType?: string;

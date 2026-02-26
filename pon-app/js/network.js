@@ -8,14 +8,17 @@ import {
   ONU_MIN,
   FIBER_DB_KM,
   fobCounter,
+  muftaCounter,
   onuCounter,
   mduCounter,
   setCounters,
   nextFobNumber,
+  nextMuftaNumber,
   nextOnuNumber,
   nextMduNumber,
   iconOLT,
   iconFOB,
+  iconMUFTA,
   iconONU,
   iconMDU,
 } from "./config.js";
@@ -210,7 +213,7 @@ export function initNetwork() {
   mapContainer.addEventListener("drop", (e) => {
     e.preventDefault();
     const type = e.dataTransfer.getData("text/plain");
-    if (!["olt", "fob", "onu", "mdu"].includes(type)) return;
+    if (!["olt", "fob", "mufta", "onu", "mdu"].includes(type)) return;
     const rect = mapContainer.getBoundingClientRect();
     const pt = L.point(e.clientX - rect.left, e.clientY - rect.top);
     const latlng = map.containerPointToLatLng(pt);
@@ -405,7 +408,7 @@ export function selectTool(t) {
  * Map click handler: add nodes in placement modes or clear selection in select mode.
  */
 export function onMapClick(e) {
-  if (["olt", "fob", "onu", "mdu"].includes(tool)) {
+  if (["olt", "fob", "mufta", "onu", "mdu"].includes(tool)) {
     addNode(tool, e.latlng);
     selectTool("select");
   } else if (tool === "select") {
@@ -440,9 +443,11 @@ export function addNode(type, latlng) {
       draggable: true,
       pmIgnore: true,
     });
-  } else if (type === "fob") {
-    n.number = nextFobNumber();
-    n.name = "FOB-" + n.number;
+  } else if (type === "fob" || type === "mufta") {
+    n.type = "FOB";
+    n.subtype = type === "mufta" ? "MUFTA" : undefined;
+    n.number = type === "mufta" ? nextMuftaNumber() : nextFobNumber();
+    n.name = (type === "mufta" ? "Муфта-" : "FOB-") + n.number;
     n.fbtType = "";
     n.plcType = "";
     n.plcBranch = "";
@@ -450,7 +455,7 @@ export function addNode(type, latlng) {
     n.splitters = [];
     n.crossConnects = [];
     n.marker = L.marker(latlng, {
-      icon: iconFOB,
+      icon: type === "mufta" ? iconMUFTA : iconFOB,
       draggable: true,
       pmIgnore: true,
     });
@@ -535,6 +540,7 @@ export function serializeNetwork() {
       };
     }),
     fobCounter,
+    muftaCounter,
     onuCounter,
     mduCounter,
   });
@@ -560,9 +566,9 @@ export function restoreNetwork(json) {
   if (version === "0.9") {
     // Old format: ensure defaults are set
     if (!d.fobCounter) d.fobCounter = 1;
+    if (!d.muftaCounter) d.muftaCounter = 1;
     if (!d.onuCounter) d.onuCounter = 1;
   }
-  // Future: if (version === "1.1") { ... migration logic ... }
   
   clearSignalPath();
   // Clear existing
@@ -610,7 +616,7 @@ export function restoreNetwork(json) {
       if (typeof n.flatsPerFloor !== "number") n.flatsPerFloor = 4;
     }
     if (typeof n.price !== "number") n.price = 0;
-    const icon = n.type === "OLT" ? iconOLT : n.type === "ONU" ? iconONU : n.type === "MDU" ? iconMDU : iconFOB;
+    const icon = n.type === "OLT" ? iconOLT : n.type === "ONU" ? iconONU : n.type === "MDU" ? iconMDU : (n.subtype === "MUFTA" ? iconMUFTA : iconFOB);
     n.marker = L.marker(
       { lat: n.lat, lng: n.lng },
       { icon, draggable: true, pmIgnore: true },
@@ -659,7 +665,7 @@ export function restoreNetwork(json) {
       });
   });
 
-  setCounters({ fobCounter: d.fobCounter || 1, onuCounter: d.onuCounter || 1, mduCounter: d.mduCounter || 1 });
+  setCounters({ fobCounter: d.fobCounter || 1, muftaCounter: d.muftaCounter || 1, onuCounter: d.onuCounter || 1, mduCounter: d.mduCounter || 1 });
   selNode = null;
   showProps(null);
   updateStats();
@@ -684,7 +690,7 @@ export function clearNetwork() {
   nodes.length = 0;
   conns.length = 0;
 
-  setCounters({ fobCounter: 1, onuCounter: 1, mduCounter: 1 });
+  setCounters({ fobCounter: 1, muftaCounter: 1, onuCounter: 1, mduCounter: 1 });
   undoHistory.length = 0;
   redoHistory = [];
 
@@ -1493,7 +1499,8 @@ function buildTooltip(n) {
     let t = `<strong style='color:#4ade80'>${n.name}</strong><br>`;
     if (s !== null) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
-      if (conn?.from) t += `📦 FOB: ${conn.from.name}<br>`;
+      const fromIcon = (conn?.from?.type === "FOB" && /** @type {any} */(conn.from).subtype === "MUFTA") ? "🛢️ Муфта" : "📦 FOB";
+      if (conn?.from) t += `${fromIcon}: ${conn.from.name}<br>`;
       
       if (conn?.from?.crossConnects) {
          const xc = conn.from.crossConnects.find(x => x.toType === "CABLE" && x.toId === conn.id);
@@ -1520,7 +1527,8 @@ function buildTooltip(n) {
     let t = `<strong style='color:#a371f7'>${n.name}</strong><br>`;
     if (s !== null) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
-      if (conn?.from) t += `📦 FOB: ${conn.from.name}<br>`;
+      const fromIcon = (conn?.from?.type === "FOB" && /** @type {any} */(conn.from).subtype === "MUFTA") ? "🛢️ Муфта" : "📦 FOB";
+      if (conn?.from) t += `${fromIcon}: ${conn.from.name}<br>`;
       
       if (conn?.from?.crossConnects) {
          const xc = conn.from.crossConnects.find(x => x.toType === "CABLE" && x.toId === conn.id);
@@ -1554,7 +1562,8 @@ function showProps(n) {
     return;
   }
 
-  let h = `<div class="node-card"><h3>${n.type === "OLT" ? "🔷" : n.type === "FOB" ? "📦" : "🏠"} ${n.name}</h3>`;
+  const fobIcon = (n.type === "FOB" && /** @type {any} */(n).subtype === "MUFTA") ? "🛢️" : "📦";
+  let h = `<div class="node-card"><h3>${n.type === "OLT" ? "🔷" : n.type === "FOB" ? fobIcon : "🏠"} ${n.name}</h3>`;
 
   // Rename
   h += `<div style="display:flex;gap:5px;margin-bottom:10px"><input id="ren" value="${n.name}" style="flex:1" onchange="updNode('${n.id}', 'name', this.value)"></div>`;

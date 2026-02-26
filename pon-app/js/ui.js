@@ -746,7 +746,8 @@ export async function showTopology() {
     const sig = hasOLTPath(fob) ? sigIn(fob) : null;
     const sigStr = sig !== null ? `⚡ ${sig.toFixed(1)} дБ` : "No Sig";
 
-    m += `  subgraph ${fId} ["📦 ${fob.name} (${sigStr})"]\n`;
+    const fobIcon = fob.subtype === "MUFTA" ? "🛢️" : "📦";
+    m += `  subgraph ${fId} ["${fobIcon} ${fob.name} (${sigStr})"]\n`;
     m += `    direction TB\n`;
     
     // Plot Splitters as internal nodes
