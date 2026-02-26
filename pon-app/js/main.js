@@ -44,9 +44,11 @@ import {
   restoreBackup,
   deleteBackup,
 } from "./backup.js";
+import { openMDUInternalTopology, initMDUWindowCommands } from "./mdu-ui.js";
 
 document.addEventListener("DOMContentLoaded", () => {
   initNetwork();
+  initMDUWindowCommands();
 
   // Global Escape key listener to close modals
   document.addEventListener("keydown", (e) => {
@@ -96,6 +98,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.openHelp = openHelp;
   window.closeHelp = closeHelp;
   window.switchOnboardingTab = switchOnboardingTab;
+  window.openMDUInternalTopology = openMDUInternalTopology;
 
   // Export / Import
   window.exportToJSON = () => {

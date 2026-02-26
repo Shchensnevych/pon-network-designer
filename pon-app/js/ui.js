@@ -11,7 +11,7 @@ import {
   sigAtONU,
   connKm,
 } from "./network.js";
-import { traceOpticalPath } from "./signal.js";
+import { traceOpticalPath, calculateMDUSignal, trueSigAtONU } from "./signal.js";
 
 /**
  * Helper to process and aggregate all network components into a Bill of Materials.
@@ -153,7 +153,7 @@ function buildReportData() {
         plcBranch: fob.plcBranch || "—",
         plcLoss: "—",
         signalONU: so !== null ? so.toFixed(2) : "—",
-        onuCnt: conns.filter((x) => x.from === fob && x.type === "patchcord").reduce((acc, c) => acc + (c.to.type === "MDU" ? (c.to.floors || 0) * (c.to.entrances || 0) * (c.to.flatsPerFloor || 0) : 1), 0),
+        onuCnt: conns.filter((x) => x.from === fob && x.type === "patchcord").reduce((acc, c) => acc + (c.to.type === "MDU" ? Math.ceil((c.to.floors || 0) * (c.to.entrances || 0) * (c.to.flatsPerFloor || 0) * ((typeof c.to.penetrationRate === 'number' ? c.to.penetrationRate : 100) / 100)) : 1), 0),
         status:
           so !== null
             ? so >= ONU_MIN
@@ -174,7 +174,10 @@ export function openReport() {
   let onuCount = 0;
   nodes.forEach((n) => {
     if (n.type === "ONU") onuCount++;
-    if (n.type === "MDU") onuCount += (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
+    if (n.type === "MDU") {
+        const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 100;
+        onuCount += Math.ceil((n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0) * (pen / 100));
+    }
   });
   const totalCableM = conns
     .filter((c) => c.type === "cable")
@@ -550,12 +553,12 @@ export function showSuggestions() {
   nodes
     .filter((n) => n.type === "ONU" || n.type === "MDU")
     .forEach((onu) => {
-      const hasConn = conns.some((c) => c.to === onu && c.type === "patchcord");
+      const hasConn = conns.some((c) => c.to === onu && (c.type === "patchcord" || (onu.type === "MDU" && c.type === "cable")));
       if (!hasConn)
         issues.push({
           icon: "❌",
           type: "err",
-          msg: `${onu.name}: не підключений (немає патчкорду)`,
+          msg: `${onu.name}: не підключений`,
           nodeId: onu.id,
         });
     });
@@ -977,7 +980,11 @@ export async function showTopology() {
     downCables.forEach(dc => {
       let outNodeId = outCableNodes[dc.id];
       let outBranchLabel = outCableLabels[dc.id] || "";
-      if (dc.to) renderMermaidFob(/** @type {FOBNode} */ (dc.to), dc, fId, outNodeId, outBranchLabel);
+      const targetNode = dc.to;
+      if (targetNode) {
+          if (targetNode.type === "FOB") renderMermaidFob(/** @type {FOBNode} */ (targetNode), dc, fId, outNodeId, outBranchLabel);
+          else if (targetNode.type === "MDU") renderMermaidMDU(/** @type {MDUNode} */ (targetNode), dc, fId, outNodeId, outBranchLabel);
+      }
     });
 
     // Downstream patchcords (ONUs / MDUs)
@@ -1037,6 +1044,131 @@ export async function showTopology() {
     }
 }
 
+  function renderMermaidMDU(mdu, cable, parentId, incomingCoreNodeId = undefined, incomingBranchLabel = "") {
+      const fId = safeId(mdu.id);
+      
+      const sig = mdu.architecture === "FTTH" ? calculateMDUSignal(mdu) : trueSigAtONU(mdu);
+      let sigStr = sig !== null ? `⚡ ${sig.toFixed(1)} дБ` : "No Sig";
+      if (mdu.architecture === "FTTB") {
+          const inCables = conns.filter(c => c.to === mdu && c.type === "cable");
+          if (inCables.length > 0) {
+              const inC = inCables[0];
+              let s = null;
+              if (inC.from.type === "OLT") {
+                  s = inC.from.outputPower;
+              } else if (inC.from.type === "FOB") {
+                  s = traceOpticalPath(/** @type {FOBNode} */ (inC.from), "CABLE", inC.id, 0);
+              }
+              if (s !== null) sigStr = `⚡ ${(s - connKm(inC) * FIBER_DB_KM).toFixed(1)} дБ`;
+          }
+      }
+
+      const pen = typeof mdu.penetrationRate === "number" ? mdu.penetrationRate : 100;
+      const actOnu = Math.ceil(((mdu.floors || 0) * (mdu.entrances || 0) * (mdu.flatsPerFloor || 0)) * (pen / 100));
+
+      m += `  subgraph ${fId} ["🏢 ${mdu.name} (${mdu.architecture || 'FTTH'} | ${sigStr})"]\n`;
+      m += `    direction TB\n`;
+
+      if (mdu.architecture === "FTTB") {
+          const swNid = `${fId}_switch`;
+          m += `    ${swNid}(["Активний Свіч (${actOnu} Абон)"]):::subs\n`;
+          m += `    click ${swNid} "javascript:window.focusNode('${mdu.id}')"\n`;
+          
+          if (parentId) {
+               const cLoss = connKm(cable) * FIBER_DB_KM;
+               m += `    ${incomingCoreNodeId || parentId} --> |"<div style='font-size:10px;text-align:center;'>${cable.capacity}F<br/>-${cLoss.toFixed(2)}дБ</div>"| ${swNid}\n`;
+          }
+          m += `  end\n`;
+          return;
+      }
+
+      // FTTH Internal Rendering
+      const amBox = mdu.mainBox || { splitters: [], crossConnects: [] };
+      const fBoxes = mdu.floorBoxes || [];
+      const spNodes = {};
+      
+      // Main Box Splitters
+      amBox.splitters.forEach(sp => {
+          const spNid = `${fId}_m_${safeId(sp.id)}`;
+          spNodes[sp.id] = spNid;
+          m += `    ${spNid}(["Горище: ${sp.type} ${sp.ratio}"]):::fob\n`;
+      });
+      
+      // Main Box XC
+      amBox.crossConnects.forEach(x => {
+          if (x.fromType === "SPLITTER" && x.toType === "SPLITTER" && spNodes[x.fromId] && spNodes[x.toId]) {
+              m += `    ${spNodes[x.fromId]} -- "${x.fromBranch||x.fromCore||''}" --> ${spNodes[x.toId]}\n`;
+          }
+      });
+
+      // Floors Box Splitters
+      fBoxes.forEach(fb => {
+          fb.splitters.forEach(sp => {
+              const spNid = `${fId}_f_${safeId(sp.id)}`;
+              spNodes[sp.id] = spNid;
+              m += `    ${spNid}(["Пов. ${fb.floor}: ${sp.type} ${sp.ratio}"]):::fob\n`;
+          });
+          fb.crossConnects.forEach(x => {
+               if (x.toType === "SPLITTER" && spNodes[x.toId] && spNodes[x.fromId]) {
+                   m += `    ${spNodes[x.fromId]} -. "${x.fromBranch||x.fromCore||''}" .-> ${spNodes[x.toId]}\n`;
+               }
+          });
+      });
+
+      // Entry cables
+      let entryTargets = []; 
+      if (cable) {
+          const incomingXcs = amBox.crossConnects.filter(x => x.fromType === "CABLE" && String(x.fromId) === String(cable.id));
+          incomingXcs.forEach(x => {
+              if (x.toType === "SPLITTER" && spNodes[x.toId]) {
+                  entryTargets.push({ id: spNodes[x.toId], coreIndex: x.fromCore });
+              }
+          });
+          
+          fBoxes.forEach(fb => {
+             const fbXcs = fb.crossConnects.filter(x => x.fromType === "CABLE" && String(x.fromId) === String(cable.id));
+             fbXcs.forEach(x => {
+                 if (x.toType === "SPLITTER" && spNodes[x.toId]) {
+                      entryTargets.push({ id: spNodes[x.toId], coreIndex: x.fromCore });
+                 }
+             });
+          });
+      }
+
+      if (parentId) {
+          const cLoss = connKm(cable) * FIBER_DB_KM;
+          let routingInNodeId = `${fId}_in_${safeId(String(cable.id))}`;
+          m += `    ${routingInNodeId}(("Вхід кабелю")):::fob\n`;
+          m += `    ${incomingCoreNodeId || parentId} --> |"<div style='font-size:10px;text-align:center;'>${cable.capacity}F<br/>-${cLoss.toFixed(2)}дБ</div>"| ${routingInNodeId}\n`;
+          
+          entryTargets.forEach(t => {
+              m += `    ${routingInNodeId} -. "Жила ${t.coreIndex+1}" .-> ${t.id}\n`;
+          });
+          
+          if(entryTargets.length === 0 && Object.keys(spNodes).length > 0) {
+              m += `    ${routingInNodeId} -.-> ${Object.values(spNodes)[0]}\n`;
+          }
+      }
+      
+      // End Subscribers (Terminal point)
+      const subsNid = `${fId}_subs`;
+      m += `    ${subsNid}(["🏠 Абоненти (${actOnu} підключень)"]):::subs\n`;
+      m += `    click ${subsNid} "javascript:window.focusNode('${mdu.id}')"\n`;
+      
+      let hasFloors = false;
+      fBoxes.forEach(fb => {
+          fb.splitters.forEach(sp => {
+             hasFloors = true;
+             m += `  ${spNodes[sp.id]} -.-> ${subsNid}\n`;
+          });
+      });
+      if (!hasFloors && amBox.splitters.length > 0) {
+          amBox.splitters.forEach(sp => m += `  ${spNodes[sp.id]} -.-> ${subsNid}\n`);
+      }
+
+      m += `  end\n`;
+  }
+
   // Iterate OLTs
   olts.forEach(olt => {
       const oltId = safeId(olt.id);
@@ -1051,8 +1183,10 @@ export async function showTopology() {
       
       connectedCableIds.forEach(cableId => {
           const cable = conns.find(c => String(c.id) === cableId);
-          if (cable && cable.to) {
-              renderMermaidFob(/** @type {FOBNode} */ (cable.to), cable, oltId, undefined);
+          const targetNode = cable ? cable.to : null;
+          if (cable && targetNode) {
+              if (targetNode.type === "FOB") renderMermaidFob(/** @type {FOBNode} */ (targetNode), cable, oltId, undefined);
+              else if (targetNode.type === "MDU") renderMermaidMDU(/** @type {MDUNode} */ (targetNode), cable, oltId, undefined);
           }
       });
   });

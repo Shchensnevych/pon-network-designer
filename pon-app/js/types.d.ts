@@ -89,6 +89,7 @@ declare global {
     openHelp: Function;
     closeHelp: Function;
     switchOnboardingTab: Function;
+    openMDUInternalTopology: Function;
     exportToJSON: Function;
     loadProject: Function;
     exportToPNG: Function;
@@ -142,7 +143,7 @@ declare global {
 
   interface CrossConnection {
     id: string;
-    fromType: "PORT" | "CABLE" | "SPLITTER";
+    fromType: "PORT" | "CABLE" | "SPLITTER" | "PATCHCORD";
     fromId: string | number; // OLT port number, Cable ID, or Splitter ID
     fromCore?: number;       // Specific core inside a cable, or branch of a PLC
     fromBranch?: string;     // String branch (e.g. "X" or "Y" for FBT)
@@ -194,6 +195,32 @@ declare global {
     floors: number;
     entrances: number;
     flatsPerFloor: number;
+    
+    // FTTH Internal Architecture
+    architecture?: "FTTH" | "FTTB";
+    
+    // The primary distribution box (e.g. attic)
+    mainBox?: {
+      splitters: SplitterModule[];
+      crossConnects: CrossConnection[];
+    };
+    
+    // The secondary distribution boxes (e.g. floors)
+    floorBoxes?: {
+      floor: number;
+      entrance: number;
+      splitters: SplitterModule[];
+      crossConnects: CrossConnection[];
+    }[];
+    
+    // Subscriber connections per flat
+    flats?: {
+      flat: number;
+      crossConnect?: CrossConnection;
+    }[];
+    
+    // Subscriber Penetration / Activation (0-100%)
+    penetrationRate?: number;
   }
 
   type PONNode = OLTNode | FOBNode | ONUNode | MDUNode;
@@ -242,6 +269,12 @@ declare global {
     // --- NEW INTERNAL ROUTING ---
     splitters?: SplitterModule[];
     crossConnects?: CrossConnection[];
+    
+    // --- MDU FTTH Sub-Topology ---
+    architecture?: "FTTH" | "FTTB";
+    mainBox?: { splitters: SplitterModule[]; crossConnects: CrossConnection[]; };
+    floorBoxes?: { floor: number; entrance: number; splitters: SplitterModule[]; crossConnects: CrossConnection[]; }[];
+    penetrationRate?: number;
   }
 
   interface SerializedConnection {

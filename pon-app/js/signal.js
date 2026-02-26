@@ -296,10 +296,11 @@ export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
 
   while (fob && fob.type === "FOB") {
     // If we're tracing from a patchcord, we don't need a core match
-    const xc = (fob.crossConnects || []).find(
-      x => x.toType === type && x.toId === id && 
-           (type === "PATCHCORD" || core === undefined || x.toCore === core || x.toBranch === core)
-    );
+    const xc = (fob.crossConnects || []).find(x => {
+        if (x.toType !== type || String(x.toId) !== String(id)) return false;
+        if (type === "PATCHCORD" || core === undefined) return true;
+        return x.toCore === core || x.toBranch === String(core) || String(x.toCore) === String(core);
+    });
     if (!xc) return null; // Path physically broken
 
     if (xc.fromType === "CABLE") {
@@ -394,18 +395,127 @@ export function hasOLTPath(fob) {
 }
 
 /**
- * Signal level at ONU/MDU (dBm).
- * @param {ONUNode | MDUNode} onu
+ * Signal level at MDU (dBm) derived from internal FTTH cascade.
+ * @param {MDUNode} mdu
  * @returns {number | null}
  */
+export function calculateMDUSignal(mdu) {
+  const inCables = conns.filter(c => c.to === mdu && c.type === "cable");
+  const inPatches = conns.filter(c => c.to === mdu && c.type === "patchcord");
+  
+  if (inCables.length === 0 && inPatches.length === 0) return null;
+
+  // We find the signal entering the MDU
+  const inSignals = {}; // key: "CABLE|id|core" or "PATCHCORD|id|0", value: number
+  
+  inCables.forEach(c => {
+      const cores = c.capacity || 1;
+      for (let i = 0; i < cores; i++) {
+          let s = null;
+          if (c.from.type === "OLT") {
+              const oltXc = (c.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
+              if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
+          } else if (c.from.type === "FOB") {
+              const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
+              if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
+          }
+           if (s !== null) inSignals[`CABLE|${c.id}|${i}`] = s;
+      }
+  });
+
+  inPatches.forEach(c => {
+      if (c.from.type === "FOB") {
+          const s = traceOpticalPath(c.from, "PATCHCORD", c.id, 0);
+          if (s !== null) inSignals[`PATCHCORD|${c.id}|0`] = s - (connKm(c) * FIBER_DB_KM);
+      }
+  });
+
+  if (Object.keys(inSignals).length === 0) return null;
+
+  if (mdu.architecture === "FTTB") {
+    let best = -Infinity;
+    Object.values(inSignals).forEach(s => { if (s > best) best = s; });
+    return best === -Infinity ? null : best;
+  }
+  
+  // If FTTH, we simulate tracing through Splitters
+  let worstSignal = Infinity;
+  let foundAny = false;
+  
+  // Map Main Box Splitter Outputs
+  const mainSigs = {};
+  (mdu.mainBox?.crossConnects || []).forEach(xc => {
+      if (xc.toType === "SPLITTER") {
+          const sp = (mdu.mainBox?.splitters || []).find(s => s.id === xc.toId);
+          if (!sp) return;
+          
+          let inputSig = null;
+          if (xc.fromType === "CABLE" || xc.fromType === "PATCHCORD") {
+              inputSig = inSignals[`${xc.fromType}|${xc.fromId}|${xc.fromCore || 0}`];
+          } else if (xc.fromType === "SPLITTER") {
+              inputSig = mainSigs[`SPLITTER|${xc.fromId}|${xc.fromBranch}`];
+          }
+          
+          if (inputSig !== undefined && inputSig !== null) {
+              if (sp.type === "PLC") {
+                  const loss = PLC_LOSSES[sp.ratio] || 0;
+                  const outs = parseInt(sp.ratio.split('x')[1]) || 2;
+                  for(let i=1; i<=outs; i++) mainSigs[`SPLITTER|${sp.id}|${i}`] = inputSig - loss - MECH;
+              } else if (sp.type === "FBT") {
+                  const lossX = FBT_LOSSES[sp.ratio]?.x || 0;
+                  const lossY = FBT_LOSSES[sp.ratio]?.y || 0;
+                  mainSigs[`SPLITTER|${sp.id}|X`] = inputSig - lossX - MECH;
+                  mainSigs[`SPLITTER|${sp.id}|Y`] = inputSig - lossY - MECH;
+              }
+          }
+      }
+  });
+  
+  // Map Floor Box Splitters
+  (mdu.floorBoxes || []).forEach(fb => {
+      (fb.crossConnects || []).forEach(xc => {
+          if (xc.toType === "SPLITTER") {
+              const sp = (fb.splitters || []).find(s => s.id === xc.toId);
+              if (!sp) return;
+              
+              let inputSig = null;
+              if (xc.fromType === "CABLE" || xc.fromType === "PATCHCORD") {
+                  inputSig = inSignals[`${xc.fromType}|${xc.fromId}|${xc.fromCore||0}`];
+              } else if (xc.fromType === "SPLITTER") {
+                  inputSig = mainSigs[`SPLITTER|${xc.fromId}|${xc.fromBranch}`];
+              }
+              
+              if (inputSig !== undefined && inputSig !== null) {
+                  if (sp.type === "PLC") {
+                      const loss = PLC_LOSSES[sp.ratio] || 0;
+                      const finalSig = inputSig - loss - MECH;
+                      if (finalSig < worstSignal) worstSignal = finalSig;
+                      foundAny = true;
+                  }
+              }
+          }
+      });
+  });
+  
+  // If no floor boxes are connected, return main box best or input best
+  if (!foundAny) {
+      if (Object.keys(mainSigs).length > 0) return Math.min(...Object.values(mainSigs));
+      if (Object.keys(inSignals).length > 0) return Math.max(...Object.values(inSignals));
+      return null;
+  }
+  
+  return worstSignal === Infinity ? null : worstSignal;
+}
+
 export function sigAtONU(onu) {
+  if (onu.type === "MDU") return calculateMDUSignal(onu);
+  
   const c = conns.find((x) => x.to === onu && x.type === "patchcord");
   if (!c || c.from.type !== "FOB") return null;
   
   const s = traceOpticalPath(c.from, "PATCHCORD", c.id, 0);
   if (s === null) return null;
-  return s; // traceOpticalPath already accounts for upstream length, but wait...
-  // traceOpticalPath accounts for upstream splicing, but we must subtract the loss of THIS final patchcord!
+  return s;
 }
 
 /**
@@ -544,6 +654,45 @@ export function getOltPortForPath(currentFob, targetType, targetId, targetCore) 
   return null;
 }
 
+export function getMDUFlatOltPort(mdu, flatNum) {
+  const flatConn = (mdu.flats || []).find(f => f.flat === flatNum);
+  if (!flatConn || !flatConn.crossConnect) return null;
+
+  let currentXc = flatConn.crossConnect;
+  
+  // Trace back through MDU internal splitters
+  for (let i = 0; i < 5; i++) { // Max depth protection
+      if (currentXc.fromType === "CABLE" || currentXc.fromType === "PATCHCORD") {
+          const inConn = conns.find(c => c.id === currentXc.fromId);
+          if (!inConn) return null;
+          
+          if (inConn.from.type === "OLT") {
+              const oltXc = (inConn.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === inConn.id && x.toCore === currentXc.fromCore);
+              if (oltXc) return { olt: inConn.from, port: parseInt(String(oltXc.fromId)) };
+              return null;
+          } else if (inConn.from.type === "FOB") {
+              return getOltPortForPath(inConn.from, currentXc.fromType, currentXc.fromId, currentXc.fromCore);
+          }
+          return null;
+      } else if (currentXc.fromType === "SPLITTER") {
+          // Find the splitter in floorBoxes or mainBox
+          let spXc = null;
+          for (const fb of (mdu.floorBoxes || [])) {
+              spXc = (fb.crossConnects || []).find(x => x.toType === "SPLITTER" && x.toId === currentXc.fromId);
+              if (spXc) break;
+          }
+          if (!spXc) {
+              spXc = (mdu.mainBox?.crossConnects || []).find(x => x.toType === "SPLITTER" && x.toId === currentXc.fromId);
+          }
+          if (!spXc) return null;
+          currentXc = spXc;
+      } else {
+          return null;
+      }
+  }
+  return null;
+}
+
 /**
  * Count ONUs on a specific OLT port.
  * @param {OLTNode} olt
@@ -553,12 +702,42 @@ export function getOltPortForPath(currentFob, targetType, targetId, targetCore) 
 export function cntONUport(olt, port) {
   let count = 0;
   for (const onu of nodes) {
-      if (onu.type === "ONU" || onu.type === "MDU") {
+      if (onu.type === "ONU") {
           const patch = conns.find(x => x.to === onu && x.type === "patchcord");
           if (patch && patch.from && patch.from.type === "FOB") {
               const origin = getOltPortForPath(patch.from, "PATCHCORD", patch.id, 0);
               if (origin && origin.olt === olt && origin.port === port) {
-                  count += cntDn(onu);
+                  count += 1;
+              }
+          }
+      } else if (onu.type === "MDU") {
+          if (onu.architecture === "FTTB") {
+              // FTTB: MDU acts as a single ONU
+              const inConns = conns.filter(x => x.to === onu && (x.type === "patchcord" || x.type === "cable"));
+              for (const inc of inConns) {
+                  const cores = inc.capacity || 1;
+                  for (let c=0; c<cores; c++) {
+                      let origin = null;
+                      if (inc.from.type === "OLT") {
+                          const oltXc = (inc.from.crossConnects || []).find(x => x.toType === inc.type.toUpperCase() && x.toId === inc.id && x.toCore === c);
+                          if (oltXc) origin = { olt: inc.from, port: parseInt(String(oltXc.fromId)) };
+                      } else if (inc.from.type === "FOB") {
+                          origin = getOltPortForPath(inc.from, inc.type.toUpperCase(), inc.id, c);
+                      }
+                      if (origin && origin.olt === olt && origin.port === port) {
+                          count += 1;
+                          break; // Count MDU once for FTTB if any core connects
+                      }
+                  }
+              }
+          } else {
+              // FTTH: Count each active flat on this port
+              const totalFlats = (onu.floors || 0) * (onu.entrances || 0) * (onu.flatsPerFloor || 0);
+              for (let f = 1; f <= totalFlats; f++) {
+                  const origin = getMDUFlatOltPort(onu, f);
+                  if (origin && origin.olt === olt && origin.port === port) {
+                      count += 1;
+                  }
               }
           }
       }
@@ -567,15 +746,19 @@ export function cntONUport(olt, port) {
 }
 
 /**
- * Count downstream ONUs from a node.
+ * Count downstream ONUs from a node (for map tooltips, FOB capacity, etc).
  * @param {PONNode} n
  * @returns {number}
  */
 export function cntDn(n) {
   if (n.type === "ONU") return 1;
-  if (n.type === "MDU") return (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
+  if (n.type === "MDU") {
+      if (n.architecture === "FTTB") return 1;
+      // FTTH: Count configured flats
+      return (n.flats || []).filter(f => f.crossConnect).length;
+  }
   if (n.type === "FOB") {
-    const d = conns.filter((c) => c.from === n && c.type === "patchcord").length;
+    const d = conns.filter((c) => c.from === n && c.type === "patchcord").reduce((a, c) => a + cntDn(c.to), 0);
     const sub = conns
       .filter((c) => c.from === n && c.type === "cable")
       .reduce((a, c) => a + cntDn(c.to), 0);
