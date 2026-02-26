@@ -211,7 +211,7 @@ export function openCrossConnect(nodeId) {
     if (!node || node.type !== "FOB") return;
 
     const modal = createModalContainer();
-    document.getElementById("cc-modal-title").innerText = `🪛 Сварка (Касета): ${node.name}`;
+    document.getElementById("cc-modal-title").innerText = `🪛 Касета (Зварювання): ${node.name}`;
     document.getElementById("cc-modal-title").style.color = "#c084fc";
     
     const body = document.getElementById("cc-modal-body");
@@ -238,20 +238,36 @@ function getIncomingCorePath(targetFob, cableId, coreIndex) {
         if (inCable.from.type === "OLT") {
             const olt = inCable.from;
             const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === currentCableId && x.toCore === currentCore);
-            if (oltXc) return `від OLT PON ${parseInt(oltXc.fromId) + 1}`;
-            return `від OLT (немає кросу)`;
+            if (oltXc) return `від OLT ${olt.name} - PON ${parseInt(oltXc.fromId) + 1}`;
+            return `від OLT ${olt.name} (немає кросу)`;
         }
         
         const prevFob = inCable.from;
         if (prevFob.type !== "FOB") break;
         
         const xc = (prevFob.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === currentCableId && x.toCore === currentCore);
-        if (xc && xc.fromType === "CABLE") {
-            currentFob = prevFob;
-            currentCableId = xc.fromId;
-            currentCore = xc.fromCore;
+        
+        if (xc) {
+            if (xc.fromType === "SPLITTER") {
+                // It comes from a splitter in the previous FOB
+                let spName = xc.fromId;
+                const sp = (prevFob.splitters || []).find(s => s.id === xc.fromId);
+                if (sp) spName = `${sp.type} ${sp.ratio}`;
+                else if (xc.fromId === "legacy_fbt") spName = `FBT ${prevFob.fbtType}`;
+                else if (xc.fromId === "legacy_plc") spName = `PLC ${prevFob.plcType}`;
+                
+                const branchLbl = xc.fromBranch ? `(Гілка ${xc.fromBranch})` : `(Вихід ${parseInt(xc.fromCore||0)+1})`;
+                return `від ${prevFob.name} 👉 ${spName} ${branchLbl}`;
+            } else if (xc.fromType === "CABLE") {
+                // It's a transit cable, continue tracing backward
+                currentFob = prevFob;
+                currentCableId = xc.fromId;
+                currentCore = xc.fromCore;
+            } else {
+                return `від ${prevFob.name}`;
+            }
         } else {
-            break;
+            return `від ${prevFob.name} (немає кросу)`;
         }
     }
     return "";
@@ -260,6 +276,11 @@ function getIncomingCorePath(targetFob, cableId, coreIndex) {
 function renderFOBCrossUI(node) {
     const inCables = conns.filter(c => c.to === node && c.type === "cable");
     const outConns = conns.filter(c => c.from === node && (c.type === "cable" || c.type === "patchcord"));
+    outConns.sort((a, b) => {
+        if (a.type === "cable" && b.type !== "cable") return -1;
+        if (a.type !== "cable" && b.type === "cable") return 1;
+        return (a.to ? a.to.name : "").localeCompare(b.to ? b.to.name : "");
+    });
     
     // We will build options for routing sources:
     // 1. Cables IN -> Cores
@@ -350,13 +371,14 @@ function renderFOBCrossUI(node) {
 
     // --- HTML Structure ---
     
-    // Left: INCOMING
-    let inHtml = `<div style="flex: 0.7; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto; overflow-x:hidden;">
-        <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">📥 Входи (IN)</h3>`;
+    // Top: INCOMING (Full Width, Compact Grid)
+    let inHtml = `<div style="border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; margin-bottom: 15px; max-height: 180px; overflow-y: auto;">
+        <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; font-size:14px; text-align:center;">📥 Входи (IN)</h3>`;
     inCables.forEach(c => {
         const cores = c.capacity || 1;
-        inHtml += `<div style="background:#21262d; padding:8px; border-radius:4px; border:1px solid #30363d; margin-bottom:8px;">
-            <div style="font-weight:bold; color:#58a6ff; margin-bottom:6px; font-size:12px;">Від: ${c.from.name}</div>`;
+        inHtml += `<div style="background:#21262d; border-radius:4px; border:1px solid #30363d; margin-bottom:8px; overflow:hidden;">
+            <div style="font-weight:bold; color:#58a6ff; font-size:12px; text-align:center; padding: 4px; background: #30363d;">Від: ${c.from.name}</div>
+            <div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 1px; background: #30363d; border-top: 1px solid #30363d;">`;
         for(let i=0; i<cores; i++) {
             let coreSigHtml = "";
             let s = null;
@@ -372,18 +394,31 @@ function renderFOBCrossUI(node) {
                 coreSigHtml = `<span style="color:${sColor}; font-weight:bold;">⚡ ${s.toFixed(1)} дБ</span>`;
             }
 
-            inHtml += `<div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:4px; font-size:12px;">
+            inHtml += `<div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:4px 8px; font-size:11px;">
                 <div style="display:flex; align-items:center;">${getFiberDotHtml(i)} Жила ${i+1}</div>
                 ${coreSigHtml}
             </div>`;
         }
-        inHtml += `</div>`;
+        
+        // Pad with empty cells to ensure the grid has complete rows visually
+        const remainder = cores % 8;
+        if (remainder !== 0) {
+            const emptyCells = 8 - remainder;
+            for (let i = 0; i < emptyCells; i++) {
+                inHtml += `<div style="background:#0d1117; padding:4px 8px;"></div>`;
+            }
+        }
+        
+        inHtml += `</div></div>`;
     });
     if(inCables.length===0) inHtml += `<div style="text-align:center;color:#8b949e;font-size:12px">Немає вхідних кабелів</div>`;
     inHtml += `</div>`;
 
+    // Split Wrapper for Middle & Bottom
+    let bottomWrapperStart = `<div style="display: flex; gap: 15px; flex: 1; overflow: hidden; min-height: 0;">`;
+    
     // Middle: DEVICES (Splitters)
-    let midHtml = `<div style="flex: 1.4; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto; overflow-x:hidden;">
+    let midHtml = `<div style="flex: 1; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto;">
         <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">📦 Сплітери</h3>`;
         
     const buildSplitterBox = (id, type, name) => {
@@ -428,7 +463,7 @@ function renderFOBCrossUI(node) {
     midHtml += `</div>`;
 
     // Right: OUTGOING
-    let outHtml = `<div style="flex: 1.9; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto; overflow-x:hidden;">
+    let outHtml = `<div style="flex: 1; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto; overflow-x:hidden;">
         <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">📤 Виходи (OUT)</h3>`;
     
     outConns.forEach(c => {
@@ -490,8 +525,10 @@ function renderFOBCrossUI(node) {
     });
     if(outConns.length===0) outHtml += `<div style="text-align:center;color:#8b949e;font-size:12px">Немає підключених виходів</div>`;
     outHtml += `</div>`;
+    
+    let bottomWrapperEnd = `</div>`;
 
-    return inHtml + midHtml + outHtml;
+    return `<div style="display: flex; flex-direction: column; flex: 1;">` + inHtml + bottomWrapperStart + midHtml + outHtml + bottomWrapperEnd + `</div>`;
 }
 
 function saveCrossConnect(nodeId, skipClose = false) {

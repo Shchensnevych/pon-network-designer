@@ -737,8 +737,9 @@ export async function showTopology() {
    * @param {PONConnection} cable
    * @param {string} parentId
    * @param {string} incomingCoreNodeId - The exact Node ID inside the parent FOB that feeds this cable
+   * @param {string} incomingBranchLabel - Label for the branch (e.g. X, Y)
    */
-  function renderMermaidFob(fob, cable, parentId, incomingCoreNodeId) {
+  function renderMermaidFob(fob, cable, parentId, incomingCoreNodeId = undefined, incomingBranchLabel = "") {
     const fId = safeId(fob.id);
     
     // Fallback info for the subgraph title
@@ -756,12 +757,13 @@ export async function showTopology() {
        // If no splitters, show a Transit node
        spNodes["transit"] = `${fId}_transit`;
        m += `    ${spNodes["transit"]}(["Транзит"]):::fob\n`;
+       m += `    click ${spNodes["transit"]} "javascript:window.focusNode('${fob.id}')" "Двічі клікніть для переходу на карту"\n`;
     } else {
        splitters.forEach(sp => {
            const spNid = `${fId}_sp_${safeId(sp.id)}`;
            spNodes[sp.id] = spNid;
            m += `    ${spNid}(["${sp.type} ${sp.ratio}"]):::fob\n`;
-           m += `    click ${spNid} "javascript:window.focusNode('${fob.id}')" "Показати муфту"\n`;
+           m += `    click ${spNid} "javascript:window.focusNode('${fob.id}')" "Двічі клікніть для переходу на карту"\n`;
        });
        
        // Draw internal cross-connects between splitters
@@ -782,30 +784,142 @@ export async function showTopology() {
        if (hasTransit) {
            spNodes["transit"] = `${fId}_transit`;
            m += `    ${spNodes["transit"]}(["Транзит"]):::fob\n`;
+           m += `    click ${spNodes["transit"]} "javascript:window.focusNode('${fob.id}')" "Двічі клікніть для переходу на карту"\n`;
        }
     }
-    m += `  end\n`;
-    m += `  click ${fId} "javascript:window.focusNode('${fob.id}')" "Показати на карті"\n`;
-    
+
+    const groupCoresToHtml = (coreObjects, prefixStr = "") => {
+        if (coreObjects.length === 0) return "";
+        let html = "";
+        if (prefixStr) html += `<div style='text-align:center; font-size:11px; margin-bottom:4px; font-weight:600;'>${prefixStr}</div>`;
+        const CHUNK_SIZE = 4;
+        for (let i = 0; i < coreObjects.length; i += CHUNK_SIZE) {
+            const chunk = coreObjects.slice(i, i + CHUNK_SIZE);
+            const rowHtml = chunk.map(c => {
+                 const FIBER_COLORS = [
+                     "#58a6ff", "#ff9632", "#3fb950", "#b07b46", "#8b949e", "#ffffff",
+                     "#f85149", "#000000", "#e3b341", "#bc8cff", "#ff80b5", "#56d364"
+                 ];
+                 const dotColor = FIBER_COLORS[c.coreIdx % 12];
+                 let bdr = dotColor === "#000000" ? "border: 1px solid #777;" : "border: 1px solid rgba(255,255,255,0.2);";
+                 if (dotColor === "#000000") bdr += " box-shadow: 0 0 2px #fff;";
+                 let sigHtml = "";
+                 if (c.sig !== null && c.sig !== undefined) {
+                      const sColor = c.sig >= -25 ? "#3fb950" : c.sig >= -28 ? "#d29922" : "#f85149";
+                      sigHtml = `<span style='color:${sColor} !important; font-size:9px; margin-left:3px;'>⚡${c.sig.toFixed(1)}</span>`;
+                 }
+                 return `<span style='display:inline-block; background:rgba(13,17,23,0.8); border:1px solid #30363d; border-radius:4px; padding:2px 5px; margin:2px; white-space:nowrap; font-size:10px; color:#c9d1d9;'><span style='display:inline-block; width:8px; height:8px; border-radius:50%; background:${dotColor} !important; ${bdr} margin-right:4px; vertical-align:middle;'></span><span style='vertical-align:middle;'>${c.coreIdx+1}</span>${sigHtml}</span>`;
+            }).join("");
+            html += `<div style="text-align:center;">${rowHtml}</div>`;
+        }
+        return `|"<div style='min-width:60px; padding:2px;'>${html}</div>"|`;
+    };
+
     // Determine the entry point "Node" for the incoming cable.
-    // If there are splitters, usually it's the first one, or "transit" if it's a pure transit cable.
-    // To be precise, we check what the cable feeds via crossConnects.
-    let entryNodes = new Set();
+    let entryTargets = []; 
     const xcIn = fob.crossConnects || [];
     if (cable) {
-        // Find what incoming cable's active cores connect to
         const incomingXcs = xcIn.filter(x => x.fromType === "CABLE" && x.fromId === cable.id);
         incomingXcs.forEach(x => {
-            if (x.toType === "SPLITTER" && spNodes[x.toId]) entryNodes.add(spNodes[x.toId]);
-            else if (x.toType === "CABLE" && spNodes["transit"]) entryNodes.add(spNodes["transit"]);
+            if (x.toType === "SPLITTER" && spNodes[x.toId]) {
+                entryTargets.push({ id: spNodes[x.toId], coreIndex: x.fromCore });
+            } else if (x.toType === "CABLE" && spNodes["transit"]) {
+                entryTargets.push({ id: spNodes["transit"], coreIndex: x.fromCore });
+            }
         });
     }
-    // Fallback if no specific connection found
-    if (entryNodes.size === 0) {
-        if (splitters.length > 0) entryNodes.add(spNodes[splitters[0].id]);
-        else if (spNodes["transit"]) entryNodes.add(spNodes["transit"]);
-        else entryNodes.add(fId); // Fallback to subgraph
+
+    let entryGroups = {};
+    entryTargets.forEach(t => {
+        if (!entryGroups[t.id]) entryGroups[t.id] = [];
+        entryGroups[t.id].push(t.coreIndex);
+    });
+
+    let entryNodeIds = Object.keys(entryGroups);
+    if (entryNodeIds.length === 0) {
+        if (splitters.length > 0) entryNodeIds.push(spNodes[splitters[0].id]);
+        else if (spNodes["transit"]) entryNodeIds.push(spNodes["transit"]);
+        else entryNodeIds.push(fId);
     }
+
+    let routingInNodeId = null;
+    if (cable && entryNodeIds.length > 1 && !entryNodeIds.includes(fId)) {
+        routingInNodeId = `${fId}_in_${safeId(String(cable.id))}`;
+        m += `    ${routingInNodeId}(("Вхід")):::fob\n`;
+        m += `    click ${routingInNodeId} "javascript:window.focusNode('${fob.id}')" "Двічі клікніть для переходу на карту"\n`;
+        for (let targetId of entryNodeIds) {
+             let coreObjects = [];
+             if (entryGroups[targetId]) {
+                  entryGroups[targetId].forEach(coreIdx => {
+                      const cLoss = connKm(cable) * FIBER_DB_KM;
+                      let inSig = null;
+                      if (cable.from.type === "OLT") {
+                          const oltXc = (cable.from.crossConnects || []).find(cx => cx.toType === "CABLE" && cx.toId === cable.id && cx.toCore === coreIdx);
+                          if (oltXc) inSig = cable.from.outputPower - cLoss;
+                      } else if (cable.from.type === "FOB") {
+                          const upstream = traceOpticalPath(cable.from, "CABLE", cable.id, coreIdx);
+                          if (upstream !== null) inSig = upstream - cLoss;
+                      }
+                      coreObjects.push({ coreIdx: coreIdx, sig: inSig });
+                  });
+             }
+             let lblStr = groupCoresToHtml(coreObjects);
+             m += `    ${routingInNodeId} -.-> ${lblStr} ${targetId}\n`;
+        }
+    }
+
+    // Determine internal routing "Node" for outgoing cables before closing subgraph
+    const downCables = conns.filter(c => c.from === fob && c.type === "cable");
+    let outCableNodes = {}; 
+    let outCableLabels = {}; 
+    
+    downCables.forEach(dc => {
+        const dcXcs = (fob.crossConnects || []).filter(x => x.toType === "CABLE" && x.toId === dc.id);
+        
+        let sourceTargets = [];
+        dcXcs.forEach(xc => {
+            const outSig = traceOpticalPath(fob, "CABLE", dc.id, xc.toCore);
+            let prefix = "";
+            if (xc.fromType === "SPLITTER" && spNodes[xc.fromId]) {
+                 if (xc.fromBranch) prefix = `<b style='color:#e3b341;'>${xc.fromBranch}</b>`;
+                 sourceTargets.push({ id: spNodes[xc.fromId], prefix: prefix, coreIdx: xc.toCore, sig: outSig });
+            } else if (xc.fromType === "CABLE" && spNodes["transit"]) {
+                 sourceTargets.push({ id: spNodes["transit"], prefix: "", coreIdx: xc.toCore, sig: outSig });
+            }
+        });
+
+        let sourceGroups = {};
+        sourceTargets.forEach(t => {
+            if (!sourceGroups[t.id]) sourceGroups[t.id] = { prefix: "", cores: [] };
+            if (t.prefix && !sourceGroups[t.id].prefix) sourceGroups[t.id].prefix = t.prefix;
+            sourceGroups[t.id].cores.push({ coreIdx: t.coreIdx, sig: t.sig });
+        });
+
+        const sourceIds = Object.keys(sourceGroups);
+        let outNodeId = fId;
+        
+        if (sourceIds.length === 1) {
+            outNodeId = sourceIds[0];
+            outCableLabels[dc.id] = sourceGroups[outNodeId].prefix.replace(/<[^>]+>/g, '');
+        } else if (sourceIds.length > 1) {
+            outNodeId = `${fId}_out_${safeId(String(dc.id))}`;
+            m += `    ${outNodeId}(("Вихід")):::fob\n`;
+            m += `    click ${outNodeId} "javascript:window.focusNode('${fob.id}')" "Двічі клікніть для переходу на карту"\n`;
+            for (let srcId of sourceIds) {
+                let sGroup = sourceGroups[srcId];
+                let lblStr = groupCoresToHtml(sGroup.cores, sGroup.prefix);
+                m += `    ${srcId} -.-> ${lblStr} ${outNodeId}\n`;
+            }
+            outCableLabels[dc.id] = "";
+        } else if (spNodes["transit"]) {
+            outNodeId = spNodes["transit"];
+        } else if (splitters.length > 0) {
+            outNodeId = spNodes[splitters[splitters.length-1].id];
+        }
+        outCableNodes[dc.id] = outNodeId;
+    });
+
+    m += `  end\n`;
 
     // Edge from parent
     if (parentId) {
@@ -843,29 +957,26 @@ export async function showTopology() {
             const dist = (connKm(cable) * 1000).toFixed(0);
             const loss = cLoss.toFixed(2);
             let coresDiv = activeCoresHtml ? `<br/><div style='display:flex; flex-wrap:wrap; justify-content:center; max-width:160px; margin-top:4px;'>${activeCoresHtml}</div>` : "";
-            edgeText = `|"<div style='text-align:center; font-size:11px;'><b style='color:#58a6ff;'>${cable.capacity}F</b> (${dist}м / -${loss}дБ)${coresDiv}</div>"|`;
+            let branchLbl = incomingBranchLabel ? `<b style='color:#e3b341;'>${incomingBranchLabel}</b><br/>` : "";
+            edgeText = `|"<div style='text-align:center; font-size:11px;'>${branchLbl}<b style='color:#58a6ff;'>${cable.capacity}F</b> (${dist}м / -${loss}дБ)${coresDiv}</div>"|`;
         }
         
         // Draw incoming cable to the entry nodes
         const actualParent = incomingCoreNodeId || parentId;
-        entryNodes.forEach(en => {
-            m += `  ${actualParent} --> ${edgeText} ${en}\n`;
-        });
+        if (routingInNodeId) {
+            m += `  ${actualParent} --> ${edgeText} ${routingInNodeId}\n`;
+        } else {
+            entryNodeIds.forEach(en => {
+                m += `  ${actualParent} --> ${edgeText} ${en}\n`;
+            });
+        }
     }
 
-    // Downstream cables
-    const downCables = conns.filter(c => c.from === fob && c.type === "cable");
+    // Now call for downstream cables, passing the calculated out nodes
     downCables.forEach(dc => {
-      // Find which internal node feeds this cable
-      const dcXc = (fob.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === dc.id);
-      let outNodeId = fId; // default to subgraph
-      if (dcXc) {
-          if (dcXc.fromType === "SPLITTER" && spNodes[dcXc.fromId]) outNodeId = spNodes[dcXc.fromId];
-          else if (dcXc.fromType === "CABLE" && spNodes["transit"]) outNodeId = spNodes["transit"];
-      } else if (spNodes["transit"]) outNodeId = spNodes["transit"];
-      else if (splitters.length > 0) outNodeId = spNodes[splitters[splitters.length-1].id]; // default to last splitter
-
-      if (dc.to) renderMermaidFob(/** @type {FOBNode} */ (dc.to), dc, fId, outNodeId);
+      let outNodeId = outCableNodes[dc.id];
+      let outBranchLabel = outCableLabels[dc.id] || "";
+      if (dc.to) renderMermaidFob(/** @type {FOBNode} */ (dc.to), dc, fId, outNodeId, outBranchLabel);
     });
 
     // Downstream patchcords (ONUs / MDUs)

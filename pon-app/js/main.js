@@ -48,6 +48,24 @@ import {
 document.addEventListener("DOMContentLoaded", () => {
   initNetwork();
 
+  // Global Escape key listener to close modals
+  document.addEventListener("keydown", (e) => {
+    if (e.key === "Escape") {
+      const modals = [
+        "cross-connect-modal", "network-modal", "exportModal", 
+        "node-modal", "conn-modal", "help-modal", "settings-modal", "onboarding-modal"
+      ];
+      modals.forEach(id => {
+          const m = document.getElementById(id);
+          if (m && window.getComputedStyle(m).display !== "none") {
+              m.style.display = "none";
+              const overlay = document.getElementById("modal-overlay");
+              if (overlay) overlay.classList.remove("open");
+          }
+      });
+    }
+  });
+
   // Expose functions used by HTML (onclick / onchange) via window
   // Tools & basic network actions
   window.selectTool = selectTool;
