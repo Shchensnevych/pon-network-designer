@@ -176,8 +176,7 @@ function savePatchPanel(nodeId, skipClose = false) {
     const newCross = [];
     
     selects.forEach(sel => {
-        /** @type {HTMLSelectElement} */
-        const element = (sel);
+        const element = /** @type {HTMLSelectElement} */ (sel);
         if (element.value !== "") {
             newCross.push({
                 id: "xc_" + Date.now() + "_" + Math.random().toString(36).substr(2, 5),
@@ -238,7 +237,7 @@ function getIncomingCorePath(targetFob, cableId, coreIndex) {
         if (inCable.from.type === "OLT") {
             const olt = inCable.from;
             const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === currentCableId && x.toCore === currentCore);
-            if (oltXc) return `від OLT ${olt.name} - PON ${parseInt(oltXc.fromId) + 1}`;
+            if (oltXc) return `від OLT ${olt.name} - PON ${parseInt(String(oltXc.fromId)) + 1}`;
             return `від OLT ${olt.name} (немає кросу)`;
         }
         
@@ -256,7 +255,7 @@ function getIncomingCorePath(targetFob, cableId, coreIndex) {
                 else if (xc.fromId === "legacy_fbt") spName = `FBT ${prevFob.fbtType}`;
                 else if (xc.fromId === "legacy_plc") spName = `PLC ${prevFob.plcType}`;
                 
-                const branchLbl = xc.fromBranch ? `(Гілка ${xc.fromBranch})` : `(Вихід ${parseInt(xc.fromCore||0)+1})`;
+                const branchLbl = xc.fromBranch ? `(Гілка ${xc.fromBranch})` : `(Вихід ${parseInt(String(xc.fromCore||0))+1})`;
                 return `від ${prevFob.name} 👉 ${spName} ${branchLbl}`;
             } else if (xc.fromType === "CABLE") {
                 // It's a transit cable, continue tracing backward
@@ -611,20 +610,22 @@ window.updateConnCapacity = function(connId, newCap, nodeId, nodeType) {
 };
 
 window.checkOltPorts = function(selectElement) {
+    /** @type {NodeListOf<HTMLSelectElement>} */
     const allSelects = document.querySelectorAll(".patch-select");
+    const selEl = /** @type {HTMLSelectElement} */ (selectElement);
     
     // 1. Clear duplicates if this was a new selection
-    if (selectElement && selectElement.value !== "") {
+    if (selEl && selEl.value !== "") {
         let duplicateFound = false;
         allSelects.forEach(sel => {
-            if (sel !== selectElement && sel.value === selectElement.value) {
+            if (sel !== selEl && sel.value === selEl.value) {
                 sel.value = ""; // Clear the previous selection of this PON port
                 duplicateFound = true;
             }
         });
         if (duplicateFound) {
-            selectElement.style.border = "1px solid #dc3545"; // Flash red
-            setTimeout(() => selectElement.style.border = "1px solid #30363d", 1000);
+            selEl.style.border = "1px solid #dc3545"; // Flash red
+            setTimeout(() => selEl.style.border = "1px solid #30363d", 1000);
         }
     }
 
@@ -661,20 +662,22 @@ window.checkOltPorts = function(selectElement) {
 };
 
 window.checkFobPorts = function(selectElement) {
+    /** @type {NodeListOf<HTMLSelectElement>} */
     const allSelects = document.querySelectorAll(".fob-cross");
+    const selEl = /** @type {HTMLSelectElement} */ (selectElement);
     
     // 1. Clear duplicates if this was a new selection
-    if (selectElement && selectElement.value !== "") {
+    if (selEl && selEl.value !== "") {
         let duplicateFound = false;
         allSelects.forEach(sel => {
-            if (sel !== selectElement && sel.value === selectElement.value) {
+            if (sel !== selEl && sel.value === selEl.value) {
                 sel.value = ""; // Clear previous selection
                 duplicateFound = true;
             }
         });
         if (duplicateFound) {
-            selectElement.style.border = "1px solid #dc3545"; // Flash red
-            setTimeout(() => selectElement.style.border = "1px solid #30363d", 1000);
+            selEl.style.border = "1px solid #dc3545"; // Flash red
+            setTimeout(() => selEl.style.border = "1px solid #30363d", 1000);
         }
     }
 

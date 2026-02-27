@@ -35,7 +35,7 @@ function getIncomingCorePath(targetMdu, cableId, coreIndex) {
         if (inCable.from.type === "OLT") {
             const olt = inCable.from;
             const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === currentCableId && x.toCore === currentCore);
-            if (oltXc) return `OLT ${olt.name} - PON ${parseInt(oltXc.fromId) + 1}`;
+            if (oltXc) return `OLT ${olt.name} - PON ${parseInt(String(oltXc.fromId)) + 1}`;
             return `OLT ${olt.name} (без кросу)`;
         }
         
@@ -52,7 +52,7 @@ function getIncomingCorePath(targetMdu, cableId, coreIndex) {
                 else if (xc.fromId === "legacy_fbt") spName = `FBT ${prevFob.fbtType}`;
                 else if (xc.fromId === "legacy_plc") spName = `PLC ${prevFob.plcType}`;
                 
-                const branchLbl = xc.fromBranch ? `(X${xc.fromBranch})` : `(Out ${parseInt(xc.fromCore||0)+1})`;
+                const branchLbl = xc.fromBranch ? `(X${xc.fromBranch})` : `(Out ${parseInt(String(xc.fromCore||0))+1})`;
                 return `${prevFob.name} 👉 ${spName} ${branchLbl}`;
             } else if (xc.fromType === "CABLE") {
                 currentFob = prevFob;
@@ -201,7 +201,8 @@ function renderMDUUI(node) {
             let sigStr = "";
             let coreSigHtml = "";
             if (c.from.type === "FOB") {
-                const upstream = traceOpticalPath(c.from, "PATCHCORD", c.id);
+                // traceOpticalPath(fob, targetType, targetId, targetCore)
+                const upstream = traceOpticalPath(c.from, "PATCHCORD", c.id, 0);
                 if (upstream !== null) {
                     let s = upstream - (connKm(c) * FIBER_DB_KM);
                     const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
@@ -442,8 +443,7 @@ function saveMDUState(node) {
     const mainSelects = document.querySelectorAll(".mdu-cross-main");
     node.mainBox.crossConnects = [];
     mainSelects.forEach(sel => {
-        /** @type {HTMLSelectElement} */
-        const element = (sel);
+        const element = /** @type {HTMLSelectElement} */ (sel);
         if(element.value) {
             const parts = element.value.split("|"); // e.g. CABLE|1234|0
             node.mainBox.crossConnects.push({
@@ -462,8 +462,7 @@ function saveMDUState(node) {
     const floorSelects = document.querySelectorAll(".mdu-cross-floor");
     node.floorBoxes.forEach(fb => fb.crossConnects = []);
     floorSelects.forEach(sel => {
-        /** @type {HTMLSelectElement} */
-        const element = (sel);
+        const element = /** @type {HTMLSelectElement} */ (sel);
         if(element.value) {
             const floorNum = parseInt(element.dataset.floor);
             const fb = node.floorBoxes.find(b => b.floor === floorNum);
@@ -486,8 +485,7 @@ function saveMDUState(node) {
     const flatSelects = document.querySelectorAll(".mdu-cross-flat");
     node.flats = [];
     flatSelects.forEach(sel => {
-        /** @type {HTMLSelectElement} */
-        const element = (sel);
+        const element = /** @type {HTMLSelectElement} */ (sel);
         if(element.value) {
             const flatNum = parseInt(element.dataset.flat);
             const parts = element.value.split("|");
@@ -516,22 +514,22 @@ export function initMDUWindowCommands() {
         saveMDUState(node); // Retain unsaved dropdown states before redraw
         
         if (location === "main") {
-            const el = (document.getElementById("mdu-attic-sp-type"));
+            const el = /** @type {HTMLSelectElement} */ (document.getElementById("mdu-attic-sp-type"));
             const val = el ? el.value : "PLC 1x4";
-            const [type, ratio] = val.split(" ");
+            const [typeStr, ratio] = val.split(" ");
             node.mainBox.splitters.push({
                 id: "sp_" + Date.now() + Math.random().toString(36).substr(2, 4),
-                type: type,
+                type: /** @type {"FBT"|"PLC"} */ (typeStr),
                 ratio: ratio
             });
         } else if (location === "floor") {
             const entranceNum = entranceOverride !== null ? entranceOverride : 1;
-            const elType = (document.getElementById(`mdu-addsp-t-${entranceNum}`));
-            const elFloor = (document.getElementById(`mdu-addsp-f-${entranceNum}`));
+            const elType = /** @type {HTMLSelectElement} */ (document.getElementById(`mdu-addsp-t-${entranceNum}`));
+            const elFloor = /** @type {HTMLSelectElement} */ (document.getElementById(`mdu-addsp-f-${entranceNum}`));
             
             const val = elType ? elType.value : "PLC 1x4";
             const floorNum = elFloor ? parseInt(elFloor.value) : 1;
-            const [type, ratio] = val.split(" ");
+            const [typeStr, ratio] = val.split(" ");
             
             let fb = node.floorBoxes.find(b => b.floor === floorNum && b.entrance === entranceNum);
             if (!fb) {
@@ -541,7 +539,7 @@ export function initMDUWindowCommands() {
             
             fb.splitters.push({
                 id: "sp_" + Date.now() + Math.random().toString(36).substr(2, 4),
-                type: type,
+                type: /** @type {"FBT"|"PLC"} */ (typeStr),
                 ratio: ratio
             });
         }

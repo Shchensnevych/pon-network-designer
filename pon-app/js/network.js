@@ -288,6 +288,17 @@ export function initNetwork() {
               <button onclick="setLayer('hyb')" id="btn-layer-hyb">🛰️🏷️ Гібрид</button>
             </div>
           </div>
+          
+          <div class="search-container" title="Пошук (Місто, вулиця...)">
+            <input type="text" id="loc-search-input" placeholder="Пошук локації..." onkeypress="if(event.key === 'Enter') searchLocation()">
+            <button onclick="searchLocation()" title="Знайти">
+              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                <circle cx="11" cy="11" r="8"></circle>
+                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+              </svg>
+            </button>
+          </div>
+
           <div class="zoom-indicator">
             <button class="zoom-btn" id="zoom-minus" title="Зменшити">−</button>
             <div class="zoom-slider-wrap">
@@ -1893,6 +1904,45 @@ function deleteNode(n) {
   updateStats();
 }
 
+/**
+ * Public Location Search Function using Nominatim API (OpenStreetMap)
+ * Called from bottom toolbar input.
+ */
+function searchLocation() {
+  const input = /** @type {HTMLInputElement} */ (document.getElementById("loc-search-input"));
+  if (!input) return;
+  const query = input.value.trim();
+  if (!query) return;
+
+  // Visual feedback: searching state
+  const originalColor = input.style.color;
+  input.style.color = "#58a6ff"; // Blue while searching
+
+  // Nominatim OpenStreetMap URL
+  const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
+
+  fetch(url)
+    .then((res) => res.json())
+    .then((data) => {
+      if (data && data.length > 0) {
+        const lat = parseFloat(data[0].lat);
+        const lon = parseFloat(data[0].lon);
+        // Fly map to new coordinates
+        map.flyTo([lat, lon], 16, { animate: true, duration: 1.5 });
+        input.style.color = "#3fb950"; // Green success
+        setTimeout(() => { input.style.color = originalColor; input.blur(); }, 2000);
+      } else {
+        input.style.color = "#f85149"; // Red error (not found)
+        setTimeout(() => (input.style.color = originalColor), 2000);
+      }
+    })
+    .catch((err) => {
+      console.error("Помилка геокодування:", err);
+      input.style.color = "#f85149";
+      setTimeout(() => (input.style.color = originalColor), 2000);
+    });
+}
+
 function deleteConn(c) {
   if (!c) return;
   saveState();
@@ -1996,3 +2046,4 @@ window.deleteConnById = (id) => {
 };
 window.finishOLT = finishOLT;
 window.reassignBranch = reassignBranch;
+window.searchLocation = searchLocation;

@@ -107,6 +107,18 @@ declare global {
     BackupManager: unknown;
     openOnboarding: Function;
     closeOnboarding: Function;
+    saveState: Function;
+    updateStats: Function;
+    updateTooltipsVisibility: Function;
+    addMDUSplitter: Function;
+    removeMDUSplitter: Function;
+    deleteMduFlat: Function;
+    addMduFlat: Function;
+    rebuildFlatDropdowns: Function;
+    searchLocation: Function;
+    checkOltPorts: Function;
+    checkFobPorts: Function;
+    updateConnCapacity: Function;
   }
 
   // ═══════════════════════════════════════════════

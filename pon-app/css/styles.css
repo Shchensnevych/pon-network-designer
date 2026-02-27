@@ -1408,6 +1408,47 @@ path.signal-anim-overlay {
   }
 }
 
+/* ── LOCATION SEARCH ── */
+.search-container {
+  display: flex;
+  align-items: center;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  overflow: hidden;
+  height: 28px;
+  margin-right: 10px;
+}
+.search-container input {
+  background: transparent;
+  border: none;
+  color: #c9d1d9;
+  padding: 0 8px;
+  font-size: 12px;
+  width: 140px;
+  outline: none;
+}
+.search-container input::placeholder {
+  color: #6e7681;
+}
+.search-container button {
+  background: #21262d;
+  border: none;
+  border-left: 1px solid #30363d;
+  color: #8b949e;
+  padding: 0 8px;
+  height: 100%;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: all 0.2s;
+}
+.search-container button:hover {
+  background: #30363d;
+  color: #58a6ff;
+}
+
 /* ── MINI-LEGEND ── */
 .leaflet-legend {
   background: rgba(13, 17, 23, 0.9);

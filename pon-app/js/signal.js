@@ -826,10 +826,10 @@ export function updateCableColors() {
     if (!c.polyline) return;
     /** @type {number | null} */
     let sig = null;
-    if (c.type === "cable" && c.to?.type === "FOB" && c.to.inputConn && hasOLTPath(/** @type {FOBNode} */ (c.to))) {
-      sig = sigIn(/** @type {FOBNode} */ (c.to));
-    } else if (c.type === "patchcord" && (c.to?.type === "ONU" || c.to?.type === "MDU") && c.from && hasOLTPath(/** @type {FOBNode} */ (c.from))) {
-      sig = sigAtONU(/** @type {ONUNode|MDUNode} */ (c.to));
+    if (c.type === "cable" && c.to?.type === "FOB" && c.to.inputConn && hasOLTPath(/** @type {any} */ (c.to))) {
+      sig = sigIn(/** @type {any} */ (c.to));
+    } else if (c.type === "patchcord" && (c.to?.type === "ONU" || c.to?.type === "MDU") && c.from && hasOLTPath(/** @type {any} */ (c.from))) {
+      sig = sigAtONU(/** @type {any} */ (c.to));
     }
     if (sig !== null) {
       const glowColor = getSignalColor(sig);
