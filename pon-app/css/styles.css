@@ -2018,3 +2018,8 @@ select.patch-select {
   transform: translateY(0);
   box-shadow: 0 2px 6px rgba(35, 134, 54, 0.2);
 }
+
+/* Hide detailed tooltip info at lower zooms to prevent map clutter */
+.map-zoomed-out .tooltip-details {
+  display: none !important;
+}

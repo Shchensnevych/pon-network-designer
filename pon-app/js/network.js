@@ -1132,7 +1132,7 @@ function buildNodeLabelContent(n) {
     }
   }
 
-  return L1 + (L2 ? "<br>" + L2 : "");
+  return L1 + (L2 ? `<div class="tooltip-details">${L2}</div>` : "");
 }
 
 /** @param {any} n */
@@ -1237,7 +1237,16 @@ function updateNodeTooltip(node, content) {
 // Оновити видимість tooltip'ів для всіх вузлів при зміні zoom
 function updateTooltipsVisibility() {
   const zoom = map.getZoom();
-  
+
+  const mapEl = document.getElementById("map");
+  if (mapEl) {
+    if (zoom < 18) {
+      mapEl.classList.add("map-zoomed-out");
+    } else {
+      mapEl.classList.remove("map-zoomed-out");
+    }
+  }
+
   if (zoom < 15) {
     clearONULeaderLines();
   }
