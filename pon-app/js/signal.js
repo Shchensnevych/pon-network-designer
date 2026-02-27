@@ -165,7 +165,24 @@ export function fobPortStatus(n) {
       }
       const c = conns.find(x => x.id === xcEntry.toId);
       if (!c || !c.to) return "";
-      return c.type === "patchcord" ? ` (${c.to.name})` : ` [К: ${c.to.name}]`;
+
+      let targetLabel = c.to.name;
+      if (c.to.type === "MDU" && c.type === "cable") {
+          // Check if this incoming cable core is mapped to any flat inside the MDU
+          if (c.to.flats) {
+              const flatHit = c.to.flats.find(f => 
+                  f.crossConnect && 
+                  f.crossConnect.fromType === "CABLE" && 
+                  f.crossConnect.fromId === xcEntry.toId && 
+                  f.crossConnect.fromCore === xcEntry.toCore
+              );
+              if (flatHit) {
+                  targetLabel += `, Кв. ${flatHit.flat}`;
+              }
+          }
+      }
+
+      return c.type === "patchcord" ? ` (${targetLabel})` : ` [К: ${targetLabel}]`;
   };
 
   const renderSplitterStatus = (spId, spType, spRatio, legacyLabel = "") => {
