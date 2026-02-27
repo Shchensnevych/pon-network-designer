@@ -168,17 +168,37 @@ export function fobPortStatus(n) {
 
       let targetLabel = c.to.name;
       if (c.to.type === "MDU" && c.type === "cable") {
-          // Check if this incoming cable core is mapped to any flat inside the MDU
-          if (c.to.flats) {
-              const flatHit = c.to.flats.find(f => 
-                  f.crossConnect && 
-                  f.crossConnect.fromType === "CABLE" && 
-                  f.crossConnect.fromId === xcEntry.toId && 
-                  f.crossConnect.fromCore === xcEntry.toCore
-              );
-              if (flatHit) {
-                  targetLabel += `, Кв. ${flatHit.flat}`;
-              }
+          const mdu = c.to;
+          let fls = [];
+          if (mdu.flats) {
+              // Helper to trace if a target is fed by the given cable core
+              const isFedByCore = (type, id) => {
+                  if (type === "CABLE" && id === xcEntry.toId) return true; // Direct
+                  if (type === "SPLITTER") {
+                      // Check mainBox
+                      let spXc = (mdu.mainBox?.crossConnects || []).find(x => x.toId === id);
+                      if (spXc) {
+                           if (spXc.fromType === "CABLE" && spXc.fromId === xcEntry.toId && spXc.fromCore === xcEntry.toCore) return true;
+                           if (spXc.fromType === "SPLITTER") return isFedByCore("SPLITTER", spXc.fromId);
+                      }
+                      // Check floorBoxes
+                      for (let fb of (mdu.floorBoxes || [])) {
+                          spXc = (fb.crossConnects || []).find(x => x.toId === id);
+                          if (spXc) {
+                               if (spXc.fromType === "CABLE" && spXc.fromId === xcEntry.toId && spXc.fromCore === xcEntry.toCore) return true;
+                               if (spXc.fromType === "SPLITTER") return isFedByCore("SPLITTER", spXc.fromId);
+                          }
+                      }
+                  }
+                  return false;
+              };
+
+              fls = mdu.flats.filter(f => f.crossConnect && isFedByCore(f.crossConnect.fromType, f.crossConnect.fromId)).map(f => f.flat);
+          }
+          if (fls.length === 1) {
+              targetLabel += `, Кв. ${fls[0]}`;
+          } else if (fls.length > 1) {
+              targetLabel += ` (${fls.length} кв.)`;
           }
       }
 

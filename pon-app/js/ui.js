@@ -641,7 +641,7 @@ export function showSuggestions() {
       }
     });
 
-  let html = `<div class="report-section"><h3>🔍 Перевірка мережі</h3>`;
+  let html = `<div class="report-section">`;
   if (issues.length === 0) {
     html += `<div style="padding:20px;text-align:center;color:#3fb950">✅ Серйозних проблем не виявлено</div>`;
   } else {
@@ -707,8 +707,7 @@ export async function showTopology() {
   // Basic container
   modalBody.innerHTML = `
     <div class="report-section" style="display: flex; flex-direction: column; flex: 1; margin: 0; padding: 0;">
-      <div style="margin-bottom: 10px; display: flex; justify-content: space-between; flex-shrink: 0;">
-        <h3 style="margin: 0;">🗺️ Топологія (Діаграма)</h3>
+      <div style="margin-bottom: 10px; display: flex; justify-content: flex-end; flex-shrink: 0;">
         <span style="font-size:12px; color:#8b949e;">💡 Використовуйте мишу для прокручування та масштабування графіка.</span>
       </div>
       <div id="mermaid-container" style="height: 70vh; background: #0d1117; border: 1px solid #30363d; border-radius: 6px; overflow: hidden; position: relative;">
@@ -1468,8 +1467,7 @@ export function showScenarioCompare() {
     return a.localeCompare(b);
   });
 
-  let html = `<div class="report-section">
-    <h3>📊 Порівняння сценаріїв</h3>
+  let html = `<div class="report-section" style="max-height: 80vh; overflow-y: auto;">
     <p style="margin-bottom:12px;color:#8b949e;font-size:12px">Оберіть сплітер для кожного FOB, щоб побачити вплив на сигнал. Зміни застосовуються автоматично.</p>
     <div style="margin-bottom:12px;display:flex;gap:8px;align-items:center;justify-content:flex-end">
       <button id="scenario-reset-btn" class="modal-btn">
