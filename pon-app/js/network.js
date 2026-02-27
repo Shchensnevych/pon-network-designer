@@ -1594,7 +1594,7 @@ function showProps(n) {
       </div>`;
     }
 
-    h += `<button class="btn" style="margin-top:15px;width:100%;background:#0d1117;color:#c9d1d9;border:1px solid #58a6ff;padding:8px;border-radius:4px;cursor:pointer;" onmouseover="this.style.background='#161b22'" onmouseout="this.style.background='#0d1117'" onclick="window.openPatchPanel('${n.id}')">🎛️ Оптичний крос (ODF)</button>`;
+    h += `<button class="btn" style="margin-top:15px;width:100%;background:#1f6feb;color:#ffffff;border:1px solid #388bfd;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#388bfd';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#1f6feb';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openPatchPanel('${n.id}')">🎛️ Оптичний крос (ODF)</button>`;
   } else if (n.type === "FOB") {
     h += `<div style="margin-top:10px; border:1px solid #30363d; border-radius:6px; background:#161b22; padding:10px;">`;
     h += `<div style="color:#8b949e; font-size:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
@@ -1648,7 +1648,7 @@ function showProps(n) {
     h += `<button onclick="const v=document.getElementById('add-plc-sel').value; if(v) window.addSplitter('${n.id}', 'PLC', v);" style="background:#238636; color:white; border:none; border-radius:3px; cursor:pointer; font-size:11px;">Додати</button>`;
     h += `</div></div>`;
 
-    h += `<button class="btn" style="margin-top:15px;width:100%;background:#0d1117;color:#c9d1d9;border:1px solid #c084fc;padding:8px;border-radius:4px;cursor:pointer;" onmouseover="this.style.background='#161b22'" onmouseout="this.style.background='#0d1117'" onclick="window.openCrossConnect('${n.id}')">🪛 Касета (Зварювання)</button>`;
+    h += `<button class="btn" style="margin-top:15px;width:100%;background:#8957e5;color:#ffffff;border:1px solid #a371f7;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#a371f7';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#8957e5';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openCrossConnect('${n.id}')">🪛 Касета (Зварювання)</button>`;
 
     if (n.inputConn) {
       const dist = connKm(n.inputConn) * 1000;
@@ -1723,7 +1723,7 @@ function showProps(n) {
           <div style="font-size:10px; color:#8b949e; text-align:center; margin-top:6px;">Загальний фонд: ${totalAbon} кв.</div>
         </div>`;
     } else {
-       h += `<button class="tool-btn" style="width:100%;margin-top:10px;justify-content:center;background:#238636" onclick="window.openMDUInternalTopology && window.openMDUInternalTopology('${n.id}')">⚙️ Схема під'їзду (FTTH)</button>`;
+       h += `<button class="btn" style="margin-top:10px;width:100%;background:#238636;color:#ffffff;border:1px solid #2ea043;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#2ea043';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#238636';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openMDUInternalTopology && window.openMDUInternalTopology('${n.id}')">⚙️ Схема під'їзду (FTTH)</button>`;
     }
 
     const s = sigAtONU(n);
@@ -1734,7 +1734,7 @@ function showProps(n) {
     }
   }
 
-  h += `<button class="del-btn" style="margin-top:15px" onclick="deleteNodeById('${n.id}')">Видалити</button></div>`;
+  h += `<button class="btn" style="margin-top:15px;width:100%;background:#da3633;color:#ffffff;border:1px solid #f85149;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#f85149';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#da3633';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="deleteNodeById('${n.id}')">🗑️ Видалити</button></div>`;
   p.innerHTML = h;
 }
 
