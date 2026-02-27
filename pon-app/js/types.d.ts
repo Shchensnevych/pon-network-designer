@@ -116,6 +116,7 @@ declare global {
     addMduFlat: Function;
     rebuildFlatDropdowns: Function;
     searchLocation: Function;
+    handleSearchInput: Function;
     checkOltPorts: Function;
     checkFobPorts: Function;
     updateConnCapacity: Function;

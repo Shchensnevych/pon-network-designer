@@ -41,19 +41,6 @@
       <div class="left">
         <div class="left-header">⚡ PON Designer</div>
         <div class="left-body">
-          <div class="config-box">
-            <label>Затухання волокна (дБ/км):</label>
-            <input
-              type="number"
-              id="fiber-loss"
-              value="0.4"
-              min="0.1"
-              max="1"
-              step="0.05"
-              onchange="updateFiberLoss(this.value)"
-            />
-            <div class="config-hint">1310нм: 0.4 | 1550нм: 0.25</div>
-          </div>
 
           <div class="section-label">Режим</div>
           <button
@@ -68,69 +55,72 @@
           </button>
 
           <div class="section-label">Компоненти</div>
-          <button
-            class="tool-btn"
-            data-tool="olt"
-            onclick="selectTool('olt')"
-            draggable="true"
-            data-type="olt"
-          >
-            <span class="icon">🔷</span>Додати OLT
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="fob"
-            onclick="selectTool('fob')"
-            draggable="true"
-            data-type="fob"
-          >
-            <span class="icon">📦</span>Додати FOB
-          </button>
-          
-          <button
-            class="tool-btn"
-            data-tool="mufta"
-            onclick="selectTool('mufta')"
-            draggable="true"
-            title="Оптична муфта (Splice Closure)"
-            data-type="mufta"
-          >
-            <span class="icon">🛢️</span>Додати Муфту
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="onu"
-            onclick="selectTool('onu')"
-            draggable="true"
-            data-type="onu"
-          >
-            <span class="icon">🏠</span>Додати ONU
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="mdu"
-            onclick="selectTool('mdu')"
-            draggable="true"
-            data-type="mdu"
-          >
-            <span class="icon">🏢</span>Додати MDU
-          </button>
+          <div class="btn-grid-components">
+            <button
+              class="tool-btn btn-comp-olt"
+              data-tool="olt"
+              onclick="selectTool('olt')"
+              draggable="true"
+              data-type="olt"
+            >
+              <span class="icon">🔷</span>Додати OLT
+            </button>
+            <button
+              class="tool-btn"
+              data-tool="fob"
+              onclick="selectTool('fob')"
+              draggable="true"
+              data-type="fob"
+            >
+              <span class="icon">📦</span>FOB
+            </button>
+            <button
+              class="tool-btn"
+              data-tool="mufta"
+              onclick="selectTool('mufta')"
+              draggable="true"
+              title="Оптична муфта (Splice Closure)"
+              data-type="mufta"
+            >
+              <span class="icon">🛢️</span>Муфта
+            </button>
+            <button
+              class="tool-btn"
+              data-tool="onu"
+              onclick="selectTool('onu')"
+              draggable="true"
+              data-type="onu"
+            >
+              <span class="icon">🏠</span>ONU
+            </button>
+            <button
+              class="tool-btn"
+              data-tool="mdu"
+              onclick="selectTool('mdu')"
+              draggable="true"
+              data-type="mdu"
+            >
+              <span class="icon">🏢</span>MDU
+            </button>
+          </div>
 
           <div class="section-label">З'єднання</div>
-          <button
-            class="tool-btn"
-            data-tool="cable"
-            onclick="selectTool('cable')"
-          >
-            <span class="icon">━</span>Магістраль
-          </button>
-          <button
-            class="tool-btn"
-            data-tool="patchcord"
-            onclick="selectTool('patchcord')"
-          >
-            <span class="icon">╌</span>Патчкорд
-          </button>
+          <div class="btn-grid-2col">
+            <button
+              class="tool-btn"
+              data-tool="cable"
+              onclick="selectTool('cable')"
+            >
+              <span class="icon">━</span>Магістраль
+            </button>
+            <button
+              class="tool-btn"
+              data-tool="patchcord"
+              onclick="selectTool('patchcord')"
+            >
+              <span class="icon">╌</span>Патчкорд
+            </button>
+          </div>
 
           <div class="section-label">Дії</div>
 
@@ -298,6 +288,21 @@
             <div class="stat-chip">
               <div class="val" id="s-conn">0</div>
               <div class="lbl">З'єдн.</div>
+            </div>
+          </div>
+          <div class="config-box config-box-right">
+            <label>Затухання волокна (дБ/км):</label>
+            <div class="config-box-row">
+              <input
+                type="number"
+                id="fiber-loss"
+                value="0.4"
+                min="0.1"
+                max="1"
+                step="0.05"
+                onchange="updateFiberLoss(this.value)"
+              />
+              <span class="config-hint">1310нм: 0.4 | 1550нм: 0.25</span>
             </div>
           </div>
           <div id="props">

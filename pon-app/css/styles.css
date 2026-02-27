@@ -92,6 +92,32 @@ body {
   transition: all 0.15s;
 }
 
+/* ── Sidebar grid layouts ── */
+.btn-grid-2col {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin-bottom: 3px;
+}
+
+.btn-grid-components {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 3px;
+  margin-bottom: 3px;
+}
+
+.btn-grid-components .btn-comp-olt {
+  grid-column: 1 / -1;
+}
+
+.btn-grid-2col .tool-btn,
+.btn-grid-components .tool-btn {
+  font-size: 11px;
+  padding: 6px 6px;
+  gap: 4px;
+}
+
 .tool-btn:hover {
   background: #21262d;
   border-color: #58a6ff;
@@ -144,6 +170,42 @@ body {
   font-size: 10px;
   color: #d5dce5;
   margin-top: 3px;
+}
+
+/* Config box in the right properties panel */
+.config-box-right {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  padding: 6px 10px;
+  margin-bottom: 8px;
+}
+
+.config-box-right label {
+  display: inline;
+  font-size: 11px;
+  color: #8b949e;
+  margin-bottom: 0;
+  white-space: nowrap;
+}
+
+.config-box-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex: 1;
+}
+
+.config-box-right input {
+  width: 60px;
+  padding: 4px 6px;
+  font-size: 12px;
+}
+
+.config-box-right .config-hint {
+  margin-top: 0;
+  color: #6e7681;
+  white-space: nowrap;
 }
 
 input[type="file"] {
@@ -1321,6 +1383,7 @@ tr:hover td {
   color: #c9d1d9;
   font-size: 11px;
   min-width: 170px;
+  height: 36px;
   user-select: none;
 }
 .zoom-slider-wrap {
@@ -1362,6 +1425,74 @@ tr:hover td {
 .zoom-btn:active {
   background: #3fb950;
   color: #000;
+}
+
+/* ── TOOLBAR NEW LAYOUT ── */
+.leaflet-toolbar-group {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  background: rgba(13, 17, 23, 0.95);
+  padding: 8px 12px;
+  border-radius: 8px;
+  border: 1px solid #30363d;
+  pointer-events: auto;
+  backdrop-filter: blur(8px);
+}
+
+.tool-group-divider {
+  width: 1px;
+  background: #30363d;
+  height: 36px;
+  margin: 0 2px;
+}
+
+.tool-column {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: flex-start;
+  gap: 6px;
+  position: relative;
+}
+
+.tool-btn-icon {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: rgba(33, 38, 45, 0.6);
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  color: #c9d1d9;
+  cursor: pointer;
+  width: 50px;
+  height: 36px;
+  padding: 0;
+  transition: all 0.2s;
+}
+
+.tool-btn-icon:hover {
+  background: rgba(88, 166, 255, 0.12);
+  color: #58a6ff;
+  border-color: #58a6ff;
+}
+
+.tool-btn-icon.active-btn {
+  background: rgba(88, 166, 255, 0.2);
+  color: #58a6ff;
+  border-color: #58a6ff;
+}
+
+.tool-label {
+  font-size: 11px;
+  line-height: 1.2;
+  color: #c9d1d9;
+  user-select: none;
+  white-space: nowrap;
+}
+
+.tool-column:hover .tool-label, .tool-column.active-col .tool-label {
+  color: #ffffff;
 }
 
 path.leaflet-interactive {
@@ -1415,9 +1546,9 @@ path.signal-anim-overlay {
   background: #0d1117;
   border: 1px solid #30363d;
   border-radius: 6px;
-  overflow: hidden;
-  height: 28px;
-  margin-right: 10px;
+  overflow: visible;
+  height: 36px;
+  position: relative;
 }
 .search-container input {
   background: transparent;
@@ -1436,7 +1567,8 @@ path.signal-anim-overlay {
   border: none;
   border-left: 1px solid #30363d;
   color: #8b949e;
-  padding: 0 8px;
+  padding: 0 10px;
+  min-width: 36px;
   height: 100%;
   cursor: pointer;
   display: flex;
@@ -1446,6 +1578,39 @@ path.signal-anim-overlay {
 }
 .search-container button:hover {
   background: #30363d;
+  color: #58a6ff;
+}
+.search-autocomplete {
+  position: absolute;
+  bottom: 100%;
+  margin-bottom: 6px;
+  left: 0;
+  width: 400px;
+  background: #161b22;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  box-shadow: 0 4px 12px rgba(0,0,0,0.5);
+  max-height: 200px;
+  overflow-y: auto;
+  z-index: 2000;
+  display: none;
+  flex-direction: column;
+}
+.search-autocomplete-item {
+  padding: 8px 12px;
+  font-size: 12px;
+  color: #c9d1d9;
+  cursor: pointer;
+  border-bottom: 1px solid #30363d;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
+.search-autocomplete-item:last-child {
+  border-bottom: none;
+}
+.search-autocomplete-item:hover {
+  background: #21262d;
   color: #58a6ff;
 }
 
@@ -1679,14 +1844,12 @@ path.leaflet-interactive:hover {
   align-self: flex-end;
 }
 
+/* Base button reset inside toolbar — size is controlled by .tool-btn-icon / .zoom-btn */
 .leaflet-toolbar-group button {
-  width: 32px;
-  height: 32px;
   border: none;
   border-radius: 4px;
   background: transparent;
   color: #c9d1d9;
-  font-size: 16px;
   cursor: pointer;
   transition: background 0.15s;
   display: flex;
@@ -1699,16 +1862,14 @@ path.leaflet-interactive:hover {
   background: #30363d;
 }
 
-/* Help pulse button in toolbar - white pulsating question mark */
+/* Help pulse button in toolbar */
 #btn-help-pulse {
-  width: 32px !important;
-  height: 32px !important;
-  padding: 0 !important;
-  font-size: 20px !important;
-  font-weight: bold !important;
-  line-height: 1 !important;
   color: #fff !important;
   animation: pulse-white 1.5s infinite !important;
+}
+
+#btn-help-pulse:hover {
+  transform: none !important;
 }
 
 .leaflet-toolbar-group button.active {

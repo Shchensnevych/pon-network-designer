@@ -245,74 +245,92 @@ export function initNetwork() {
           </div>
         </div>
         <div class="leaflet-toolbar-group">
-          <button onclick="undo()" title="Скасувати (Ctrl+Z)">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fff">
-              <path d="M9 14 4 9l5-5"/>
-              <path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/>
-            </svg>
-          </button>
-          <button onclick="redo()" title="Повторити (Ctrl+Y)">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fff">
-              <path d="M15 14l5-5-5-5"/>
-              <path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/>
-            </svg>
-          </button>
-          <button onclick="fitNetwork()" title="Показати всю мережу (Fit All)">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fff">
-              <circle cx="12" cy="12" r="10"></circle>
-              <line x1="22" y1="12" x2="18" y2="12"></line>
-              <line x1="6" y1="12" x2="2" y2="12"></line>
-              <line x1="12" y1="6" x2="12" y2="2"></line>
-              <line x1="12" y1="22" x2="12" y2="18"></line>
-              <circle cx="12" cy="12" r="3" fill="currentColor"></circle>
-            </svg>
-          </button>
-          <button onclick="toggleEditMode()" id="btn-edit" title="Редагувати (вигини)">
-            <svg width="24" height="24" viewBox="0 0 24 24" fill="currentColor" stroke="none" style="color:#fff">
-              <g transform="translate(-3 -3)">
-                <path fill-rule="evenodd" d="M13.5,11 C11.5670034,11 10,9.43299662 10,7.5 C10,5.56700338 11.5670034,4 13.5,4 C15.4329966,4 17,5.56700338 17,7.5 C17,9.43299662 15.4329966,11 13.5,11 Z M13.5,9 C14.3284271,9 15,8.32842712 15,7.5 C15,6.67157288 14.3284271,6 13.5,6 C12.6715729,6 12,6.67157288 12,7.5 C12,8.32842712 12.6715729,9 13.5,9 Z M12.0002889,7.52973893 C12.0125983,8.16273672 12.4170197,8.6996643 12.9807111,8.90767966 L3,15 L3,13 L12.0002889,7.52973893 Z M14.2172722,6.18228472 L19.453125,3 L22.6589355,3 L14.989102,7.68173885 C14.9962971,7.62216459 15,7.56151472 15,7.5 C15,6.93138381 14.6836098,6.4366645 14.2172722,6.18228472 Z M23.4434042,19.2851736 L20.1282799,19.2851736 L21.8729983,23.5349525 C21.9945296,23.8295773 21.8556546,24.1599209 21.5778734,24.2849208 L20.0414675,24.9545142 C19.7550613,25.0795141 19.4338738,24.9366704 19.3123426,24.6509518 L17.6544367,20.6154541 L14.9461873,23.4010151 C14.5852811,23.7721711 14,23.4860463 14,22.9992653 L14,9.57183533 C14,9.05933561 14.6225311,8.809492 14.946156,9.17008555 L23.8340292,18.3120179 C24.1925291,18.6613615 23.9279979,19.2851736 23.4434042,19.2851736 Z"></path>
-              </g>
-            </svg>
-          </button>
-          <div class="dropdown">
-            <button onclick="document.getElementById('layer-menu').classList.toggle('show');event.stopPropagation()" id="btn-layers" title="Шари">
-              <svg width="24" height="24" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" style="color:#fff">
-                <polygon points="12 2 2 7 12 12 22 7 12 2"></polygon>
-                <polyline points="2 17 12 22 22 17"></polyline>
-                <polyline points="2 12 12 17 22 12"></polyline>
-              </svg>
+          <!-- Група 1: Історія -->
+          <div class="tool-column">
+            <button class="tool-btn-icon" onclick="typeof undo === 'function' ? undo() : void 0" title="Скасувати (Ctrl+Z)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M9 14 4 9l5-5"/><path d="M4 9h10.5a5.5 5.5 0 0 1 5.5 5.5v0a5.5 5.5 0 0 1-5.5 5.5H11"/></svg>
             </button>
-            <div id="layer-menu" class="dropdown-content">
+            <span class="tool-label">Undo</span>
+          </div>
+          <div class="tool-column">
+            <button class="tool-btn-icon" onclick="typeof redo === 'function' ? redo() : void 0" title="Повторити (Ctrl+Y)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M15 14l5-5-5-5"/><path d="M20 9H9.5A5.5 5.5 0 0 0 4 14.5v0A5.5 5.5 0 0 0 9.5 20H13"/></svg>
+            </button>
+            <span class="tool-label">Redo</span>
+          </div>
+
+          <div class="tool-group-divider"></div>
+          
+          <!-- Група 2: Навігація / Редагування -->
+          <div class="tool-column">
+            <button class="tool-btn-icon" onclick="typeof fitNetwork === 'function' ? fitNetwork() : void 0" title="Показати всю мережу (Fit All)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><line x1="22" y1="12" x2="18" y2="12"></line><line x1="6" y1="12" x2="2" y2="12"></line><line x1="12" y1="6" x2="12" y2="2"></line><line x1="12" y1="22" x2="12" y2="18"></line><circle cx="12" cy="12" r="3" fill="currentColor"></circle></svg>
+            </button>
+            <span class="tool-label">FlyTo</span>
+          </div>
+          <div class="tool-column">
+            <button class="tool-btn-icon" onclick="typeof toggleEditMode === 'function' ? toggleEditMode() : void 0" id="btn-edit" title="Редагувати (вигини)">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="currentColor" stroke="none"><g transform="translate(-3 -3)"><path fill-rule="evenodd" d="M13.5,11 C11.5670034,11 10,9.43299662 10,7.5 C10,5.56700338 11.5670034,4 13.5,4 C15.4329966,4 17,5.56700338 17,7.5 C17,9.43299662 15.4329966,11 13.5,11 Z M13.5,9 C14.3284271,9 15,8.32842712 15,7.5 C15,6.67157288 14.3284271,6 13.5,6 C12.6715729,6 12,6.67157288 12,7.5 C12,8.32842712 12.6715729,9 13.5,9 Z M12.0002889,7.52973893 C12.0125983,8.16273672 12.4170197,8.6996643 12.9807111,8.90767966 L3,15 L3,13 L12.0002889,7.52973893 Z M14.2172722,6.18228472 L19.453125,3 L22.6589355,3 L14.989102,7.68173885 C14.9962971,7.62216459 15,7.56151472 15,7.5 C15,6.93138381 14.6836098,6.4366645 14.2172722,6.18228472 Z M23.4434042,19.2851736 L20.1282799,19.2851736 L21.8729983,23.5349525 C21.9945296,23.8295773 21.8556546,24.1599209 21.5778734,24.2849208 L20.0414675,24.9545142 C19.7550613,25.0795141 19.4338738,24.9366704 19.3123426,24.6509518 L17.6544367,20.6154541 L14.9461873,23.4010151 C14.5852811,23.7721711 14,23.4860463 14,22.9992653 L14,9.57183533 C14,9.05933561 14.6225311,8.809492 14.946156,9.17008555 L23.8340292,18.3120179 C24.1925291,18.6613615 23.9279979,19.2851736 23.4434042,19.2851736 Z"></path></g></svg>
+            </button>
+            <span class="tool-label">Вигини</span>
+          </div>
+          <div class="dropdown">
+            <div class="tool-column">
+              <button class="tool-btn-icon" onclick="document.getElementById('layer-menu').classList.toggle('show');event.stopPropagation()" id="btn-layers" title="Шари">
+                <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><polygon points="12 2 2 7 12 12 22 7 12 2"></polygon><polyline points="2 17 12 22 22 17"></polyline><polyline points="2 12 12 17 22 12"></polyline></svg>
+              </button>
+              <span class="tool-label">Шари</span>
+            </div>
+            <div id="layer-menu" class="dropdown-content" style="bottom: 100%; left: 0; margin-bottom: 5px;">
               <button onclick="setLayer('osm')" id="btn-layer-osm">✓ 🗺️ Карта</button>
               <button onclick="setLayer('sat')" id="btn-layer-sat">🛰️ Супутник</button>
               <button onclick="setLayer('hyb')" id="btn-layer-hyb">🛰️🏷️ Гібрид</button>
             </div>
           </div>
-          
-          <div class="search-container" title="Пошук (Місто, вулиця...)">
-            <input type="text" id="loc-search-input" placeholder="Пошук локації..." onkeypress="if(event.key === 'Enter') searchLocation()">
-            <button onclick="searchLocation()" title="Знайти">
-              <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
-                <circle cx="11" cy="11" r="8"></circle>
-                <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
-              </svg>
-            </button>
+
+          <div class="tool-group-divider"></div>
+
+          <div class="search-indicator-labeled" style="position: relative;">
+            <div class="tool-column">
+              <div class="search-container" title="Пошук (Місто, вулиця...)">
+                <input type="text" id="loc-search-input" placeholder="Шукати..." autocomplete="off" oninput="handleSearchInput(event)" onkeypress="if(event.key === 'Enter') searchLocation()">
+                <button onclick="searchLocation()" title="Знайти">
+                  <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+                    <circle cx="11" cy="11" r="8"></circle>
+                    <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+                  </svg>
+                </button>
+              </div>
+              <span class="tool-label">Пошук локації</span>
+            </div>
           </div>
 
-          <div class="zoom-indicator">
-            <button class="zoom-btn" id="zoom-minus" title="Зменшити">−</button>
-            <div class="zoom-slider-wrap">
-              <span id="zoom-val">${map.getZoom()}</span>
-              <input type="range" id="zoom-slider" min="${map.getMinZoom()}" max="${map.getMaxZoom()}" value="${map.getZoom()}" step="1" list="zoom-ticks">
-              <datalist id="zoom-ticks">
-                ${Array.from({ length: 11 }, (_, i) => 10 + i).map(z => `<option value="${z}"></option>`).join("")}
-              </datalist>
+          <div class="tool-group-divider"></div>
+
+          <!-- Група 3: Масштаб -->
+          <div class="labeled-group">
+            <div class="tool-column">
+              <div class="zoom-indicator">
+                <button class="zoom-btn" id="zoom-minus" title="Зменшити">−</button>
+                <div class="zoom-slider-wrap">
+                  <span id="zoom-val" style="font-size: 10px; line-height: 1;">${map.getZoom()}</span>
+                  <input type="range" id="zoom-slider" min="${map.getMinZoom()}" max="${map.getMaxZoom()}" value="${map.getZoom()}" step="1">
+                </div>
+                <button class="zoom-btn" id="zoom-plus" title="Збільшити">+</button>
+              </div>
+              <span class="tool-label">Масштабування</span>
             </div>
-            <button class="zoom-btn" id="zoom-plus" title="Збільшити">+</button>
           </div>
-          <button onclick="openOnboarding()" id="btn-help-pulse" title="Онбординг: основи роботи, типи сплітерів, поради">
-            ?
-          </button>
+
+          <div class="tool-group-divider"></div>
+          
+          <!-- Група 4: Додатково -->
+          <div class="tool-column">
+            <button class="tool-btn-icon" onclick="openOnboarding()" id="btn-help-pulse" title="Онбординг: основи роботи, типи сплітерів, поради">
+              <svg width="18" height="18" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><circle cx="12" cy="12" r="10"></circle><path d="M9.09 9a3 3 0 0 1 5.83 1c0 2-3 3-3 3"></path><line x1="12" y1="17" x2="12.01" y2="17"></line></svg>
+            </button>
+            <span class="tool-label">Help</span>
+          </div>
         </div>
       </div>`;
     
@@ -385,7 +403,11 @@ export function toggleEditMode() {
   const wasEditing = map.pm.globalEditModeEnabled();
   map.pm.toggleGlobalEditMode();
   const btn = document.getElementById("btn-edit");
-  if (btn) btn.classList.toggle("active", map.pm.globalEditModeEnabled());
+  if (btn) {
+    const isEditing = map.pm.globalEditModeEnabled();
+    btn.classList.toggle("active-btn", isEditing);
+    btn.style.color = isEditing ? "#58a6ff" : "#fff";
+  }
   // Після виходу з режиму згинання — оновити підсвітку магістралі по нових координатах
   if (wasEditing && selNode) {
     highlightSignalPath(selNode);
@@ -1908,11 +1930,89 @@ function deleteNode(n) {
  * Public Location Search Function using Nominatim API (OpenStreetMap)
  * Called from bottom toolbar input.
  */
+let searchTimeout = null;
+
+/**
+ * Handle input for Nominatim Autocomplete
+ * @param {Event} e
+ */
+window.handleSearchInput = function(e) {
+  const input = /** @type {HTMLInputElement} */ (document.getElementById("loc-search-input"));
+  const query = input.value.trim();
+  
+  let dropdown = document.getElementById("search-autocomplete-list");
+  if (!dropdown) {
+    dropdown = document.createElement("div");
+    dropdown.id = "search-autocomplete-list";
+    dropdown.className = "search-autocomplete";
+    input.parentElement?.appendChild(dropdown);
+  }
+
+  if (!query || query.length < 3) {
+    dropdown.style.display = "none";
+    return;
+  }
+
+  if (searchTimeout) clearTimeout(searchTimeout);
+  
+  searchTimeout = setTimeout(() => {
+    const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=5&addressdetails=1&countrycodes=ua&accept-language=uk`;
+    fetch(url)
+      .then(res => res.json())
+      .then(data => {
+        dropdown.innerHTML = "";
+        if (data && data.length > 0) {
+          dropdown.style.display = "flex";
+          data.forEach((/** @type {any} */ item) => {
+            const div = document.createElement("div");
+            div.className = "search-autocomplete-item";
+            
+            // Format a nice display string
+            const addr = item.address || {};
+            const city = addr.city || addr.town || addr.village || "";
+            const road = addr.road || "";
+            const house = addr.house_number || "";
+            
+            let labelParts = [];
+            if (road) labelParts.push(`${road}${house ? ' ' + house : ''}`);
+            if (city) labelParts.push(city);
+            const mainLabel = labelParts.length > 0 ? labelParts.join(', ') : item.display_name.split(',')[0];
+            
+            div.innerHTML = `<span>📍</span> <span>${mainLabel} <span style="color:#8b949e; font-size:10px;">${item.display_name.split(',').slice(-2).join(',')}</span></span>`;
+            
+            div.onclick = () => {
+              input.value = mainLabel;
+              dropdown.style.display = "none";
+              const lat = parseFloat(item.lat);
+              const lon = parseFloat(item.lon);
+              map.flyTo([lat, lon], 17, { animate: true, duration: 1.5 });
+              input.style.color = "#3fb950"; 
+              setTimeout(() => { input.style.color = ""; input.blur(); }, 2000);
+            };
+            dropdown.appendChild(div);
+          });
+        } else {
+          dropdown.style.display = "none";
+        }
+      })
+      .catch(err => {
+        console.error("Помилка автодоповнення:", err);
+      });
+  }, 400); // 400ms debounce
+};
+
+/**
+ * Public Location Search Function using Nominatim API (OpenStreetMap)
+ * Called from bottom toolbar input.
+ */
 function searchLocation() {
   const input = /** @type {HTMLInputElement} */ (document.getElementById("loc-search-input"));
   if (!input) return;
   const query = input.value.trim();
   if (!query) return;
+
+  const dropdown = document.getElementById("search-autocomplete-list");
+  if (dropdown) dropdown.style.display = "none";
 
   // Visual feedback: searching state
   const originalColor = input.style.color;
@@ -1928,7 +2028,7 @@ function searchLocation() {
         const lat = parseFloat(data[0].lat);
         const lon = parseFloat(data[0].lon);
         // Fly map to new coordinates
-        map.flyTo([lat, lon], 16, { animate: true, duration: 1.5 });
+        map.flyTo([lat, lon], 17, { animate: true, duration: 1.5 });
         input.style.color = "#3fb950"; // Green success
         setTimeout(() => { input.style.color = originalColor; input.blur(); }, 2000);
       } else {
@@ -1942,6 +2042,15 @@ function searchLocation() {
       setTimeout(() => (input.style.color = originalColor), 2000);
     });
 }
+
+// Close autocomplete when clicking outside
+document.addEventListener("click", (e) => {
+  const input = document.getElementById("loc-search-input");
+  const dropdown = document.getElementById("search-autocomplete-list");
+  if (dropdown && input && /** @type {any} */ (e.target) !== input && !dropdown.contains(/** @type {any} */ (e.target))) {
+    dropdown.style.display = "none";
+  }
+});
 
 function deleteConn(c) {
   if (!c) return;
