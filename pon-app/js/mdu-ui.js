@@ -68,6 +68,65 @@ function getIncomingCorePath(targetMdu, cableId, coreIndex) {
     return "";
 }
 
+function getSplitterColor(type, ratio, label) {
+    let index = 0;
+    if (label) {
+        const match = label.match(/#(\d+)/);
+        if (match) index = parseInt(match[1]);
+    }
+    
+    // Bright distinct palette for splitters (avoiding reds that look like errors)
+    const brightColors = [
+        "#0d6efd", "#fd7e14", "#198754", "#20c997", 
+        "#ffc107", "#6f42c1", "#d63384", "#0dcaf0", 
+        "#3fb950", "#a371f7", "#e3b341", "#055160"
+    ];
+
+    if (index > 0) {
+        let hash = 0;
+        const str = `${type}_${ratio}_${index}`;
+        for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        return brightColors[Math.abs(hash) % brightColors.length];
+    }
+    
+    if (type === "PLC") {
+        if (ratio === "1x2") return "#a371f7"; // Purple
+        if (ratio === "1x4") return "#3fb950"; // Green
+        if (ratio === "1x8") return "#d29922"; // Orange
+        if (ratio === "1x16") return "#0dcaf0"; // Cyan (replaced red)
+        if (ratio === "1x32") return "#6f42c1"; // Violet (replaced dark red)
+        return "#c084fc";
+    }
+
+    if (type === "FBT") {
+        const val = parseInt(ratio.split("/")[0]);
+        if (!isNaN(val)) {
+            if (val === 5) return "#0dcaf0"; // Aqua
+            if (val === 10) return "#d63384"; // Rose
+            if (val === 15) return "#fd7e14"; // Orange
+            if (val === 20) return "#198754"; // Green
+            if (val === 25) return "#6f42c1"; // Violet
+            if (val === 30) return "#20c997"; // Teal (replaced red)
+            if (val === 35) return "#ffc107"; // Yellow
+            if (val === 40) return "#0d6efd"; // Blue
+            if (val === 45) return "#a371f7"; // Purple
+            if (val === 50) return "#ffffff"; // White
+            
+            return brightColors[(val * 3) % brightColors.length];
+        }
+    }
+    
+    return "#58a6ff"; // Default FBT Blue
+}
+
+function getSplitterIcon(type, ratio, location = "main") {
+   // Location shapes: Attic/Main = ⬢ (Hexagon), Floor = ⯁ (Black Diamond)
+   const locShapeIcon = location === "floor" ? "⯁" : "⬢";
+   return locShapeIcon; 
+}
+
 // Modal HTML generation
 function createMDUModalContainer() {
   let modal = document.getElementById("mdu-topology-modal");
@@ -159,35 +218,35 @@ function renderMDUUI(node) {
             <div style="font-weight:bold; color:#58a6ff; font-size:12px; text-align:center; padding: 4px; background: #30363d;">Від: ${c.from.name} (${typeLabel})</div>
             <div style="display: grid; grid-template-columns: repeat(8, 1fr); gap: 1px; background: #30363d; border-top: 1px solid #30363d;">`;
             
-        if (c.type === "cable") {
-            for(let i=0; i<cores; i++) {
-                let coreSigHtml = "";
-                let s = null;
-                if (c.from.type === "OLT") {
-                    const oltXc = (c.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
-                    if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
-                } else if (c.from.type === "FOB") {
-                    const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
-                    if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
-                }
-                
-                let sigStr = "";
-                if (s !== null) {
-                    const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
-                    coreSigHtml = `<span style="color:${sColor}; font-weight:bold;">⚡ ${s.toFixed(1)} дБ</span>`;
-                    sigStr = ` ⚡${s.toFixed(1)}дБ`;
-                }
+            if (c.type === "cable") {
+                for(let i=0; i<cores; i++) {
+                    let sigStr = "";
+                    let s = null;
+                    if (c.from.type === "OLT") {
+                        const oltXc = (c.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
+                        if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
+                    } else if (c.from.type === "FOB") {
+                        const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
+                        if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
+                    }
+                    if(s !== null) sigStr = ` ⚡${s.toFixed(1)}дБ`;
 
-                const pathStr = getIncomingCorePath(node, c.id, i);
-                const pathLabel = pathStr ? ` [${pathStr}]` : ``;
-                
-                sourceOptions += `<option value="CABLE|${c.id}|${i}">🟦 Вхід: ${c.from.name} - Жила ${i+1}${sigStr}${pathLabel}</option>`;
-                
-                inHtml += `<div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:4px 8px; font-size:11px;">
-                    <div style="display:flex; align-items:center;">${getFiberDotHtml(i)} Жила ${i+1}</div>
-                    ${coreSigHtml}
-                </div>`;
-            }
+                    const pathStr = getIncomingCorePath(node, c.id, i);
+                    const pathLabel = pathStr ? ` [${pathStr}]` : ``;
+                    
+                    sourceOptions += `<option value="CABLE|${c.id}|${i}" style="color:#58a6ff" data-color="#58a6ff">◼ Вхід: ${c.from.name} - Жила ${i+1}${sigStr}${pathLabel}</option>`;
+                    
+                    let coreSigHtml = "";
+                    if (s !== null) {
+                        const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
+                        coreSigHtml = `<span style="color:${sColor}; font-weight:bold;">⚡ ${s.toFixed(1)} дБ</span>`;
+                    }
+
+                    inHtml += `<div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:4px 8px; font-size:11px;">
+                        <div style="display:flex; align-items:center;">${getFiberDotHtml(i)} Жила ${i+1}</div>
+                        ${coreSigHtml}
+                    </div>`;
+                }
             
             const remainder = cores % 8;
             if (remainder !== 0) {
@@ -197,11 +256,9 @@ function renderMDUUI(node) {
                 }
             }
         } else if (c.type === "patchcord") {
-            // Patchcords don't use core math recursively yet but we'll list them
             let sigStr = "";
             let coreSigHtml = "";
             if (c.from.type === "FOB") {
-                // traceOpticalPath(fob, targetType, targetId, targetCore)
                 const upstream = traceOpticalPath(c.from, "PATCHCORD", c.id, 0);
                 if (upstream !== null) {
                     let s = upstream - (connKm(c) * FIBER_DB_KM);
@@ -210,7 +267,7 @@ function renderMDUUI(node) {
                     sigStr = ` ⚡${s.toFixed(1)}дБ`;
                 }
             }
-            sourceOptions += `<option value="PATCHCORD|${c.id}|0">🟨 Вхід: ${typeLabel} ${c.from.name}${sigStr}</option>`;
+            sourceOptions += `<option value="PATCHCORD|${c.id}|0" style="color:#e3b341" data-color="#e3b341">● Вхід: Патчкорд від ${c.from.name}${sigStr}</option>`;
             
             inHtml += `<div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:4px 8px; font-size:11px; grid-column: 1 / -1;">
                 <div style="display:flex; align-items:center;">
@@ -244,14 +301,40 @@ function renderMDUUI(node) {
         <button onclick="window.addMDUSplitter('${node.id}', 'main')" style="background:#2ea043; border:none; color:white; padding:4px 10px; border-radius:4px; cursor:pointer; font-size:11px;">+ Додати</button>
     </div>`;
     
+    // Group splitters to enumerate them
+    const allSplitters = [...node.mainBox.splitters];
+    node.floorBoxes.forEach(fb => allSplitters.push(...fb.splitters));
+    
+    const spCounts = {};
+    const spLabels = {};
+    allSplitters.forEach(sp => {
+        const key = `${sp.type}_${sp.ratio}`;
+        spCounts[key] = (spCounts[key] || 0) + 1;
+    });
+
+    const spCurrent = {};
+    allSplitters.forEach(sp => {
+        const key = `${sp.type}_${sp.ratio}`;
+        if (spCounts[key] > 1) {
+            spCurrent[key] = (spCurrent[key] || 0) + 1;
+            spLabels[sp.id] = `${sp.type} ${sp.ratio} #${spCurrent[key]}`;
+        } else {
+            spLabels[sp.id] = `${sp.type} ${sp.ratio}`;
+        }
+    });
+
     // Make attic splitters available as sources
     node.mainBox.splitters.forEach(sp => {
+        const label = spLabels[sp.id];
+        const color = getSplitterColor(sp.type, sp.ratio, label);
+        const icon = getSplitterIcon(sp.type, sp.ratio, "main");
+        
         if (sp.type === "PLC") {
             const ratio = parseInt(sp.ratio.split('x')[1]) || 2;
-            for(let i=1; i<=ratio; i++) sourceOptions += `<option value="SPLITTER|${sp.id}|${i}">Горище: PLC ${sp.ratio} (Вихід ${i})</option>`;
+            for(let i=1; i<=ratio; i++) sourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}">${icon} Горище: ${label} (Вихід ${i})</option>`;
         } else if (sp.type === "FBT") {
-            sourceOptions += `<option value="SPLITTER|${sp.id}|X">Горище: FBT ${sp.ratio} (Гілка X)</option>`;
-            sourceOptions += `<option value="SPLITTER|${sp.id}|Y">Горище: FBT ${sp.ratio} (Гілка Y)</option>`;
+            sourceOptions += `<option value="SPLITTER|${sp.id}|X" style="color:${color}" data-color="${color}">${icon} Горище: ${label} (Гілка X)</option>`;
+            sourceOptions += `<option value="SPLITTER|${sp.id}|Y" style="color:${color}" data-color="${color}">${icon} Горище: ${label} (Гілка Y)</option>`;
         }
     });
 
@@ -269,13 +352,16 @@ function renderMDUUI(node) {
         // Prevent self-looping
         sOpt = sOpt.replace(new RegExp(`<option value="SPLITTER\\|${sp.id}\\|[^>]+>.*?<\\\/option>`, "g"), "");
 
+        const spLbl = spLabels[sp.id];
+        const spColor = getSplitterColor(sp.type, sp.ratio, spLbl);
+        
         atticHtml += `<div style="background:#21262d; padding:10px; border-radius:4px; border:1px solid #30363d; margin-bottom:10px;">
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                <b style="color:#d29922; font-size:12px;">Головний: ${sp.type} ${sp.ratio}</b>
+                <b style="color:${spColor}; font-size:12px;">${getSplitterIcon(sp.type, sp.ratio, 'main')} ${spLbl}</b>
                 <span onclick="window.removeMDUSplitter('${node.id}', 'main', '${sp.id}')" style="color:#f85149; cursor:pointer; font-size:12px;" title="Видалити">✖</span>
             </div>
-            <div style="font-size:11px; margin-bottom:4px; color:#8b949e">Вхід (IN):</div>
-            <select class="mdu-cross-main" data-id="${sp.id}" style="width:100%; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px; padding:2px;">
+            <div style="font-size:11px; margin-bottom:4px; color:#c9d1d9">Вхід (IN):</div>
+            <select class="mdu-cross-select mdu-cross-main" data-id="${sp.id}" data-targetname="Головний ${spLbl}" style="width:100%; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px; padding:2px;" onchange="window.checkMDUPorts(this)">
                 ${sOpt}
             </select>
         </div>`;
@@ -290,38 +376,46 @@ function renderMDUUI(node) {
     let flatSourceOptions = sourceOptions;
     
     node.mainBox.splitters.forEach(sp => {
+        const label = spLabels[sp.id];
+        const color = getSplitterColor(sp.type, sp.ratio, label);
+        const icon = getSplitterIcon(sp.type, sp.ratio, "main");
+        
         if(sp.type === "FBT") {
             const sx = sigSplitter(node, sp.id, "X");
             const sy = sigSplitter(node, sp.id, "Y");
             const sxStr = sx !== null ? ` ⚡${sx.toFixed(1)}дБ` : "";
             const syStr = sy !== null ? ` ⚡${sy.toFixed(1)}дБ` : "";
-            flatSourceOptions += `<option value="SPLITTER|${sp.id}|X">🔀 Головний ${sp.type} ${sp.ratio} (X)${sxStr}</option>`;
-            flatSourceOptions += `<option value="SPLITTER|${sp.id}|Y">🔀 Головний ${sp.type} ${sp.ratio} (Y)${syStr}</option>`;
+            flatSourceOptions += `<option value="SPLITTER|${sp.id}|X" style="color:${color}" data-color="${color}">${icon} Головний ${label} (X)${sxStr}</option>`;
+            flatSourceOptions += `<option value="SPLITTER|${sp.id}|Y" style="color:${color}" data-color="${color}">${icon} Головний ${label} (Y)${syStr}</option>`;
         } else {
             const s = sigSplitter(node, sp.id);
             const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
             const outs = parseInt(sp.ratio.split("x")[1]) || 2;
             for(let i=1; i<=outs; i++) {
-                flatSourceOptions += `<option value="SPLITTER|${sp.id}|${i}">📊 Головний ${sp.type} ${sp.ratio} (Вих. ${i})${sStr}</option>`;
+                flatSourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}">${icon} Головний ${label} (Вих. ${i})${sStr}</option>`;
             }
         }
     });
 
     node.floorBoxes.forEach(fb => {
         fb.splitters.forEach(sp => {
+            const label = spLabels[sp.id];
+            const color = getSplitterColor(sp.type, sp.ratio, label);
+            const icon = getSplitterIcon(sp.type, sp.ratio, "floor");
+            
             if(sp.type === "FBT") {
                  const sx = sigSplitter(node, sp.id, "X");
                  const sy = sigSplitter(node, sp.id, "Y");
                  const sxStr = sx !== null ? ` ⚡${sx.toFixed(1)}дБ` : "";
                  const syStr = sy !== null ? ` ⚡${sy.toFixed(1)}дБ` : "";
-                 flatSourceOptions += `<option value="SPLITTER|${sp.id}|X">🔀 Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${sp.type} ${sp.ratio} (X)${sxStr}</option>`;
-                 flatSourceOptions += `<option value="SPLITTER|${sp.id}|Y">🔀 Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${sp.type} ${sp.ratio} (Y)${syStr}</option>`;
+                 flatSourceOptions += `<option value="SPLITTER|${sp.id}|X" style="color:${color}" data-color="${color}">${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (X)${sxStr}</option>`;
+                 flatSourceOptions += `<option value="SPLITTER|${sp.id}|Y" style="color:${color}" data-color="${color}">${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (Y)${syStr}</option>`;
             } else {
                 const s = sigSplitter(node, sp.id);
                 const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
                 const outs = parseInt(sp.ratio.split("x")[1]) || 2;
                 for(let i=1; i<=outs; i++) {
-                    flatSourceOptions += `<option value="SPLITTER|${sp.id}|${i}">📊 Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${sp.type} ${sp.ratio} (Вих. ${i})${sStr}</option>`;
+                    flatSourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}">${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (Вих. ${i})${sStr}</option>`;
                 }
             }
         });
@@ -349,7 +443,7 @@ function renderMDUUI(node) {
                 <div style="font-weight:bold; color:#f0f6fc; font-size:13px;">Під'їзд ${entrance}</div>
                 <div style="display:flex; gap:4px;">
                     <select id="mdu-addsp-f-${entrance}" style="background:#161b22; color:#c9d1d9; border:1px solid #30363d; font-size:11px; padding:2px;">`;
-        for(let f=node.floors; f>=1; f--) floorHtml += `<option value="${f}">Пов. ${f}</option>`;
+        for(let f=node.floors; f>=1; f--) floorHtml += `<option value="${f}">Поверх ${f}</option>`;
         floorHtml += `      </select>
                     <select id="mdu-addsp-t-${entrance}" style="background:#161b22; color:#c9d1d9; border:1px solid #30363d; font-size:11px; padding:2px;">
                         <option value="PLC 1x4">PLC 1x4</option>
@@ -380,12 +474,15 @@ function renderMDUUI(node) {
                     
                     sOpt = sOpt.replace(new RegExp(`<option value="SPLITTER\\|${sp.id}\\|[^>]+>.*?<\\\/option>`, "g"), "");
 
+                    const spLbl = spLabels[sp.id];
+                    const spColor = getSplitterColor(sp.type, sp.ratio, spLbl);
+
                     floorHtml += `<div style="background:#21262d; padding:8px; border-radius:4px; border:1px solid #30363d; margin-bottom:6px;">
                         <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                            <span style="font-size:11px; font-weight:bold">${sp.type} ${sp.ratio}</span>
+                            <span style="font-size:11px; font-weight:bold; color:${spColor}">◆ ${spLbl}</span>
                             <span onclick="window.removeMDUSplitter('${node.id}', 'floor', '${sp.id}', ${floorNum}, ${entrance})" style="color:#f85149; cursor:pointer; font-size:12px;" title="Видалити">✖</span>
                         </div>
-                        <select class="mdu-cross-floor" data-floor="${floorNum}" data-entrance="${entrance}" data-id="${sp.id}" style="width:100%; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:10px; padding:2px;">
+                        <select class="mdu-cross-select mdu-cross-floor" data-floor="${floorNum}" data-entrance="${entrance}" data-id="${sp.id}" data-targetname="Поверх ${floorNum} Під'їзд ${entrance} ${spLbl}" style="width:100%; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:10px; padding:2px;" onchange="window.checkMDUPorts(this)">
                             ${sOpt}
                         </select>
                     </div>`;
@@ -413,7 +510,7 @@ function renderMDUUI(node) {
                 
                 floorHtml += `<div style="background:#0d1117; padding:4px; border:1px solid #30363d; border-radius:3px; font-size:10px; display:flex; flex-direction:column; gap:2px;">
                     <span style="color:#d29922;">Кв. ${flatNum}</span>
-                    <select class="mdu-cross-flat" data-flat="${flatNum}" style="width:100%; background:#161b22; color:#c9d1d9; border:1px solid #30363d; font-size:9px; padding:1px;">
+                    <select class="mdu-cross-select mdu-cross-flat" data-flat="${flatNum}" data-targetname="Кв. ${flatNum}" style="width:100%; background:#161b22; color:#c9d1d9; border:1px solid #30363d; font-size:9px; padding:1px;" onchange="window.checkMDUPorts(this)">
                         ${sOpt}
                     </select>
                 </div>`;
@@ -436,6 +533,11 @@ function renderMDUUI(node) {
             ${floorHtml}
         ${bottomWrapperEnd}
     </div>`;
+
+    // Apply validation styling right away
+    setTimeout(() => {
+        if (typeof window.checkMDUPorts === "function") window.checkMDUPorts(null);
+    }, 10);
 }
 
 function saveMDUState(node) {
@@ -573,3 +675,60 @@ export function initMDUWindowCommands() {
         renderMDUUI(node);
     };
 }
+
+window.checkMDUPorts = function(selectElement) {
+    /** @type {NodeListOf<HTMLSelectElement>} */
+    const allSelects = document.querySelectorAll(".mdu-cross-select");
+    const selEl = /** @type {HTMLSelectElement} */ (selectElement);
+    
+    // 1. Clear duplicates if this was a new selection (Stealing logic)
+    if (selEl && selEl.value !== "") {
+        let duplicateFound = false;
+        allSelects.forEach(sel => {
+            if (sel !== selEl && sel.value === selEl.value) {
+                sel.value = ""; // Clear previous selection
+                duplicateFound = true;
+            }
+        });
+        if (duplicateFound) {
+            selEl.style.border = "1px solid #dc3545"; // Flash red
+            setTimeout(() => selEl.style.border = "1px solid #30363d", 1000);
+        }
+    }
+
+    // 2. Re-evaluate all dropdowns to update disabled/busy states dynamically
+    const usedVals = new Set();
+    allSelects.forEach(sel => {
+        if (sel.value !== "") usedVals.add(sel.value);
+    });
+
+    allSelects.forEach(sel => {
+        const options = sel.querySelectorAll("option");
+        options.forEach(opt => {
+            if (opt.value === "") return; // Skip -- Не підключено --
+            
+            // Clean up the text content if it already has [Зайнято: ...]
+            let baseText = opt.textContent.replace(/ \[(Зайнято|Використовується):.*?\]|\s*\(ЗАЙНЯТО\)/g, "");
+            
+            if (opt.value === sel.value) {
+                // Currently selected here
+                opt.disabled = false;
+                opt.textContent = baseText;
+                opt.style.color = opt.dataset.color || "";
+            } else if (usedVals.has(opt.value)) {
+                // Used SOMEWHERE ELSE
+                let usingSelect = Array.from(allSelects).find(s => s !== sel && s.value === opt.value);
+                let usingName = usingSelect ? usingSelect.getAttribute("data-targetname") : "Іншим";
+                
+                opt.disabled = false; // ALLOW reassignment ("stealing")
+                opt.textContent = baseText + ` [Зайнято: ${usingName}]`;
+                opt.style.color = "#ff5555";
+            } else {
+                // Free
+                opt.disabled = false;
+                opt.textContent = baseText;
+                opt.style.color = opt.dataset.color || "";
+            }
+        });
+    });
+};

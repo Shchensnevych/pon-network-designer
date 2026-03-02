@@ -77,6 +77,65 @@ function getFiberDotHtml(index) {
     return `<span style="display:inline-block; width:10px; height:10px; border-radius:50%; background:${c}; ${border} margin-right:6px;" title="${FIBER_NAMES[index % 12]}"></span>`;
 }
 
+function getSplitterColor(type, ratio, label) {
+    let index = 0;
+    if (label) {
+        const match = label.match(/#(\d+)/);
+        if (match) index = parseInt(match[1]);
+    }
+    
+    // Bright distinct palette for splitters (avoiding reds that look like errors)
+    const brightColors = [
+        "#0d6efd", "#fd7e14", "#198754", "#20c997", 
+        "#ffc107", "#6f42c1", "#d63384", "#0dcaf0", 
+        "#3fb950", "#a371f7", "#e3b341", "#055160"
+    ];
+
+    if (index > 0) {
+        let hash = 0;
+        const str = `${type}_${ratio}_${index}`;
+        for (let i = 0; i < str.length; i++) {
+            hash = str.charCodeAt(i) + ((hash << 5) - hash);
+        }
+        return brightColors[Math.abs(hash) % brightColors.length];
+    }
+    
+    if (type === "PLC") {
+        if (ratio === "1x2") return "#a371f7"; // Purple
+        if (ratio === "1x4") return "#3fb950"; // Green
+        if (ratio === "1x8") return "#d29922"; // Orange
+        if (ratio === "1x16") return "#0dcaf0"; // Cyan
+        if (ratio === "1x32") return "#6f42c1"; // Violet
+        return "#c084fc";
+    }
+
+    if (type === "FBT") {
+        const val = parseInt(ratio.split("/")[0]);
+        if (!isNaN(val)) {
+            if (val === 5) return "#0dcaf0"; // Aqua
+            if (val === 10) return "#d63384"; // Rose
+            if (val === 15) return "#fd7e14"; // Orange
+            if (val === 20) return "#198754"; // Green
+            if (val === 25) return "#6f42c1"; // Violet
+            if (val === 30) return "#20c997"; // Teal
+            if (val === 35) return "#ffc107"; // Yellow
+            if (val === 40) return "#0d6efd"; // Blue
+            if (val === 45) return "#a371f7"; // Purple
+            if (val === 50) return "#ffffff"; // White
+            
+            return brightColors[(val * 3) % brightColors.length];
+        }
+    }
+    
+    return "#58a6ff"; // Default FBT Blue
+}
+
+function getSplitterIcon(type, ratio, location = "main") {
+   // Location shapes: Attic/Main = ⬢ (Hexagon), Floor = ⯁ (Black Diamond)
+   const locShapeIcon = location === "floor" ? "⯁" : "⬢";
+   return locShapeIcon; 
+}
+
 // ═══════════════════════════════════════════════
 //  OLT PATCH PANEL
 // ═══════════════════════════════════════════════
@@ -306,8 +365,19 @@ function renderFOBCrossUI(node) {
 
             const pathStr = getIncomingCorePath(node, c.id, i);
             const pathLabel = pathStr ? ` [${pathStr}]` : ``;
-            sourceOptions += `<option value="CABLE|${c.id}|${i}">🟦 Вхід: ${c.from.name} - Жила ${i+1}${sigStr}${pathLabel}</option>`;
+            sourceOptions += `<option value="CABLE|${c.id}|${i}" style="color:#58a6ff" data-color="#58a6ff">◼ Вхід: ${c.from.name} - Жила ${i+1}${sigStr}${pathLabel}</option>`;
         }
+    });
+    const inPatchcords = conns.filter(c => c.to === node && c.type === "patchcord");
+    inPatchcords.forEach(c => {
+        let sigStr = "";
+        let s = null;
+        if (c.from.type === "FOB") {
+            const upstream = traceOpticalPath(c.from, "PATCHCORD", c.id, 0);
+            if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
+        }
+        if (s !== null) sigStr = ` ⚡${s.toFixed(1)}дБ`;
+        sourceOptions += `<option value="PATCHCORD|${c.id}|0" style="color:#e3b341" data-color="#e3b341">● Вхід: Патчкорд від ${c.from.name}${sigStr}</option>`;
     });
 
     // Group splitters by type & ratio to enumerate them
@@ -333,19 +403,22 @@ function renderFOBCrossUI(node) {
 
     splitters.forEach(sp => {
         const label = spLabels[sp.id];
+        const color = getSplitterColor(sp.type, sp.ratio, label);
+        const icon = getSplitterIcon(sp.type, sp.ratio);
+        
         if (sp.type === "FBT") {
             const sx = sigSplitter(node, sp.id, "X");
             const sy = sigSplitter(node, sp.id, "Y");
             const sxStr = sx !== null ? ` ⚡${sx.toFixed(1)}дБ` : "";
             const syStr = sy !== null ? ` ⚡${sy.toFixed(1)}дБ` : "";
-            sourceOptions += `<option value="SPLITTER|${sp.id}|X">🔀 Від: ${label} (Гілка X)${sxStr}</option>`;
-            sourceOptions += `<option value="SPLITTER|${sp.id}|Y">🔀 Від: ${label} (Гілка Y)${syStr}</option>`;
+            sourceOptions += `<option value="SPLITTER|${sp.id}|X" style="color:${color}" data-color="${color}">${icon} Від: ${label} (Гілка X)${sxStr}</option>`;
+            sourceOptions += `<option value="SPLITTER|${sp.id}|Y" style="color:${color}" data-color="${color}">${icon} Від: ${label} (Гілка Y)${syStr}</option>`;
         } else if (sp.type === "PLC") {
             const s = sigSplitter(node, sp.id);
             const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
             const plcOuts = parseInt(sp.ratio.split("x")[1]) || 2;
             for(let i=1; i<=plcOuts; i++) {
-                sourceOptions += `<option value="SPLITTER|${sp.id}|${i}">📊 Від: ${label} (Вихід ${i})${sStr}</option>`;
+                sourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}">${icon} Від: ${label} (Вихід ${i})${sStr}</option>`;
             }
         }
     });
@@ -356,15 +429,19 @@ function renderFOBCrossUI(node) {
         const sy = sigFBT(node, "Y");
         const sxStr = sx !== null ? ` ⚡${sx.toFixed(1)}дБ` : "";
         const syStr = sy !== null ? ` ⚡${sy.toFixed(1)}дБ` : "";
-        sourceOptions += `<option value="SPLITTER|legacy_fbt|X">🔀 Від: FBT ${node.fbtType} (Гілка X)${sxStr}</option>`;
-        sourceOptions += `<option value="SPLITTER|legacy_fbt|Y">🔀 Від: FBT ${node.fbtType} (Гілка Y)${syStr}</option>`;
+        const color = getSplitterColor("FBT", node.fbtType);
+        const icon = getSplitterIcon("FBT", node.fbtType);
+        sourceOptions += `<option value="SPLITTER|legacy_fbt|X" style="color:${color}" data-color="${color}">${icon} Від: FBT ${node.fbtType} (Гілка X)${sxStr}</option>`;
+        sourceOptions += `<option value="SPLITTER|legacy_fbt|Y" style="color:${color}" data-color="${color}">${icon} Від: FBT ${node.fbtType} (Гілка Y)${syStr}</option>`;
     }
     if (node.plcType && !splitters.some(s => s.id === "legacy_plc")) {
         const s = sigPLC(node);
         const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
         const plcOuts = parseInt(node.plcType.split("x")[1]) || 2;
+        const color = getSplitterColor("PLC", node.plcType);
+        const icon = getSplitterIcon("PLC", node.plcType);
         for(let i=1; i<=plcOuts; i++) {
-            sourceOptions += `<option value="SPLITTER|legacy_plc|${i}">📊 Від: PLC ${node.plcType} (Вихід ${i})${sStr}</option>`;
+            sourceOptions += `<option value="SPLITTER|legacy_plc|${i}" style="color:${color}" data-color="${color}">${icon} Від: PLC ${node.plcType} (Вихід ${i})${sStr}</option>`;
         }
     }
 
@@ -420,7 +497,7 @@ function renderFOBCrossUI(node) {
     let midHtml = `<div style="flex: 1; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto;">
         <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">📦 Сплітери</h3>`;
         
-    const buildSplitterBox = (id, type, name) => {
+    const buildSplitterBox = (id, type, name, ratio) => {
         const existing = (node.crossConnects || []).find(xc => xc.toType === "SPLITTER" && xc.toId === id);
         const selVal = existing ? existing.fromType+"|"+existing.fromId+"|"+(existing.fromCore !== undefined ? existing.fromCore : (existing.fromBranch || "")) : "";
         
@@ -433,6 +510,9 @@ function renderFOBCrossUI(node) {
         if (id === "legacy_fbt") safeSourceOptions = safeSourceOptions.replace(/<option value="SPLITTER\|legacy_fbt[^>]+>.*?<\/option>/g, "");
         if (id === "legacy_plc") safeSourceOptions = safeSourceOptions.replace(/<option value="SPLITTER\|legacy_plc[^>]+>.*?<\/option>/g, "");
         
+        const spLbl = spLabels[id] || `${type} ${ratio}`;
+        let color = getSplitterColor(type, ratio, spLbl);
+        
         let sOpt = safeSourceOptions;
         if (selVal) {
             sOpt = sOpt.replace(`value="${selVal}"`, `value="${selVal}" selected`);
@@ -440,23 +520,25 @@ function renderFOBCrossUI(node) {
             sOpt = sOpt.replace(`<option value="">`, `<option value="" selected>`);
         }
         
-        return `<div style="background:#21262d; padding:10px; border-radius:4px; border:1px solid #30363d; margin-bottom:10px;">
-            <div style="font-weight:bold; color:#58a6ff; margin-bottom:6px;">${name}</div>
-            <div style="display:flex; align-items:center; gap:8px;">
-                <span style="font-size:12px;">Вхід (IN):</span>
-                <select class="fob-cross" data-totype="SPLITTER" data-toid="${id}" data-targetname="${name}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
-                    ${sOpt}
-                </select>
+        return `<div style="background:#21262d; padding:8px; border-radius:4px; border:1px solid #30363d; margin-bottom:10px;">
+            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
+                <b style="color:${color}; font-size:12px;">${getSplitterIcon(type, ratio, "main")} ${spLbl}</b>
+                <div>
+                    <span style="font-size:12px;">Вхід (IN):</span>
+                    <select class="fob-cross" data-totype="SPLITTER" data-toid="${id}" data-targetname="${name}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
+                        ${sOpt}
+                    </select>
+                </div>
             </div>
         </div>`;
     };
 
     splitters.forEach(sp => {
-        midHtml += buildSplitterBox(sp.id, sp.type, spLabels[sp.id]);
+        midHtml += buildSplitterBox(sp.id, sp.type, spLabels[sp.id], sp.ratio);
     });
 
-    if (node.fbtType && !splitters.some(s => s.id === "legacy_fbt")) midHtml += buildSplitterBox("legacy_fbt", "FBT", `FBT (${node.fbtType})`);
-    if (node.plcType && !splitters.some(s => s.id === "legacy_plc")) midHtml += buildSplitterBox("legacy_plc", "PLC", `PLC (${node.plcType})`);
+    if (node.fbtType && !splitters.some(s => s.id === "legacy_fbt")) midHtml += buildSplitterBox("legacy_fbt", "FBT", `FBT (${node.fbtType})`, node.fbtType);
+    if (node.plcType && !splitters.some(s => s.id === "legacy_plc")) midHtml += buildSplitterBox("legacy_plc", "PLC", `PLC (${node.plcType})`, node.plcType);
     
     if(splitters.length === 0 && !node.fbtType && !node.plcType) midHtml += `<div style="text-align:center;color:#8b949e;font-size:12px">Немає сплітерів. Змініть властивості FOB.</div>`;
     midHtml += `</div>`;
@@ -699,20 +781,20 @@ window.checkFobPorts = function(selectElement) {
                 // Currently selected here
                 opt.disabled = false;
                 opt.textContent = baseText;
-                opt.style.color = "";
+                opt.style.color = opt.dataset.color || "";
             } else if (usedVals.has(opt.value)) {
                 // Used SOMEWHERE ELSE
                 let usingSelect = Array.from(allSelects).find(s => s !== sel && s.value === opt.value);
                 let usingName = usingSelect ? usingSelect.getAttribute("data-targetname") : "Іншим";
                 
-                opt.disabled = false; // ALLOW reassignment
+                opt.disabled = false; // ALLOW reassignment ("stealing" connection visually, logic applied on save)
                 opt.textContent = baseText + ` [Зайнято: ${usingName}]`;
                 opt.style.color = "#ff5555";
             } else {
                 // Free
                 opt.disabled = false;
                 opt.textContent = baseText;
-                opt.style.color = "";
+                opt.style.color = opt.dataset.color || "";
             }
         });
     });
