@@ -68,7 +68,7 @@ function getIncomingCorePath(targetMdu, cableId, coreIndex) {
     return "";
 }
 
-function getSplitterColor(type, ratio, label) {
+export function getSplitterColor(type, ratio, label) {
     let index = 0;
     if (label) {
         const match = label.match(/#(\d+)/);
@@ -354,10 +354,12 @@ function renderMDUUI(node) {
 
         const spLbl = spLabels[sp.id];
         const spColor = getSplitterColor(sp.type, sp.ratio, spLbl);
+        let s = sigSplitter(node, sp.id);
+        const sigText = s !== null ? ` <span style="font-size:10px; color:#3fb950">⚡ ${s.toFixed(1)} дБ</span>` : "";
         
         atticHtml += `<div style="background:#21262d; padding:10px; border-radius:4px; border:1px solid #30363d; margin-bottom:10px;">
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                <b style="color:${spColor}; font-size:12px;">${getSplitterIcon(sp.type, sp.ratio, 'main')} ${spLbl}</b>
+                <b style="color:${spColor}; font-size:12px;">${getSplitterIcon(sp.type, sp.ratio, 'main')} ${spLbl}${sigText}</b>
                 <span onclick="window.removeMDUSplitter('${node.id}', 'main', '${sp.id}')" style="color:#f85149; cursor:pointer; font-size:12px;" title="Видалити">✖</span>
             </div>
             <div style="font-size:11px; margin-bottom:4px; color:#c9d1d9">Вхід (IN):</div>
@@ -392,7 +394,7 @@ function renderMDUUI(node) {
             const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
             const outs = parseInt(sp.ratio.split("x")[1]) || 2;
             for(let i=1; i<=outs; i++) {
-                flatSourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}">${icon} Головний ${label} (Вих. ${i})${sStr}</option>`;
+                flatSourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}">${icon} Головний ${label} (Вихід ${i})${sStr}</option>`;
             }
         }
     });
@@ -415,7 +417,7 @@ function renderMDUUI(node) {
                 const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
                 const outs = parseInt(sp.ratio.split("x")[1]) || 2;
                 for(let i=1; i<=outs; i++) {
-                    flatSourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}">${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (Вих. ${i})${sStr}</option>`;
+                    flatSourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}">${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (Вихід ${i})${sStr}</option>`;
                 }
             }
         });
@@ -476,10 +478,12 @@ function renderMDUUI(node) {
 
                     const spLbl = spLabels[sp.id];
                     const spColor = getSplitterColor(sp.type, sp.ratio, spLbl);
+                    let s = sigSplitter(node, sp.id);
+                    const sigText = s !== null ? ` <span style="font-size:10px; color:#3fb950; font-weight:normal">⚡ ${s.toFixed(1)} дБ</span>` : "";
 
                     floorHtml += `<div style="background:#21262d; padding:8px; border-radius:4px; border:1px solid #30363d; margin-bottom:6px;">
                         <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                            <span style="font-size:11px; font-weight:bold; color:${spColor}">◆ ${spLbl}</span>
+                            <span style="font-size:11px; font-weight:bold; color:${spColor}">${getSplitterIcon(sp.type, sp.ratio, 'floor')} ${spLbl}${sigText}</span>
                             <span onclick="window.removeMDUSplitter('${node.id}', 'floor', '${sp.id}', ${floorNum}, ${entrance})" style="color:#f85149; cursor:pointer; font-size:12px;" title="Видалити">✖</span>
                         </div>
                         <select class="mdu-cross-select mdu-cross-floor" data-floor="${floorNum}" data-entrance="${entrance}" data-id="${sp.id}" data-targetname="Поверх ${floorNum} Під'їзд ${entrance} ${spLbl}" style="width:100%; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:10px; padding:2px;" onchange="window.checkMDUPorts(this)">

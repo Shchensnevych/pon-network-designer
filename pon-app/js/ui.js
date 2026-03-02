@@ -11,7 +11,8 @@ import {
   sigAtONU,
   connKm,
 } from "./network.js";
-import { traceOpticalPath, calculateMDUSignal, trueSigAtONU } from "./signal.js";
+import { traceOpticalPath, calculateMDUSignal, trueSigAtONU, sigSplitter } from "./signal.js";
+import { getSplitterColor } from "./mdu-ui.js";
 
 /**
  * Helper to process and aggregate all network components into a Bill of Materials.
@@ -1108,11 +1109,36 @@ function getSpIcon(type, ratio) {
       const fBoxes = mdu.floorBoxes || [];
       const spNodes = {};
       
+      // Generate Splitter Labels for Colors
+      const spLabels = {};
+      const allMduSplitters = [...amBox.splitters];
+      fBoxes.forEach(fb => allMduSplitters.push(...fb.splitters));
+      
+      const spCurrent = {};
+      allMduSplitters.forEach(sp => {
+          const key = `${sp.type}_${sp.ratio}`;
+          if (!spCurrent[key]) spCurrent[key] = 1;
+          else spCurrent[key]++;
+          
+          if (allMduSplitters.filter(s => s.type === sp.type && s.ratio === sp.ratio).length > 1) {
+              spLabels[sp.id] = `${sp.type} ${sp.ratio} #${spCurrent[key]}`;
+          } else {
+              spLabels[sp.id] = `${sp.type} ${sp.ratio}`;
+          }
+      });
+      
       // Main Box Splitters
     amBox.splitters.forEach(sp => {
         const spNid = `${fId}_m_${safeId(sp.id)}`;
         spNodes[sp.id] = spNid;
-        m += `    ${spNid}(["${getSpIcon(sp.type, sp.ratio)} Горище: ${sp.type} ${sp.ratio}"]):::fob\n`;
+        
+        let s = sigSplitter(mdu, sp.id); // Get input signal if possible
+        let sigText = s !== null ? `<br/><b style='color:#3fb950;font-size:10px'>⚡ ${s.toFixed(1)} дБ</b>` : "";
+        let spLabel = spLabels && spLabels[sp.id] ? spLabels[sp.id] : `${sp.type} ${sp.ratio}`;
+        let hexColor = typeof getSplitterColor === "function" ? getSplitterColor(sp.type, sp.ratio, spLabel) : "#58a6ff";
+        
+        m += `    ${spNid}(["⬢ Горище: ${spLabel}${sigText}"]):::fob\n`;
+        m += `    style ${spNid} stroke:${hexColor},color:${hexColor},stroke-width:2px;\n`;
     });
       
       // Main Box XC
@@ -1127,7 +1153,14 @@ function getSpIcon(type, ratio) {
           fb.splitters.forEach(sp => {
             const spNid = `${fId}_f_${safeId(sp.id)}`;
             spNodes[sp.id] = spNid;
-            m += `    ${spNid}(["${getSpIcon(sp.type, sp.ratio)} Пов. ${fb.floor}: ${sp.type} ${sp.ratio}"]):::fob\n`;
+            
+            let s = sigSplitter(mdu, sp.id); // Get input signal
+            let sigText = s !== null ? `<br/><b style='color:#3fb950;font-size:10px'>⚡ ${s.toFixed(1)} дБ</b>` : "";
+            let spLabel = spLabels && spLabels[sp.id] ? spLabels[sp.id] : `${sp.type} ${sp.ratio}`;
+            let hexColor = typeof getSplitterColor === "function" ? getSplitterColor(sp.type, sp.ratio, spLabel) : "#58a6ff";
+            
+            m += `    ${spNid}(["⯁ Пов. ${fb.floor} (П.${fb.entrance}): ${spLabel}${sigText}"]):::fob\n`;
+            m += `    style ${spNid} stroke:${hexColor},color:${hexColor},stroke-width:2px;\n`;
         });
           fb.crossConnects.forEach(x => {
                if (x.toType === "SPLITTER" && spNodes[x.toId] && spNodes[x.fromId]) {
