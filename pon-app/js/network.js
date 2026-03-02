@@ -33,7 +33,7 @@ import {
   freeCablePorts, freePatchPorts,
   fobPortStatus, connKm, sigIn, 
   hasOLTPath, sigAtONU, sigONU, sigFBT, sigSplitter,
-  cntONUport, updateCableColors, traceOpticalPath
+  cntONUport, cntSubsPort, updateCableColors, traceOpticalPath
 } from "./signal.js";
 
 // Signal path highlighting & animation — extracted to signal-path.js
@@ -1594,6 +1594,37 @@ function buildTooltip(n) {
   return "";
 }
 
+window.updateOltStatsUI = function(id) {
+  const n = nodes.find((x) => x.id === id);
+  if (!n || n.type !== "OLT") return;
+  const container = document.getElementById("olt-stats-container");
+  if (container) {
+    container.innerHTML = window.getOltStatsHtml(n);
+  }
+};
+
+window.getOltStatsHtml = function(n) {
+  let h = "";
+  for (let i = 0; i < n.ports; i++) {
+    const c = cntONUport(n, i);
+    const subs = cntSubsPort(n, i);
+    const max = n.maxOnuPerPort || 64;
+    const pct = Math.round((c / max) * 100);
+    const barColor =
+      c > max ? "#f85149" : c > max * 0.75 ? "#d29922" : "#3fb950";
+    
+    const subText = subs > 0 ? ` <span style="color:#a371f7; font-weight:600">(${subs} аб.)</span>` : "";
+      
+    h += `<div style="font-size:11px;margin-top:3px">
+      <span style="color:#8b949e">Порт ${i + 1}:</span> ${c}/${max} ONU${subText}
+      <div style="height:3px;background:#21262d;border-radius:2px;margin-top:2px">
+        <div style="height:3px;width:${Math.min(pct, 100)}%;background:${barColor};border-radius:2px"></div>
+      </div>
+    </div>`;
+  }
+  return h;
+};
+
 /** @param {any} n */
 function showProps(n) {
   const p = document.getElementById("props");
@@ -1618,23 +1649,13 @@ function showProps(n) {
         <input id="pwr-num" type="number" min="0" max="10" step="0.5" value="${n.outputPower}" style="width:55px;text-align:center" onchange="this.previousElementSibling.value=this.value; updNode('${n.id}','outputPower', parseFloat(this.value))">
       </div>
     </div>`;
-    h += `<div style="margin-bottom:6px">Портів: <input type="number" value="${n.ports}" min="1" max="16" style="width:55px" onchange="updNode('${n.id}','ports', parseInt(this.value))"></div>`;
-    h += `<div style="margin-bottom:8px">Макс ONU/порт: <input type="number" value="${n.maxOnuPerPort || 64}" min="1" max="128" style="width:55px" onchange="updNode('${n.id}','maxOnuPerPort', parseInt(this.value))"></div>`;
+    h += `<div style="margin-bottom:6px">Портів: <input type="number" value="${n.ports}" min="1" max="16" style="width:55px" oninput="updNode('${n.id}','ports', parseInt(this.value)); window.updateOltStatsUI('${n.id}')"></div>`;
+    h += `<div style="margin-bottom:8px">Макс ONU/порт: <input type="number" value="${n.maxOnuPerPort || 64}" min="1" max="128" style="width:55px" oninput="updNode('${n.id}','maxOnuPerPort', parseInt(this.value)); window.updateOltStatsUI('${n.id}')"></div>`;
 
     // Port usage stats (bars per port)
-    for (let i = 0; i < n.ports; i++) {
-      const c = cntONUport(n, i);
-      const max = n.maxOnuPerPort || 64;
-      const pct = Math.round((c / max) * 100);
-      const barColor =
-        c > max ? "#f85149" : c > max * 0.75 ? "#d29922" : "#3fb950";
-      h += `<div style="font-size:11px;margin-top:3px">
-        <span style="color:#8b949e">Порт ${i + 1}:</span> ${c}/${max} ONU
-        <div style="height:3px;background:#21262d;border-radius:2px;margin-top:2px">
-          <div style="height:3px;width:${Math.min(pct, 100)}%;background:${barColor};border-radius:2px"></div>
-        </div>
-      </div>`;
-    }
+    h += `<div id="olt-stats-container">`;
+    h += window.getOltStatsHtml(n);
+    h += `</div>`;
 
     h += `<button class="btn" style="margin-top:15px;width:100%;background:#1f6feb;color:#ffffff;border:1px solid #388bfd;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#388bfd';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#1f6feb';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openPatchPanel('${n.id}')">🎛️ Оптичний крос (ODF)</button>`;
   } else if (n.type === "FOB") {
@@ -1764,6 +1785,49 @@ function showProps(n) {
           </div>
           <div style="font-size:10px; color:#8b949e; text-align:center; margin-top:6px;">Загальний фонд: ${totalAbon} кв.</div>
         </div>`;
+
+        // --- NEW: Uplink Fiber Selection ---
+        h += `<div style="margin-top:10px; border-top:1px solid #30363d; padding-top:10px;">
+                <label style="display:block;margin-bottom:6px;color:#c9d1d9;">🔌 Підключені Uplink-жили:</label>`;
+        
+        const mduConns = conns.filter(c => c.to === n && (c.type === "cable" || c.type === "patchcord"));
+        if (mduConns.length === 0) {
+            h += `<div style="font-size:11px;color:#8b949e;text-align:center;">Немає підключень</div>`;
+        } else {
+            mduConns.forEach(c => {
+                const cores = c.capacity || 1;
+                for(let i=0; i<cores; i++) {
+                    const key = `${c.type.toUpperCase()}|${c.id}|${c.type==="patchcord"?0:i}`;
+                    const isChecked = !n.uplinks || n.uplinks.includes(key);
+                    
+                    let sigStr = "";
+                    let s = null;
+                    if (c.from.type === "OLT") {
+                        const xc = (c.from.crossConnects || []).find(x => x.toType === c.type.toUpperCase() && x.toId === c.id && x.toCore === i);
+                        if (xc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
+                    } else if (c.from.type === "FOB") {
+                        const upstream = traceOpticalPath(c.from, c.type.toUpperCase(), c.id, i);
+                        if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
+                    }
+                    if (s !== null) {
+                        const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
+                        sigStr = `<span style="color:${sColor}; font-weight:bold; font-size:10px;">⚡ ${s.toFixed(1)} дБ</span>`;
+                    } else {
+                        sigStr = `<span style="color:#8b949e; font-size:10px;">(вимкнено)</span>`;
+                    }
+                    
+                    const lbl = c.type === "patchcord" ? "Патчкорд" : `Жила ${i+1}`;
+                    h += `<div style="display:flex; align-items:center; justify-content:space-between; background:#21262d; border:1px solid rgba(255,255,255,0.05); border-radius:4px; padding:4px 8px; margin-bottom:4px;">
+                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:11px; margin:0;">
+                                <input type="checkbox" ${isChecked ? "checked" : ""} onchange="window.toggleMduUplink('${n.id}', '${key}', this.checked)">
+                                <span>${lbl} <span style="color:#8b949e;">(від ${c.from.name})</span></span>
+                            </label>
+                            ${sigStr}
+                          </div>`;
+                }
+            });
+        }
+        h += `</div>`;
     } else {
        h += `<button class="btn" style="margin-top:10px;width:100%;background:#238636;color:#ffffff;border:1px solid #2ea043;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#2ea043';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#238636';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openMDUInternalTopology && window.openMDUInternalTopology('${n.id}')">⚙️ Схема під'їзду (FTTH)</button>`;
     }
@@ -2156,3 +2220,32 @@ window.deleteConnById = (id) => {
 window.finishOLT = finishOLT;
 window.reassignBranch = reassignBranch;
 window.searchLocation = searchLocation;
+
+window.toggleMduUplink = function(nodeId, key, isChecked) {
+    const mdu = /** @type {MDUNode} */ (nodes.find(x => x.id === nodeId));
+    if (!mdu || mdu.type !== "MDU") return;
+    
+    saveState();
+    if (!mdu.uplinks) {
+        mdu.uplinks = [];
+        const mduConns = conns.filter(c => c.to === mdu && (c.type === "cable" || c.type === "patchcord"));
+        mduConns.forEach(c => {
+            const cores = c.capacity || 1;
+            for(let i=0; i<cores; i++) mdu.uplinks.push(`${c.type.toUpperCase()}|${c.id}|${c.type==="patchcord"?0:i}`);
+        });
+    }
+    
+    if (isChecked) {
+        if (!mdu.uplinks.includes(key)) mdu.uplinks.push(key);
+    } else {
+        mdu.uplinks = mdu.uplinks.filter(k => k !== key);
+    }
+    
+    updateStats();
+    showProps(mdu);
+    
+    // Live update OLT stats if there's any active OLT
+    nodes.filter(x => x.type === "OLT").forEach(o => {
+        if (typeof window.updateOltStatsUI === "function") window.updateOltStatsUI(o);
+    });
+};

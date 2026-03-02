@@ -471,7 +471,12 @@ export function calculateMDUSignal(mdu) {
 
   if (mdu.architecture === "FTTB") {
     let best = -Infinity;
-    Object.values(inSignals).forEach(s => { if (s > best) best = s; });
+    Object.keys(inSignals).forEach(key => {
+        // If uplinks is defined, filter by it. If undefined, assume all are connected.
+        if (!mdu.uplinks || mdu.uplinks.includes(key)) {
+            if (inSignals[key] > best) best = inSignals[key];
+        }
+    });
     return best === -Infinity ? null : best;
   }
   
@@ -749,11 +754,14 @@ export function cntONUport(olt, port) {
           }
       } else if (onu.type === "MDU") {
           if (onu.architecture === "FTTB") {
-              // FTTB: MDU acts as a single ONU
+              // FTTB: Each active optical uplink from MDU to OLT counts as 1 ONU
               const inConns = conns.filter(x => x.to === onu && (x.type === "patchcord" || x.type === "cable"));
               for (const inc of inConns) {
                   const cores = inc.capacity || 1;
                   for (let c=0; c<cores; c++) {
+                      const key = `${inc.type.toUpperCase()}|${inc.id}|${inc.type==="patchcord"?0:c}`;
+                      if (onu.uplinks && !onu.uplinks.includes(key)) continue;
+
                       let origin = null;
                       if (inc.from.type === "OLT") {
                           const oltXc = (inc.from.crossConnects || []).find(x => x.toType === inc.type.toUpperCase() && x.toId === inc.id && x.toCore === c);
@@ -763,7 +771,6 @@ export function cntONUport(olt, port) {
                       }
                       if (origin && origin.olt === olt && origin.port === port) {
                           count += 1;
-                          break; // Count MDU once for FTTB if any core connects
                       }
                   }
               }
@@ -780,6 +787,73 @@ export function cntONUport(olt, port) {
       }
   }
   return count;
+}
+
+/**
+ * Count active subscribers (apartments/units) on a specific OLT port.
+ * @param {OLTNode} olt
+ * @param {number} port
+ * @returns {number}
+ */
+export function cntSubsPort(olt, port) {
+  let subs = 0;
+  for (const onu of nodes) {
+      if (onu.type === "ONU") {
+          const patch = conns.find(x => x.to === onu && x.type === "patchcord");
+          if (patch && patch.from && patch.from.type === "FOB") {
+              const origin = getOltPortForPath(patch.from, "PATCHCORD", patch.id, 0);
+              if (origin && origin.olt === olt && origin.port === port) {
+                  subs += 1;
+              }
+          }
+      } else if (onu.type === "MDU") {
+          if (onu.architecture === "FTTB") {
+              // FTTB: Subs are based on penetration rate, distributed proportionally across all active OLT uplinks
+              const inConns = conns.filter(x => x.to === onu && (x.type === "patchcord" || x.type === "cable"));
+              const activeLinks = [];
+              
+              for (const inc of inConns) {
+                  const cores = inc.capacity || 1;
+                  for (let c=0; c<cores; c++) {
+                      const key = `${inc.type.toUpperCase()}|${inc.id}|${inc.type==="patchcord"?0:c}`;
+                      if (onu.uplinks && !onu.uplinks.includes(key)) continue;
+
+                      let origin = null;
+                      if (inc.from.type === "OLT") {
+                          const oltXc = (inc.from.crossConnects || []).find(x => x.toType === inc.type.toUpperCase() && x.toId === inc.id && x.toCore === c);
+                          if (oltXc) origin = { olt: inc.from, port: parseInt(String(oltXc.fromId)) };
+                      } else if (inc.from.type === "FOB") {
+                          origin = getOltPortForPath(inc.from, inc.type.toUpperCase(), inc.id, c);
+                      }
+                      if (origin) {
+                          activeLinks.push(origin);
+                      }
+                  }
+              }
+
+              if (activeLinks.length > 0) {
+                  const myLinks = activeLinks.filter(orig => orig.olt === olt && orig.port === port).length;
+                  if (myLinks > 0) {
+                      const totalAbon = (onu.floors || 0) * (onu.entrances || 0) * (onu.flatsPerFloor || 0);
+                      const pen = typeof onu.penetrationRate === "number" ? onu.penetrationRate : 50;
+                      const totalSubs = Math.ceil(totalAbon * (pen / 100));
+                      // Proportional share of subscribers on this port (rounded)
+                      subs += Math.round((totalSubs / activeLinks.length) * myLinks);
+                  }
+              }
+          } else {
+              // FTTH: 1 connected flat = 1 subscriber
+              const totalFlats = (onu.floors || 0) * (onu.entrances || 0) * (onu.flatsPerFloor || 0);
+              for (let f = 1; f <= totalFlats; f++) {
+                  const origin = getMDUFlatOltPort(onu, f);
+                  if (origin && origin.olt === olt && origin.port === port) {
+                      subs += 1;
+                  }
+              }
+          }
+      }
+  }
+  return subs;
 }
 
 /**

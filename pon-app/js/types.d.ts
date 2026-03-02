@@ -68,6 +68,9 @@ declare global {
     refreshNetworkUI: Function;
     addSplitter: Function;
     removeSplitter: Function;
+    updateOltStatsUI: Function;
+    getOltStatsHtml: Function;
+    toggleMduUplink: Function;
 
     // main.js
     selectTool: Function;
@@ -119,6 +122,7 @@ declare global {
     handleSearchInput: Function;
     checkOltPorts: Function;
     checkFobPorts: Function;
+    checkMDUPorts: Function;
     updateConnCapacity: Function;
   }
 
@@ -234,6 +238,9 @@ declare global {
     
     // Subscriber Penetration / Activation (0-100%)
     penetrationRate?: number;
+    
+    // FTTB Uplink Selection (array of strings like "CABLE|id|core" or "PATCHCORD|id|0")
+    uplinks?: string[];
   }
 
   type PONNode = OLTNode | FOBNode | ONUNode | MDUNode;
