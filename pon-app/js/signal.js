@@ -431,6 +431,8 @@ export function hasOLTPath(fob) {
   return sigIn(fob) !== null;
 }
 
+const mduSigsCache = new WeakMap();
+
 /**
  * Signal level at MDU (dBm) derived from internal FTTH cascade.
  * @param {MDUNode} mdu
@@ -439,6 +441,9 @@ export function hasOLTPath(fob) {
 export function calculateMDUSignal(mdu) {
   const inCables = conns.filter(c => c.to === mdu && c.type === "cable");
   const inPatches = conns.filter(c => c.to === mdu && c.type === "patchcord");
+  
+  const mduSigs = { spIn: {}, spOut: {}, flats: {} };
+  mduSigsCache.set(mdu, mduSigs);
   
   if (inCables.length === 0 && inPatches.length === 0) return null;
 
@@ -484,8 +489,7 @@ export function calculateMDUSignal(mdu) {
   let worstSignal = Infinity;
   let foundAny = false;
   
-  // Map Main Box Splitter Outputs
-  const mainSigs = {};
+  // Map Main Box Splitters
   (mdu.mainBox?.crossConnects || []).forEach(xc => {
       if (xc.toType === "SPLITTER") {
           const sp = (mdu.mainBox?.splitters || []).find(s => s.id === xc.toId);
@@ -495,19 +499,20 @@ export function calculateMDUSignal(mdu) {
           if (xc.fromType === "CABLE" || xc.fromType === "PATCHCORD") {
               inputSig = inSignals[`${xc.fromType}|${xc.fromId}|${xc.fromCore || 0}`];
           } else if (xc.fromType === "SPLITTER") {
-              inputSig = mainSigs[`SPLITTER|${xc.fromId}|${xc.fromBranch}`];
+              inputSig = mduSigs.spOut[`${xc.fromId}|${xc.fromBranch}`];
           }
           
           if (inputSig !== undefined && inputSig !== null) {
+              mduSigs.spIn[sp.id] = inputSig;
               if (sp.type === "PLC") {
                   const loss = PLC_LOSSES[sp.ratio] || 0;
                   const outs = parseInt(sp.ratio.split('x')[1]) || 2;
-                  for(let i=1; i<=outs; i++) mainSigs[`SPLITTER|${sp.id}|${i}`] = inputSig - loss - MECH;
+                  for(let i=1; i<=outs; i++) mduSigs.spOut[`${sp.id}|${i}`] = inputSig - loss - MECH;
               } else if (sp.type === "FBT") {
                   const lossX = FBT_LOSSES[sp.ratio]?.x || 0;
                   const lossY = FBT_LOSSES[sp.ratio]?.y || 0;
-                  mainSigs[`SPLITTER|${sp.id}|X`] = inputSig - lossX - MECH;
-                  mainSigs[`SPLITTER|${sp.id}|Y`] = inputSig - lossY - MECH;
+                  mduSigs.spOut[`${sp.id}|X`] = inputSig - lossX - MECH;
+                  mduSigs.spOut[`${sp.id}|Y`] = inputSig - lossY - MECH;
               }
           }
       }
@@ -524,29 +529,60 @@ export function calculateMDUSignal(mdu) {
               if (xc.fromType === "CABLE" || xc.fromType === "PATCHCORD") {
                   inputSig = inSignals[`${xc.fromType}|${xc.fromId}|${xc.fromCore||0}`];
               } else if (xc.fromType === "SPLITTER") {
-                  inputSig = mainSigs[`SPLITTER|${xc.fromId}|${xc.fromBranch}`];
+                  inputSig = mduSigs.spOut[`${xc.fromId}|${xc.fromBranch}`];
               }
               
               if (inputSig !== undefined && inputSig !== null) {
+                  mduSigs.spIn[sp.id] = inputSig;
                   if (sp.type === "PLC") {
                       const loss = PLC_LOSSES[sp.ratio] || 0;
                       const finalSig = inputSig - loss - MECH;
+                      const outs = parseInt(sp.ratio.split('x')[1]) || 2;
+                      for(let i=1; i<=outs; i++) mduSigs.spOut[`${sp.id}|${i}`] = finalSig;
                       if (finalSig < worstSignal) worstSignal = finalSig;
+                      foundAny = true;
+                  } else if (sp.type === "FBT") {
+                      const lossX = FBT_LOSSES[sp.ratio]?.x || 0;
+                      const lossY = FBT_LOSSES[sp.ratio]?.y || 0;
+                      mduSigs.spOut[`${sp.id}|X`] = inputSig - lossX - MECH;
+                      mduSigs.spOut[`${sp.id}|Y`] = inputSig - lossY - MECH;
                       foundAny = true;
                   }
               }
           }
       });
   });
+
+  // Calculate flat end signals
+  (mdu.flats || []).forEach(f => {
+      if (f.crossConnect && f.crossConnect.fromType === "SPLITTER") {
+          const outSig = mduSigs.spOut[`${f.crossConnect.fromId}|${f.crossConnect.fromBranch||"1"}`];
+          if (outSig !== undefined) {
+              mduSigs.flats[f.flat] = outSig;
+          }
+      }
+  });
   
   // If no floor boxes are connected, return main box best or input best
   if (!foundAny) {
-      if (Object.keys(mainSigs).length > 0) return Math.min(...Object.values(mainSigs));
+      const oVals = Object.values(mduSigs.spOut);
+      if (oVals.length > 0) return Math.min(...oVals);
       if (Object.keys(inSignals).length > 0) return Math.max(...Object.values(inSignals));
       return null;
   }
   
   return worstSignal === Infinity ? null : worstSignal;
+}
+
+export function getMduSig(mdu, type, id) {
+    if (!mdu) return null;
+    calculateMDUSignal(mdu); // Ensures simulation cache is fresh
+    const sigs = mduSigsCache.get(mdu);
+    if (!sigs) return null;
+    if (type === "spIn") return sigs.spIn ? (sigs.spIn[id] ?? null) : null;
+    if (type === "spOut") return sigs.spOut ? (sigs.spOut[id] ?? null) : null;
+    if (type === "flat") return sigs.flats ? (sigs.flats[id] ?? null) : null;
+    return null;
 }
 
 export function sigAtONU(onu) {

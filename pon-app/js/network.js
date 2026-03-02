@@ -1023,145 +1023,106 @@ function buildNodeLabelContent(n) {
             const cable = conns.find(cf => cf.id === x.toId);
             return cable ? cable.to?.name : "";
         }))].filter(Boolean).join(", ");
-        portInfo.push(`PON ${i + 1} ➔ [${targetNodes}] (${activeCores.length} жил)`);
+        let subs = cntSubsPort(n, i);
+        let subsStr = subs > 0 ? ` (+${subs} аб)` : "";
+        portInfo.push(`PON ${i + 1} ➔ [${targetNodes}] (${activeCores.length} жил${subsStr})`);
       }
     }
     if (portInfo.length)
       L2 += `<br><span class="lbl-dim">${portInfo.join("<br>")}</span>`;
   } else if (n.type === "FOB") {
-    L1 = `<span class="lbl-name lbl-fob">${n.name}</span>`;
+    const fobIcon = (n.subtype === "MUFTA") ? "🛢️" : "📦";
+    L1 = `<span class="lbl-name lbl-fob">${fobIcon} ${n.name}</span>`;
 
-    // Input signal
     if (n.inputConn) {
       const si = sigIn(n);
+      const srcIcon = n.inputConn.from.type === "OLT" ? "🔷" : (n.inputConn.from.subtype === "MUFTA" ? "🛢️" : "📦");
       const src = n.inputConn.from.name || n.inputConn.from.type;
-      const parent = /** @type {any} */ (n.inputConn.from);
+      let capStr = n.inputConn.capacity ? ` (${n.inputConn.capacity} жил)` : "";
       let br = "";
-      if (n.inputConn.branch) {
-        if (parent.plcType && parent.plcBranch === n.inputConn.branch) {
-          br = `[PLC]`;
-        } else if (parent.fbtType) {
-          br = `[FBT ${n.inputConn.branch}]`;
-        } else {
-          br = `[${n.inputConn.branch}]`;
-        }
-      }
-      L2 = `<span class="lbl-dim">IN: ${src}${br ? " " + br : ""}</span>`;
+      if (n.inputConn.branch) br = `[${n.inputConn.branch}]`;
+      
+      L2 = `<span class="lbl-dim">Від: ${srcIcon} ${src}${capStr}${br ? " "+br : ""}</span>`;
       if (si !== null) {
         L2 += ` <span class="lbl-sig ${sigColorClass(si)}">${si.toFixed(1)}дБ</span>`;
       }
     }
 
-    // Port status
     const pi = fobPortStatus(n);
-    pi.lines.forEach((l) => (L2 += `<br>${l}`));
-
-    const splitters = n.splitters || [];
-    
-    const spCounts = {};
-    const spLabels = {};
-    splitters.forEach(sp => {
-        const key = `${sp.type}_${sp.ratio}`;
-        spCounts[key] = (spCounts[key] || 0) + 1;
-    });
-    const spCurrent = {};
-    splitters.forEach(sp => {
-        const key = `${sp.type}_${sp.ratio}`;
-        if (spCounts[key] > 1) {
-            spCurrent[key] = (spCurrent[key] || 0) + 1;
-            spLabels[sp.id] = `${sp.type} ${sp.ratio} #${spCurrent[key]}`;
-        } else {
-            spLabels[sp.id] = `${sp.type} ${sp.ratio}`;
-        }
-    });
-
-    // FBT branch signals
-    splitters.filter(s => s.type === "FBT").forEach(sp => {
-        const sx = sigSplitter(n, sp.id, "X");
-        const sy = sigSplitter(n, sp.id, "Y");
-        if (sx !== null || sy !== null) {
-            L2 += `<br><span class="lbl-dim">${spLabels[sp.id]}:</span>`;
-            if (sx !== null) L2 += ` <span class="${sigColorClass(sx)}">X:${sx.toFixed(1)}дБ</span>`;
-            if (sy !== null) L2 += ` <span class="${sigColorClass(sy)}">Y:${sy.toFixed(1)}дБ</span>`;
-        }
-    });
-    
-    // Legacy support
-    if (n.fbtType && !splitters.some(s => s.id === "legacy_fbt")) {
-      const sx = sigFBT(n, "X");
-      const sy = sigFBT(n, "Y");
-      if (sx !== null && sy !== null) {
-        L2 += `<br><span class="${sigColorClass(sx)}">X:${sx.toFixed(1)}дБ</span>`;
-        L2 += ` <span class="${sigColorClass(sy)}">Y:${sy.toFixed(1)}дБ</span>`;
-      }
-    }
-
-    // PLC ONU signal
-    const hasPlc = splitters.some(s => s.type === "PLC") || n.plcType;
-    if (hasPlc && n.inputConn) {
-      const so = sigONU(n);
-      if (so !== null) {
-        L2 += `<br><span class="${sigColorClass(so)}">→ONU:${so.toFixed(1)}дБ</span>`;
-      }
-    }
-
-    // Transit indicator
-    if (splitters.length === 0 && !n.fbtType && !n.plcType) {
-      L2 += `<br><span class="lbl-transit">→ транзит</span>`;
-    }
-  } else if (n.type === "ONU" || n.type === "MDU") {
-    L1 = `<span class="lbl-name lbl-onu">${n.name}</span>`;
+    pi.rich.forEach((l) => (L2 += `<br><span class="lbl-dim">${l}</span>`));
+  } else if (n.type === "ONU") {
+    L1 = `<span class="lbl-name lbl-onu">🏠 ${n.name}</span>`;
     const s = sigAtONU(n);
     const conn = conns.find((x) => x.to === n && x.type === "patchcord");
     if (s !== null) {
       L2 = `<span class="lbl-sig ${sigColorClass(s)}">${s.toFixed(1)}дБ</span>`;
       if (conn && conn.from) {
-        let tag = "";
-        
+        const fromIcon = (conn.from.type === "FOB" && conn.from.subtype === "MUFTA") ? "🛢️" : "📦";
+        L2 += `<br><span class="lbl-dim">Від: ${fromIcon} ${conn.from.name}</span>`;
         if (conn.from.crossConnects) {
-           const xc = conn.from.crossConnects.find(x => x.toType === "PATCHCORD" && x.toId === conn.id);
+           const xc = conn.from.crossConnects.find(x => (x.toType === "CABLE" || x.toType === "PATCHCORD") && x.toId === conn.id);
            if (xc) {
               if (xc.fromType === "SPLITTER") {
-                 let spName = "Сплітер";
-                 if (xc.fromId === "legacy_plc") {
-                     spName = `PLC ${/** @type {any} */(conn.from).plcType || ""}`;
+                 let spName = xc.fromId === "legacy_plc" ? "PLC" : (xc.fromId === "legacy_fbt" ? "FBT" : "Сплітер");
+                 if (/** @type {any} */(conn.from).splitters) {
+                     let spInst = /** @type {any} */(conn.from).splitters.find(/** @type {any} */s=>s.id === xc.fromId);
+                     if (spInst) spName = `${spInst.type} ${spInst.ratio}`;
                  }
-                 else if (xc.fromId === "legacy_fbt") {
-                     spName = `FBT ${/** @type {any} */(conn.from).fbtType || ""}`;
-                 }
-                 else if (/** @type {any} */(conn.from).splitters) {
-                    const splitters = /** @type {any} */(conn.from).splitters;
-                    const sp = splitters.find(/** @type {any} */(s) => s.id === xc.fromId);
-                    if (sp) {
-                        const sameType = splitters.filter(/** @type {any} */(s) => s.type === sp.type && s.ratio === sp.ratio);
-                        if (sameType.length > 1) {
-                            const idx = sameType.findIndex(/** @type {any} */(s) => s.id === sp.id) + 1;
-                            spName = `${sp.type} ${sp.ratio} #${idx}`;
-                        } else {
-                            spName = `${sp.type} ${sp.ratio}`;
-                        }
-                    }
-                 }
-                 let port = xc.fromCore !== undefined ? xc.fromCore : xc.fromBranch;
-                 tag += `[${spName.trim()} (${port})]`;
+                 let port = xc.fromCore !== undefined ? xc.fromCore + 1 : xc.fromBranch;
+                 L2 += `<br><span class="lbl-dim">🔗 Порт: ${spName} (Вихід ${port})</span>`;
               } else if (xc.fromType === "CABLE") {
                  let inConn = conns.find(c => c.id === xc.fromId);
                  let srcName = inConn ? inConn.from.name : "?";
-                 tag += `[Тр. ${srcName} ж.${(xc.fromCore || 0) + 1}]`;
+                 L2 += `<br><span class="lbl-dim">🔗 Тр: Від ${srcName} (Жила ${(xc.fromCore || 0) + 1})</span>`;
               }
-           } else {
-             tag += `[Немає кросування]`;
            }
         }
-        
-        if (!tag) {
-            if (conn.branch) tag += `[${conn.branch}]`;
-            if (/** @type {any} */ (conn.from).plcType) tag += /** @type {any} */ (conn.from).plcType;
-            else if (/** @type {any} */ (conn.from).fbtType) tag += /** @type {any} */ (conn.from).fbtType;
-        }
-        
-        if (tag) L2 += ` <span class="lbl-dim">${tag}</span>`;
       }
+    }
+  } else if (n.type === "MDU") {
+    let archTxt = n.architecture === "FTTB" ? "FTTB" : "FTTH";
+    L1 = `<span class="lbl-name lbl-onu">🏢 ${n.name} (${archTxt})</span>`;
+    const s = sigAtONU(n);
+    const conn = conns.find((x) => x.to === n && (x.type === "patchcord" || x.type === "cable"));
+    
+    if (s !== null) {
+      L2 = `<span class="lbl-sig ${sigColorClass(s)}">${s.toFixed(1)}дБ</span>`;
+      if (conn && conn.from) {
+          const fromIcon = (conn.from.type === "FOB" && conn.from.subtype === "MUFTA") ? "🛢️" : (conn.from.type === "OLT" ? "🔷" : "📦");
+          const fromTypeLabel = conn.type === "cable" ? "Кабель" : "Патч";
+          L2 += `<br><span class="lbl-dim">Вхід: ${fromIcon} ${conn.from.name} (${fromTypeLabel})</span>`;
+          
+          if (conn.from.crossConnects && conn.from.type !== "OLT") {
+             const xc = conn.from.crossConnects.find(x => (x.toType === "CABLE" || x.toType === "PATCHCORD") && x.toId === conn.id);
+             if (xc) {
+                if (xc.fromType === "SPLITTER") {
+                   let spName = xc.fromId === "legacy_plc" ? "PLC" : (xc.fromId === "legacy_fbt" ? "FBT" : "Сплітер");
+                   if (/** @type {any} */(conn.from).splitters) {
+                       let spInst = /** @type {any} */(conn.from).splitters.find(/** @type {any} */s=>s.id === xc.fromId);
+                       if (spInst) spName = `${spInst.type} ${spInst.ratio}`;
+                   }
+                   let port = xc.fromCore !== undefined ? xc.fromCore : xc.fromBranch;
+                   L2 += `<br><span class="lbl-dim">🔀 Ком: ${spName} (Вихід ${port})</span>`;
+                } else if (xc.fromType === "CABLE") {
+                   let inConn = conns.find(c => c.id === xc.fromId);
+                   let srcName = inConn ? inConn.from.name : "?";
+                   L2 += `<br><span class="lbl-dim">🔀 Тр: Від ${srcName} (Жила ${(xc.fromCore || 0) + 1})</span>`;
+                }
+             }
+          }
+      }
+      if (n.architecture === "FTTB") {
+          const totalAbon = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
+          const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 50;
+          const totalSubs = Math.ceil(totalAbon * (pen / 100));
+          L2 += `<br><span class="lbl-dim">👥 Аб: <b style="color:#e3b341">${totalSubs}</b> / ${totalAbon} (${pen}%)</span>`;
+      } else {
+          const connectedFlats = (n.flats || []).filter(f => f.crossConnect).length;
+          const totalFlats = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
+          L2 += `<br><span class="lbl-dim">🚪 Кв: <b style="color:#e3b341">${connectedFlats}</b> / ${totalFlats}</span>`;
+      }
+    } else {
+       L2 += `<span class="lbl-dim">⚠️ Не підключений</span>`;
     }
   }
 
@@ -1273,7 +1234,7 @@ function updateTooltipsVisibility() {
 
   const mapEl = document.getElementById("map");
   if (mapEl) {
-    if (zoom < 18) {
+    if (zoom < 17) {
       mapEl.classList.add("map-zoomed-out");
     } else {
       mapEl.classList.remove("map-zoomed-out");
@@ -1496,12 +1457,15 @@ function buildTooltip(n) {
             return cable ? cable.to?.name : "";
         }))].filter(Boolean).join(", ");
         const color = ["#ff4444", "#3fb950", "#58a6ff", "#f0883e"][i % 4];
-        t += `PON ${i + 1} ➔ ${targetNodes}: <span style='color:${color}'>${activeCores.length} жил(и) підключено</span><br>`;
+        let subs = cntSubsPort(n, i);
+        let subsStr = subs > 0 ? ` (Аб: ${subs})` : "";
+        t += `PON ${i + 1} ➔ ${targetNodes}: <span style='color:${color}'>${activeCores.length} жил(и)${subsStr}</span><br>`;
       }
     }
     return t;
   } else if (n.type === "FOB") {
-    let t = `<strong style='color:#c084fc'>${n.name}</strong><br>`;
+    const fobIcon = (n.subtype === "MUFTA") ? "🛢️" : "📦";
+    let t = `<strong style='color:#c084fc'>${fobIcon} ${n.name}</strong><br>`;
     if (n.inputConn) {
       const si = sigIn(n);
       if (si !== null) {
@@ -1513,7 +1477,8 @@ function buildTooltip(n) {
       if (n.inputConn.branch) branchTag = ` (гілка ${n.inputConn.branch})`;
       else if (n.inputConn.from.type === "FOB" && n.inputConn.from.plcType) branchTag = ` (через PLC)`;
       let capStr = n.inputConn.capacity ? ` (${n.inputConn.capacity} жил)` : "";
-      t += `📡 Від: ${n.inputConn.from.name || n.inputConn.from.type}${capStr}${branchTag}<br>`;
+      const srcIcon = n.inputConn.from.type === "OLT" ? "🔷" : (n.inputConn.from.subtype === "MUFTA" ? "🛢️" : "📦");
+      t += `📡 Від: ${srcIcon} ${n.inputConn.from.name || n.inputConn.from.type}${capStr}${branchTag}<br>`;
     } else {
       t += `⚠️ Не підключений (Input)<br>`;
     }
@@ -1528,30 +1493,35 @@ function buildTooltip(n) {
       }
     }
     const pi = fobPortStatus(n);
-    t += `🔌 Виходи:<br>`;
+    t += `<div style="margin-top:4px; padding-top:4px; border-top:1px dashed #444c56;">`;
     pi.rich.forEach((pp) => (t += `${pp}<br>`));
+    t += `</div>`;
     return t;
   } else if (n.type === "ONU") {
     const s = sigAtONU(n);
     const conn = conns.find((c) => c.to === n && c.type === "patchcord");
-    let t = `<strong style='color:#4ade80'>${n.name}</strong><br>`;
+    let t = `<strong style='color:#4ade80'>🏠 ${n.name}</strong><br>`;
     if (s !== null) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
-      const fromIcon = (conn?.from?.type === "FOB" && /** @type {any} */(conn.from).subtype === "MUFTA") ? "🛢️ Муфта" : "📦 FOB";
-      if (conn?.from) t += `${fromIcon}: ${conn.from.name}<br>`;
+      const fromIcon = (conn?.from?.type === "FOB" && conn.from.subtype === "MUFTA") ? "🛢️" : "📦";
+      if (conn?.from) t += `${fromIcon} Від: ${conn.from.name}<br>`;
       
       if (conn?.from?.crossConnects) {
-         const xc = conn.from.crossConnects.find(x => x.toType === "CABLE" && x.toId === conn.id);
+         const xc = conn.from.crossConnects.find(x => (x.toType === "CABLE" || x.toType === "PATCHCORD") && x.toId === conn.id);
          if (xc) {
             if (xc.fromType === "SPLITTER") {
                let spName = xc.fromId === "legacy_plc" ? "PLC" : (xc.fromId === "legacy_fbt" ? "FBT" : "Сплітер");
+               if (/** @type {any} */(conn.from).splitters) {
+                   let spInst = /** @type {any} */(conn.from).splitters.find(/** @type {any} */s=>s.id === xc.fromId);
+                   if (spInst) spName = `${spInst.type} ${spInst.ratio}`;
+               }
                let port = xc.fromCore !== undefined ? xc.fromCore + 1 : xc.fromBranch;
-               t += `🔗 Від: ${spName} (Вихід ${port})<br>`;
+               t += `🔗 Порт: ${spName} (Вихід ${port})<br>`;
             } else if (xc.fromType === "CABLE") {
                let inConn = conns.find(c => c.id === xc.fromId);
                let srcName = inConn ? inConn.from.name : "?";
                let srcCap = inConn && inConn.capacity ? ` з ${inConn.capacity}` : "";
-               t += `🔗 Транзит: ${srcName} (Жила ${(xc.fromCore || 0) + 1}${srcCap})<br>`;
+               t += `🔗 Транзит: Від ${srcName} (Жила ${(xc.fromCore || 0) + 1}${srcCap})<br>`;
             }
          }
       }
@@ -1562,30 +1532,47 @@ function buildTooltip(n) {
   } else if (n.type === "MDU") {
     const s = sigAtONU(n);
     const conn = conns.find((c) => c.to === n && (c.type === "patchcord" || c.type === "cable"));
-    let t = `<strong style='color:#a371f7'>${n.name}</strong><br>`;
+    let archTxt = n.architecture === "FTTB" ? "FTTB" : "FTTH";
+    let t = `<strong style='color:#a371f7'>🏢 ${n.name} (${archTxt})</strong><br>`;
     if (s !== null) {
-      t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
-      const fromIcon = (conn?.from?.type === "FOB" && /** @type {any} */(conn.from).subtype === "MUFTA") ? "🛢️ Муфта" : "📦 FOB";
-      const fromTypeLabel = conn?.type === "cable" ? "Кабель" : "Від";
-      if (conn?.from) t += `${fromIcon}: ${conn.from.name} (${fromTypeLabel})<br>`;
+      t += `📶 Сигнал (вхід): <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
+      const fromIcon = (conn?.from?.type === "FOB" && conn.from.subtype === "MUFTA") ? "🛢️" : (conn?.from?.type === "OLT" ? "🔷" : "📦");
+      const fromTypeLabel = conn?.type === "cable" ? "Кабель" : "Патч";
+      if (conn?.from) t += `${fromIcon} Вхід: ${conn.from.name} (${fromTypeLabel})<br>`;
       
-      if (conn?.from?.crossConnects) {
-         const xc = conn.from.crossConnects.find(x => x.toType === "CABLE" && x.toId === conn.id);
+      if (conn?.from?.crossConnects && conn.from.type !== "OLT") {
+         const xc = conn.from.crossConnects.find(x => (x.toType === "CABLE" || x.toType === "PATCHCORD") && x.toId === conn.id);
          if (xc) {
             if (xc.fromType === "SPLITTER") {
                let spName = xc.fromId === "legacy_plc" ? "PLC" : (xc.fromId === "legacy_fbt" ? "FBT" : "Сплітер");
+               if (/** @type {any} */(conn.from).splitters) {
+                   let spInst = /** @type {any} */(conn.from).splitters.find(/** @type {any} */s=>s.id === xc.fromId);
+                   if (spInst) spName = `${spInst.type} ${spInst.ratio}`;
+               }
                let port = xc.fromCore !== undefined ? xc.fromCore : xc.fromBranch;
-               t += `🔀 ${fromTypeLabel}: ${spName} (Вихід ${port})<br>`;
+               t += `🔀 Комутація: ${spName} (Вихід ${port})<br>`;
             } else if (xc.fromType === "CABLE") {
                let inConn = conns.find(c => c.id === xc.fromId);
                let srcName = inConn ? inConn.from.name : "?";
-               t += `🔀 Транзит: ${srcName} (Жила ${(xc.fromCore || 0) + 1})<br>`;
+               t += `🔀 Транзит: Від ${srcName} (Жила ${(xc.fromCore || 0) + 1})<br>`;
             }
-         } else if (conn.type === "cable") {
-             // For cable without a direct trunk cross-connect we just show it's connected
-            t += `🔌 Підключений напряму кабелем<br>`;
          }
+      } else if (conn?.type === "cable") {
+         t += `🔌 Пряме магістральне підключення<br>`;
       }
+      
+      t += `<div style="margin-top:4px; padding-top:4px; border-top:1px dashed #444c56;">`;
+      if (n.architecture === "FTTB") {
+          const totalAbon = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
+          const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 50;
+          const totalSubs = Math.ceil(totalAbon * (pen / 100));
+          t += `👥 Абонентів (розрах.): <span style="color:#e3b341">${totalSubs}</span> / ${totalAbon} (${pen}%)<br>`;
+      } else {
+          const connectedFlats = (n.flats || []).filter(f => f.crossConnect).length;
+          const totalFlats = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
+          t += `🚪 Квартири: <span style="color:#e3b341">${connectedFlats}</span> / ${totalFlats} підключено<br>`;
+      }
+      t += `</div>`;
     } else {
       t += `⚠️ Не підключений (немає кросування)`;
     }
@@ -1754,6 +1741,7 @@ function showProps(n) {
     h += `<div style="margin-bottom:6px">Поверхів: <input type="number" value="${n.floors}" min="1" max="50" style="width:55px" onchange="updNode('${n.id}','floors', parseInt(this.value))"></div>`;
     h += `<div style="margin-bottom:6px">Під'їздів: <input type="number" value="${n.entrances}" min="1" max="20" style="width:55px" onchange="updNode('${n.id}','entrances', parseInt(this.value))"></div>`;
     h += `<div style="margin-bottom:8px">Кв. на поверсі: <input type="number" value="${n.flatsPerFloor}" min="1" max="20" style="width:55px" onchange="updNode('${n.id}','flatsPerFloor', parseInt(this.value))"></div>`;
+    h += `<div style="font-size:11px; color:#c9d1d9; font-weight:bold; margin-bottom:10px;">Всього квартир: <span style="color:#e3b341">${totalAbon}</span></div>`;
     const arch = n.architecture || "FTTH";
     const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 50;
     const activeAbon = Math.ceil(totalAbon * (pen / 100));
@@ -1783,7 +1771,6 @@ function showProps(n) {
                  <span style="padding:4px 8px; font-size:11px; color:#8b949e; background:#21262d; border-left:1px solid #30363d;">%</span>
              </div>
           </div>
-          <div style="font-size:10px; color:#8b949e; text-align:center; margin-top:6px;">Загальний фонд: ${totalAbon} кв.</div>
         </div>`;
 
         // --- NEW: Uplink Fiber Selection ---
