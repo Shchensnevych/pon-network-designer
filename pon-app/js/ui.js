@@ -1,4 +1,7 @@
 // @ts-check
+/// <reference path="./types.d.ts" />
+/** @type {typeof import('leaflet')} */
+const L = window["L"];
 import { FBT_LOSSES, PLC_LOSSES, MECH, ONU_MIN, FIBER_DB_KM } from "./config.js";
 import { sigClass } from "./utils.js";
 import {
@@ -11,7 +14,7 @@ import {
   sigAtONU,
   connKm,
 } from "./network.js";
-import { traceOpticalPath, calculateMDUSignal, trueSigAtONU, sigSplitter } from "./signal.js";
+import { traceOpticalPath, calculateMDUSignal, trueSigAtONU, sigSplitter, getMduSig } from "./signal.js";
 import { getSplitterColor } from "./mdu-ui.js";
 
 /**
@@ -1127,6 +1130,32 @@ function getSpIcon(type, ratio) {
           }
       });
       
+      // --- NEW LOGIC: Pre-calculate flat connections ---
+      const flatConnections = {}; // spId -> array of { flat: N, sig: X }
+      const dFlats = mdu.flats || [];
+      dFlats.forEach(f => {
+         if (f.crossConnect && f.crossConnect.toType === "UNIT" && f.crossConnect.fromType === "SPLITTER") {
+             const spId = f.crossConnect.fromId;
+             if (!flatConnections[spId]) flatConnections[spId] = [];
+             
+             let port = f.crossConnect.fromCore !== undefined ? f.crossConnect.fromCore : (f.crossConnect.fromBranch || "1");
+             let s = typeof getMduSig === "function" ? getMduSig(mdu, "spOut", spId + "|" + port) : null;
+             flatConnections[spId].push({ flat: f.flat, sig: s });
+         }
+      });
+      
+      function getFlatsHtmlForSplitter(spId) {
+          const flats = flatConnections[spId];
+          if (!flats || flats.length === 0) return "";
+          flats.sort((a,b) => a.flat - b.flat);
+          const flatStrings = flats.map(f => `<b>${f.flat}</b>${f.sig !== null ? `(<span style='color:#3fb950'>⚡${f.sig.toFixed(1)}</span>)` : ''}`);
+          const chunks = [];
+          for (let i = 0; i < flatStrings.length; i += 3) {
+              chunks.push(flatStrings.slice(i, i + 3).join(', '));
+          }
+          return `<br/><hr style='margin:4px 0; border:none; border-top:1px solid rgba(255,255,255,0.2);'/>🏠 Кв: <span style='font-size:9px'>${chunks.join('<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;')}</span>`;
+      }
+
       // Main Box Splitters
     amBox.splitters.forEach(sp => {
         const spNid = `${fId}_m_${safeId(sp.id)}`;
@@ -1137,7 +1166,9 @@ function getSpIcon(type, ratio) {
         let spLabel = spLabels && spLabels[sp.id] ? spLabels[sp.id] : `${sp.type} ${sp.ratio}`;
         let hexColor = typeof getSplitterColor === "function" ? getSplitterColor(sp.type, sp.ratio, spLabel) : "#58a6ff";
         
-        m += `    ${spNid}(["⬢ Горище: ${spLabel}${sigText}"]):::fob\n`;
+        let flatsHtml = getFlatsHtmlForSplitter(sp.id);
+        
+        m += `    ${spNid}(["⬢ Горище: ${spLabel}${sigText}${flatsHtml}"]):::fob\n`;
         m += `    style ${spNid} stroke:${hexColor},color:${hexColor},stroke-width:2px;\n`;
     });
       
@@ -1148,24 +1179,43 @@ function getSpIcon(type, ratio) {
           }
       });
 
-      // Floors Box Splitters
+      // --- GROUP FLOORS BY ENTRANCE ---
+      const entrancesMap = {};
       fBoxes.forEach(fb => {
-          fb.splitters.forEach(sp => {
-            const spNid = `${fId}_f_${safeId(sp.id)}`;
-            spNodes[sp.id] = spNid;
-            
-            let s = sigSplitter(mdu, sp.id); // Get input signal
-            let sigText = s !== null ? `<br/><b style='color:#3fb950;font-size:10px'>⚡ ${s.toFixed(1)} дБ</b>` : "";
-            let spLabel = spLabels && spLabels[sp.id] ? spLabels[sp.id] : `${sp.type} ${sp.ratio}`;
-            let hexColor = typeof getSplitterColor === "function" ? getSplitterColor(sp.type, sp.ratio, spLabel) : "#58a6ff";
-            
-            m += `    ${spNid}(["⯁ Пов. ${fb.floor} (П.${fb.entrance}): ${spLabel}${sigText}"]):::fob\n`;
-            m += `    style ${spNid} stroke:${hexColor},color:${hexColor},stroke-width:2px;\n`;
-        });
-          fb.crossConnects.forEach(x => {
-               if (x.toType === "SPLITTER" && spNodes[x.toId] && spNodes[x.fromId]) {
-                   m += `    ${spNodes[x.fromId]} -. "${x.fromBranch||x.fromCore||''}" .-> ${spNodes[x.toId]}\n`;
-               }
+          if (!entrancesMap[fb.entrance]) entrancesMap[fb.entrance] = [];
+          entrancesMap[fb.entrance].push(fb);
+      });
+
+      // Entrances Box Splitters
+      Object.keys(entrancesMap).forEach(entNumStr => {
+          const entNum = parseInt(entNumStr);
+          m += `    subgraph ${fId}_ent_${entNum} ["🚪 Під'їзд ${entNum}"]\n`;
+          m += `      direction TB\n`;
+          
+          entrancesMap[entNumStr].forEach(fb => {
+              fb.splitters.forEach(sp => {
+                  const spNid = `${fId}_f_${safeId(sp.id)}`;
+                  spNodes[sp.id] = spNid;
+                  
+                  let s = sigSplitter(mdu, sp.id); // Get input signal
+                  let sigText = s !== null ? `<br/><b style='color:#3fb950;font-size:10px'>⚡ ${s.toFixed(1)} дБ</b>` : "";
+                  let spLabel = spLabels && spLabels[sp.id] ? spLabels[sp.id] : `${sp.type} ${sp.ratio}`;
+                  let hexColor = typeof getSplitterColor === "function" ? getSplitterColor(sp.type, sp.ratio, spLabel) : "#58a6ff";
+                  
+                  let flatsHtml = getFlatsHtmlForSplitter(sp.id);
+                  
+                  m += `      ${spNid}(["⯁ Пов. ${fb.floor}: ${spLabel}${sigText}${flatsHtml}"]):::fob\n`;
+                  m += `      style ${spNid} stroke:${hexColor},color:${hexColor},stroke-width:2px;\n`;
+              });
+          });
+          m += `    end\n`;
+          
+          entrancesMap[entNumStr].forEach(fb => {
+              fb.crossConnects.forEach(x => {
+                   if (x.toType === "SPLITTER" && spNodes[x.toId] && spNodes[x.fromId]) {
+                       m += `    ${spNodes[x.fromId]} -. "${x.fromBranch||x.fromCore||''}" .-> ${spNodes[x.toId]}\n`;
+                   }
+              });
           });
       });
 
@@ -1204,22 +1254,6 @@ function getSpIcon(type, ratio) {
           }
       }
       
-      // End Subscribers (Terminal point)
-      const subsNid = `${fId}_subs`;
-      m += `    ${subsNid}(["🏠 Абоненти (${actOnu} підключень)"]):::subs\n`;
-      m += `    click ${subsNid} "javascript:window.focusNode('${mdu.id}')"\n`;
-      
-      let hasFloors = false;
-      fBoxes.forEach(fb => {
-          fb.splitters.forEach(sp => {
-             hasFloors = true;
-             m += `  ${spNodes[sp.id]} -.-> ${subsNid}\n`;
-          });
-      });
-      if (!hasFloors && amBox.splitters.length > 0) {
-          amBox.splitters.forEach(sp => m += `  ${spNodes[sp.id]} -.-> ${subsNid}\n`);
-      }
-
       m += `  end\n`;
   }
 

@@ -520,6 +520,7 @@ function renderFOBCrossUI(node) {
             sOpt = sOpt.replace(`<option value="">`, `<option value="" selected>`);
         }
         
+        const spTotalOuts = type === "PLC" ? parseInt((ratio || "1x2").split("x")[1] || 2) : 2;
         return `<div style="background:#21262d; padding:8px; border-radius:4px; border:1px solid #30363d; margin-bottom:10px;">
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
                 <b style="color:${color}; font-size:12px;">${getSplitterIcon(type, ratio, "main")} ${spLbl}</b>
@@ -530,6 +531,7 @@ function renderFOBCrossUI(node) {
                     </select>
                 </div>
             </div>
+            <div class="splitter-progress-bar" data-spid="${id}" data-total="${spTotalOuts}"></div>
         </div>`;
     };
 
@@ -797,6 +799,46 @@ window.checkFobPorts = function(selectElement) {
                 opt.style.color = opt.dataset.color || "";
             }
         });
+    });
+
+    // 3. Update Splitter Progress Bars
+    if (!window.renderSplitterProgressBar) {
+        window.renderSplitterProgressBar = function(used, total) {
+            const isFull = used >= total;
+            const over = used > total;
+            let html = `<div style="display:flex; justify-content:space-between; margin-bottom:4px; margin-top:8px;">
+                <span style="font-size:10px; color:#c9d1d9;">Виходи (OUT):</span>
+                <span style="font-size:10px; color:${over?'#ff5555':(isFull?'#d29922':'#8b949e')}; font-weight:bold;">${used} / ${total}</span>
+            </div>
+            <div style="display:flex; height:6px; background:#0d1117; border-radius:3px; overflow:hidden; border:1px solid #30363d;">`;
+            
+            const blocks = Math.max(total, used);
+            for(let i=0; i<blocks; i++) {
+                let isUsed = i < used;
+                let isOverLimit = i >= total;
+                let bg = isOverLimit ? "#ff5555" : (isUsed ? (isFull ? "#d29922" : "#32cd32") : "transparent");
+                let br = i < blocks - 1 ? "border-right:1px solid #30363d;" : "";
+                html += `<div style="flex:1; background:${bg}; ${br} transition:background 0.3s;"></div>`;
+            }
+            html += `</div>`;
+            if (over) html += `<div style="font-size:9px; color:#ff5555; margin-top:4px;">⚠️ Перевищено ліміт виходів!</div>`;
+            return html;
+        };
+    }
+
+    const spUsedCounts = {};
+    allSelects.forEach(sel => {
+        if (sel.value && sel.value.startsWith("SPLITTER|")) {
+            const spId = sel.value.split("|")[1];
+            spUsedCounts[spId] = (spUsedCounts[spId] || 0) + 1;
+        }
+    });
+
+    document.querySelectorAll(".splitter-progress-bar").forEach(e => {
+        const el = /** @type {HTMLElement} */ (e);
+        const spId = el.dataset.spid;
+        const total = parseInt(el.dataset.total || "2");
+        if (spId && window.renderSplitterProgressBar) el.innerHTML = window.renderSplitterProgressBar(spUsedCounts[spId] || 0, total);
     });
 };
 

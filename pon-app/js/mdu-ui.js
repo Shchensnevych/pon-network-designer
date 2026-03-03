@@ -334,15 +334,18 @@ function renderMDUUI(node) {
             for(let i=1; i<=ratio; i++) {
                 const s = getMduSig(node, "spOut", sp.id + "|" + i);
                 const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
-                sourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}">${icon} Горище: ${label} (Вихід ${i})${sStr}</option>`;
+                const basetext = `${icon} Горище: ${label} (Вихід ${i})`;
+                sourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}" data-basetext="${basetext}">${basetext}${sStr}</option>`;
             }
         } else if (sp.type === "FBT") {
             const sx = getMduSig(node, "spOut", sp.id + "|X");
             const sy = getMduSig(node, "spOut", sp.id + "|Y");
             const sxStr = sx !== null ? ` ⚡${sx.toFixed(1)}дБ` : "";
             const syStr = sy !== null ? ` ⚡${sy.toFixed(1)}дБ` : "";
-            sourceOptions += `<option value="SPLITTER|${sp.id}|X" style="color:${color}" data-color="${color}">${icon} Горище: ${label} (X)${sxStr}</option>`;
-            sourceOptions += `<option value="SPLITTER|${sp.id}|Y" style="color:${color}" data-color="${color}">${icon} Горище: ${label} (Y)${syStr}</option>`;
+            const baseX = `${icon} Горище: ${label} (X)`;
+            const baseY = `${icon} Горище: ${label} (Y)`;
+            sourceOptions += `<option value="SPLITTER|${sp.id}|X" style="color:${color}" data-color="${color}" data-basetext="${baseX}">${baseX}${sxStr}</option>`;
+            sourceOptions += `<option value="SPLITTER|${sp.id}|Y" style="color:${color}" data-color="${color}" data-basetext="${baseY}">${baseY}${syStr}</option>`;
         }
     });
 
@@ -363,17 +366,18 @@ function renderMDUUI(node) {
         const spLbl = spLabels[sp.id];
         const spColor = getSplitterColor(sp.type, sp.ratio, spLbl);
         let s = getMduSig(node, "spIn", sp.id);
-        const sigText = s !== null ? ` <span style="font-size:10px; color:#3fb950; font-weight:normal">⚡ ${s.toFixed(1)} дБ</span>` : "";
+        const sigText = s !== null ? s.toFixed(1) : "";
         
         atticHtml += `<div style="background:#21262d; padding:10px; border-radius:4px; border:1px solid #30363d; margin-bottom:10px;">
             <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                <b style="color:${spColor}; font-size:12px;">${getSplitterIcon(sp.type, sp.ratio, 'main')} ${spLbl}${sigText}</b>
+                <b style="color:${spColor}; font-size:12px;">${getSplitterIcon(sp.type, sp.ratio, 'main')} ${spLbl}<span id="sp-sig-${sp.id}" style="font-size:10px; color:#3fb950; font-weight:normal;">${sigText ? " ⚡ " + sigText + " дБ" : ""}</span></b>
                 <span onclick="window.removeMDUSplitter('${node.id}', 'main', '${sp.id}')" style="color:#f85149; cursor:pointer; font-size:12px;" title="Видалити">✖</span>
             </div>
             <div style="font-size:11px; margin-bottom:4px; color:#c9d1d9">Вхід (IN):</div>
-            <select class="mdu-cross-select mdu-cross-main" data-id="${sp.id}" data-targetname="Головний ${spLbl}" style="width:100%; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px; padding:2px;" onchange="window.checkMDUPorts(this)">
+            <select class="mdu-cross-select mdu-cross-main" data-id="${sp.id}" data-targetname="Головний ${spLbl}" style="width:100%; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px; padding:2px;" onchange="window.checkMDUPorts(this, '${node.id}')">
                 ${sOpt}
             </select>
+            <div class="splitter-progress-bar" data-spid="${sp.id}" data-total="${sp.type === 'PLC' ? (parseInt((sp.ratio || '1x2').split('x')[1]) || 2) : 2}"></div>
         </div>`;
     });
     atticHtml += `</div>`;
@@ -397,14 +401,17 @@ function renderMDUUI(node) {
                  const sy = getMduSig(node, "spOut", sp.id + "|Y");
                  const sxStr = sx !== null ? ` ⚡${sx.toFixed(1)}дБ` : "";
                  const syStr = sy !== null ? ` ⚡${sy.toFixed(1)}дБ` : "";
-                 flatSourceOptions += `<option value="SPLITTER|${sp.id}|X" style="color:${color}" data-color="${color}">${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (X)${sxStr}</option>`;
-                 flatSourceOptions += `<option value="SPLITTER|${sp.id}|Y" style="color:${color}" data-color="${color}">${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (Y)${syStr}</option>`;
+                 const baseX = `${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (X)`;
+                 const baseY = `${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (Y)`;
+                 flatSourceOptions += `<option value="SPLITTER|${sp.id}|X" style="color:${color}" data-color="${color}" data-basetext="${baseX}">${baseX}${sxStr}</option>`;
+                 flatSourceOptions += `<option value="SPLITTER|${sp.id}|Y" style="color:${color}" data-color="${color}" data-basetext="${baseY}">${baseY}${syStr}</option>`;
             } else {
                 const outs = parseInt(sp.ratio.split("x")[1]) || 2;
                 for(let i=1; i<=outs; i++) {
                     const s = getMduSig(node, "spOut", sp.id + "|" + i);
                     const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
-                    flatSourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}">${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (Вихід ${i})${sStr}</option>`;
+                    const basetext = `${icon} Поверх ${fb.floor} (Під'їзд ${fb.entrance}): ${label} (Вихід ${i})`;
+                    flatSourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}" data-basetext="${basetext}">${basetext}${sStr}</option>`;
                 }
             }
         });
@@ -425,11 +432,39 @@ function renderMDUUI(node) {
         floorsMap[fb.entrance][fb.floor].push(fb);
     });
 
+    let activeTabAttr = document.getElementById("mdu-topology-modal")?.getAttribute("data-activetab");
+    let activeEntrance = activeTabAttr ? parseInt(activeTabAttr) : 1;
+    if (activeEntrance > node.entrances) activeEntrance = 1;
+
+    let tabsHtml = `<div class="mdu-tabs-container" style="display:flex; border-bottom:1px solid #30363d; margin-bottom:0px; overflow-x:auto;">`;
     Object.keys(floorsMap).forEach(entStr => {
         const entrance = parseInt(entStr);
-        floorHtml += `<div style="background:#0d1117; border:1px solid #30363d; border-radius:4px; padding:8px; margin-bottom:10px;">
-            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:6px; border-bottom:1px solid #30363d; padding-bottom:4px;">
-                <div style="font-weight:bold; color:#f0f6fc; font-size:13px;">Під'їзд ${entrance}</div>
+        const firstFlat = (entrance - 1) * (node.floors * node.flatsPerFloor) + 1;
+        const lastFlat = firstFlat + (node.floors * node.flatsPerFloor) - 1;
+        let connectedCount = 0;
+        if (node.flats) {
+            connectedCount = node.flats.filter(f => f.flat >= firstFlat && f.flat <= lastFlat && f.crossConnect).length;
+        }
+        const totalFlats = node.floors * node.flatsPerFloor;
+        const isActive = entrance === activeEntrance;
+        const bg = isActive ? "#21262d" : "#0d1117";
+        const border = isActive ? "1px solid #30363d" : "1px solid transparent";
+        const borderBot = isActive ? "1px solid #21262d" : "1px solid #30363d";
+        const color = isActive ? "#58a6ff" : "#8b949e";
+        
+        tabsHtml += `<div id="mdu-tab-btn-${entrance}" class="mdu-tab-btn" onclick="window.switchMDUTab(${entrance})" style="padding:8px 16px; cursor:pointer; background:${bg}; border-top:${border}; border-left:${border}; border-right:${border}; border-bottom:${borderBot}; border-radius:6px 6px 0 0; color:${color}; font-size:13px; font-weight:bold; white-space:nowrap; margin-bottom:-1px; z-index:${isActive?2:1}; position:relative; transition: background 0.2s;">Під'їзд ${entrance} (<span id="mdu-tab-count-${entrance}">${connectedCount}</span>/${totalFlats})</div>`;
+    });
+    tabsHtml += `<div style="flex:1; border-bottom:1px solid #30363d;"></div></div>`;
+    
+    floorHtml += tabsHtml;
+    floorHtml += `<div style="background:#21262d; border:1px solid #30363d; border-top:none; border-radius:0 0 4px 4px; padding:12px; margin-bottom:10px; min-height: 200px;">`;
+
+    Object.keys(floorsMap).forEach(entStr => {
+        const entrance = parseInt(entStr);
+        const isHidden = entrance !== activeEntrance ? "display:none;" : "display:block;";
+        floorHtml += `<div id="mdu-entrance-block-${entrance}" class="mdu-entrance-content" style="${isHidden}">
+            <div style="display:flex; justify-content:space-between; align-items:center; margin-bottom:10px; border-bottom:1px dashed #30363d; padding-bottom:6px;">
+                <div style="font-weight:bold; color:#8b949e; font-size:11px; text-transform:uppercase;">Карта підключень під'їзду</div>
                 <div style="display:flex; gap:4px;">
                     <select id="mdu-addsp-f-${entrance}" style="background:#161b22; color:#c9d1d9; border:1px solid #30363d; font-size:11px; padding:2px;">`;
         for(let f=node.floors; f>=1; f--) floorHtml += `<option value="${f}">Поверх ${f}</option>`;
@@ -446,8 +481,8 @@ function renderMDUUI(node) {
         const fMap = floorsMap[entStr];
         Object.keys(fMap).sort((a,b)=>parseInt(b)-parseInt(a)).forEach(floorStr => {
             const floorNum = parseInt(floorStr);
-            floorHtml += `<div style="margin-bottom:8px; padding:4px; border-left: 2px solid #58a6ff; margin-left:4px;">
-                <div style="font-weight:bold; color:#58a6ff; font-size:12px; margin-bottom:6px;">Поверх ${floorNum}</div>`;
+            floorHtml += `<div style="background:#11151d; margin-bottom:12px; padding:10px; border:1px solid #30363d; border-radius:4px; border-left: 3px solid #58a6ff;">
+                <div style="font-weight:bold; color:#58a6ff; font-size:13px; margin-bottom:8px; border-bottom:1px solid #30363d; padding-bottom:4px;">Поверх ${floorNum}</div>`;
                 
             fMap[floorStr].forEach(fb => {
                 fb.splitters.forEach(sp => {
@@ -466,16 +501,17 @@ function renderMDUUI(node) {
                     const spLbl = spLabels[sp.id];
                     const spColor = getSplitterColor(sp.type, sp.ratio, spLbl);
                     let s = getMduSig(node, "spIn", sp.id);
-                    const sigText = s !== null ? ` <span style="font-size:10px; color:#3fb950; font-weight:normal">⚡ ${s.toFixed(1)} дБ</span>` : "";
+                    const sigText = s !== null ? s.toFixed(1) : "";
 
                     floorHtml += `<div style="background:#21262d; padding:8px; border-radius:4px; border:1px solid #30363d; margin-bottom:6px;">
                         <div style="display:flex; justify-content:space-between; margin-bottom:4px;">
-                            <span style="font-size:11px; font-weight:bold; color:${spColor}">${getSplitterIcon(sp.type, sp.ratio, 'floor')} ${spLbl}${sigText}</span>
+                            <span style="font-size:11px; font-weight:bold; color:${spColor}">${getSplitterIcon(sp.type, sp.ratio, 'floor')} ${spLbl}<span id="sp-sig-${sp.id}" style="font-size:10px; color:#3fb950; font-weight:normal;">${sigText ? " ⚡ " + sigText + " дБ" : ""}</span></span>
                             <span onclick="window.removeMDUSplitter('${node.id}', 'floor', '${sp.id}', ${floorNum}, ${entrance})" style="color:#f85149; cursor:pointer; font-size:12px;" title="Видалити">✖</span>
                         </div>
-                        <select class="mdu-cross-select mdu-cross-floor" data-floor="${floorNum}" data-entrance="${entrance}" data-id="${sp.id}" data-targetname="Поверх ${floorNum} Під'їзд ${entrance} ${spLbl}" style="width:100%; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:10px; padding:2px;" onchange="window.checkMDUPorts(this)">
+                        <select class="mdu-cross-select mdu-cross-floor" data-floor="${floorNum}" data-entrance="${entrance}" data-id="${sp.id}" data-targetname="Поверх ${floorNum} Під'їзд ${entrance} ${spLbl}" style="width:100%; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:10px; padding:2px;" onchange="window.checkMDUPorts(this, '${node.id}')">
                             ${sOpt}
                         </select>
+                        <div class="splitter-progress-bar" data-spid="${sp.id}" data-total="${sp.type === 'PLC' ? (parseInt((sp.ratio || '1x2').split('x')[1]) || 2) : 2}"></div>
                     </div>`;
                 });
             });
@@ -484,9 +520,9 @@ function renderMDUUI(node) {
             const firstFlat = (entrance - 1) * (node.floors * node.flatsPerFloor) + (floorNum - 1) * node.flatsPerFloor + 1;
             const flatsOnFloor = node.flatsPerFloor;
             
-            floorHtml += `<div style="margin-top:6px; border-top:1px dashed #30363d; padding-top:6px;">
-                <div style="font-size:11px; color:#c9d1d9; margin-bottom:4px;">Квартири:</div>
-                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:4px;">`;
+            floorHtml += `<div style="margin-top:8px; padding-top:6px;">
+                <div style="font-size:11px; color:#8b949e; margin-bottom:6px; text-transform:uppercase; font-weight:bold;">Квартири:</div>
+                <div style="display:grid; grid-template-columns: 1fr 1fr; gap:6px;">`;
                 
             for(let flatNum = firstFlat; flatNum < firstFlat + flatsOnFloor; flatNum++) {
                 const flatConn = (node.flats || []).find(f => f.flat === flatNum);
@@ -497,7 +533,7 @@ function renderMDUUI(node) {
                     let port = flatConn.crossConnect.fromCore !== undefined ? flatConn.crossConnect.fromCore : (flatConn.crossConnect.fromBranch || "1");
                     let s = getMduSig(node, "spOut", flatConn.crossConnect.fromId + "|" + port);
                     if (s !== null) {
-                        flatSigText = ` <span style="color:#3fb950; font-weight:normal;">⚡ ${s.toFixed(1)} дБ</span>`;
+                        flatSigText = s.toFixed(1);
                     }
                 }
                 
@@ -509,8 +545,8 @@ function renderMDUUI(node) {
                 }
                 
                 floorHtml += `<div style="background:#0d1117; padding:4px; border:1px solid #30363d; border-radius:3px; font-size:10px; display:flex; flex-direction:column; gap:2px;">
-                    <span style="color:#d29922; font-weight:bold;">Кв. ${flatNum}${flatSigText}</span>
-                    <select class="mdu-cross-select mdu-cross-flat" data-flat="${flatNum}" data-targetname="Кв. ${flatNum}" style="width:100%; background:#161b22; color:#c9d1d9; border:1px solid #30363d; font-size:9px; padding:1px;" onchange="window.checkMDUPorts(this)">
+                    <span style="color:#d29922; font-weight:bold;">Кв. ${flatNum} <span id="flat-sig-${flatNum}" style="color:#3fb950; font-weight:normal;">${flatSigText ? "⚡ " + flatSigText + " дБ" : ""}</span></span>
+                    <select class="mdu-cross-select mdu-cross-flat" data-flat="${flatNum}" data-targetname="Кв. ${flatNum}" style="width:100%; background:#161b22; color:#c9d1d9; border:1px solid #30363d; font-size:9px; padding:1px;" onchange="window.checkMDUPorts(this, '${node.id}')">
                         ${sOpt}
                     </select>
                 </div>`;
@@ -521,7 +557,8 @@ function renderMDUUI(node) {
         floorHtml += `</div>`; // End Entrance Block
     });
     
-    floorHtml += `</div>`;
+    floorHtml += `</div>`; // Close min-height wrapper
+    floorHtml += `</div>`; // Close overall Right container
 
     let bottomWrapperEnd = `</div>`;
 
@@ -536,7 +573,7 @@ function renderMDUUI(node) {
 
     // Apply validation styling right away
     setTimeout(() => {
-        if (typeof window.checkMDUPorts === "function") window.checkMDUPorts(null);
+        if (typeof window.checkMDUPorts === "function") window.checkMDUPorts(null, node.id);
     }, 10);
 }
 
@@ -609,6 +646,35 @@ function saveMDUState(node) {
 
 // Ensure the UI commands are exposed to the window
 export function initMDUWindowCommands() {
+    window.switchMDUTab = (entrance) => {
+        document.querySelectorAll('.mdu-entrance-content').forEach(e => {
+            const el = /** @type {HTMLElement} */ (e);
+            el.style.display = 'none';
+        });
+        const block = /** @type {HTMLElement} */ (document.getElementById(`mdu-entrance-block-${entrance}`));
+        if(block) block.style.display = 'block';
+        
+        document.querySelectorAll('.mdu-tab-btn').forEach(e => {
+            const btn = /** @type {HTMLElement} */ (e);
+            btn.style.background = '#0d1117';
+            btn.style.border = '1px solid transparent';
+            btn.style.borderBottom = '1px solid #30363d';
+            btn.style.color = '#8b949e';
+            btn.style.zIndex = '1';
+        });
+        const activeBtn = /** @type {HTMLElement} */ (document.getElementById(`mdu-tab-btn-${entrance}`));
+        if(activeBtn) {
+            activeBtn.style.background = '#21262d';
+            activeBtn.style.border = '1px solid #30363d';
+            activeBtn.style.borderBottom = '1px solid #21262d';
+            activeBtn.style.color = '#58a6ff';
+            activeBtn.style.zIndex = '2';
+        }
+        
+        const modal = document.getElementById("mdu-topology-modal");
+        if(modal) modal.setAttribute("data-activetab", entrance.toString());
+    };
+
     window.addMDUSplitter = (nodeId, location, entranceOverride = null) => {
         const node = nodes.find(n => n.id === nodeId);
         if(!node || node.type !== "MDU") return;
@@ -676,7 +742,7 @@ export function initMDUWindowCommands() {
     };
 }
 
-window.checkMDUPorts = function(selectElement) {
+window.checkMDUPorts = function(selectElement, nodeId = null) {
     /** @type {NodeListOf<HTMLSelectElement>} */
     const allSelects = document.querySelectorAll(".mdu-cross-select");
     const selEl = /** @type {HTMLSelectElement} */ (selectElement);
@@ -696,6 +762,12 @@ window.checkMDUPorts = function(selectElement) {
         }
     }
 
+    // Prepare node and save new connection state before recalculating signals
+    const node = nodeId ? nodes.find(n => n.id === nodeId) : null;
+    if (node && node.type === "MDU") {
+        saveMDUState(node);
+    }
+
     // 2. Re-evaluate all dropdowns to update disabled/busy states dynamically
     const usedVals = new Set();
     allSelects.forEach(sel => {
@@ -707,13 +779,23 @@ window.checkMDUPorts = function(selectElement) {
         options.forEach(opt => {
             if (opt.value === "") return; // Skip -- Не підключено --
             
-            // Clean up the text content if it already has [Зайнято: ...]
-            let baseText = opt.textContent.replace(/ \[(Зайнято|Використовується):.*?\]|\s*\(ЗАЙНЯТО\)/g, "");
+            let baseText = opt.getAttribute("data-basetext") || opt.textContent.replace(/ \[(Зайнято|Використовується):.*?\]|\s*\(ЗАЙНЯТО\)/g, "");
+            let sigStr = "";
+            
+            if (opt.value && opt.value.startsWith("SPLITTER|")) {
+                const parts = opt.value.split("|");
+                const s = node ? getMduSig(node, "spOut", parts[1] + "|" + parts[2]) : null;
+                if (s !== null) {
+                    sigStr = ` ⚡${s.toFixed(1)}дБ`;
+                }
+            }
+            
+            const fullText = baseText + sigStr;
             
             if (opt.value === sel.value) {
                 // Currently selected here
                 opt.disabled = false;
-                opt.textContent = baseText;
+                opt.textContent = fullText;
                 opt.style.color = opt.dataset.color || "";
             } else if (usedVals.has(opt.value)) {
                 // Used SOMEWHERE ELSE
@@ -721,14 +803,87 @@ window.checkMDUPorts = function(selectElement) {
                 let usingName = usingSelect ? usingSelect.getAttribute("data-targetname") : "Іншим";
                 
                 opt.disabled = false; // ALLOW reassignment ("stealing")
-                opt.textContent = baseText + ` [Зайнято: ${usingName}]`;
+                opt.textContent = fullText + ` [Зайнято: ${usingName}]`;
                 opt.style.color = "#ff5555";
             } else {
                 // Free
                 opt.disabled = false;
-                opt.textContent = baseText;
+                opt.textContent = fullText;
                 opt.style.color = opt.dataset.color || "";
             }
         });
     });
+
+    // 3. Update Splitter Progress Bars
+    if (!window.renderSplitterProgressBar) {
+        window.renderSplitterProgressBar = function(used, total) {
+            const isFull = used >= total;
+            const over = used > total;
+            let html = `<div style="display:flex; justify-content:space-between; margin-bottom:4px; margin-top:8px;">
+                <span style="font-size:10px; color:#c9d1d9;">Виходи (OUT):</span>
+                <span style="font-size:10px; color:${over?'#ff5555':(isFull?'#d29922':'#8b949e')}; font-weight:bold;">${used} / ${total}</span>
+            </div>
+            <div style="display:flex; height:6px; background:#0d1117; border-radius:3px; overflow:hidden; border:1px solid #30363d;">`;
+            
+            const blocks = Math.max(total, used);
+            for(let i=0; i<blocks; i++) {
+                let isUsed = i < used;
+                let isOverLimit = i >= total;
+                let bg = isOverLimit ? "#ff5555" : (isUsed ? (isFull ? "#d29922" : "#32cd32") : "transparent");
+                let br = i < blocks - 1 ? "border-right:1px solid #30363d;" : "";
+                html += `<div style="flex:1; background:${bg}; ${br} transition:background 0.3s;"></div>`;
+            }
+            html += `</div>`;
+            if (over) html += `<div style="font-size:9px; color:#ff5555; margin-top:4px;">⚠️ Перевищено ліміт виходів!</div>`;
+            return html;
+        };
+    }
+
+    const spUsedCounts = {};
+    allSelects.forEach(sel => {
+        if (sel.value && sel.value.startsWith("SPLITTER|")) {
+            const spId = sel.value.split("|")[1];
+            spUsedCounts[spId] = (spUsedCounts[spId] || 0) + 1;
+        }
+    });
+
+    document.querySelectorAll(".splitter-progress-bar").forEach(e => {
+        const el = /** @type {HTMLElement} */ (e);
+        const spId = el.dataset.spid;
+        const total = parseInt(el.dataset.total || "2");
+        if (spId && window.renderSplitterProgressBar) {
+            el.innerHTML = window.renderSplitterProgressBar(spUsedCounts[spId] || 0, total);
+        }
+    });
+
+    if (node && node.type === "MDU") {
+        const allSpIds = [...(node.mainBox.splitters||[]).map(s=>s.id)];
+        (node.floorBoxes||[]).forEach(fb => fb.splitters.forEach(s=>allSpIds.push(s.id)));
+        allSpIds.forEach(spId => {
+            let s = getMduSig(node, "spIn", spId);
+            const el = document.getElementById(`sp-sig-${spId}`);
+            if (el) el.innerHTML = s !== null ? ` ⚡ ${s.toFixed(1)} дБ` : "";
+        });
+        (node.flats||[]).forEach(f => {
+            let s = null;
+            if (f.crossConnect && f.crossConnect.fromType === "SPLITTER") {
+                let port = f.crossConnect.fromCore !== undefined ? f.crossConnect.fromCore : (f.crossConnect.fromBranch || "1");
+                s = getMduSig(node, "spOut", f.crossConnect.fromId + "|" + port);
+            }
+            const el = document.getElementById(`flat-sig-${f.flat}`);
+            if (el) el.innerHTML = s !== null ? `⚡ ${s.toFixed(1)} дБ` : "";
+        });
+        
+        // Update entrance tabs connecting counts dynamically
+        for (let e = 1; e <= node.entrances; e++) {
+            const firstFlat = (e - 1) * (node.floors * node.flatsPerFloor) + 1;
+            const lastFlat = firstFlat + (node.floors * node.flatsPerFloor) - 1;
+            let connectedCount = 0;
+            if (node.flats) {
+                connectedCount = node.flats.filter(f => f.flat >= firstFlat && f.flat <= lastFlat && f.crossConnect).length;
+            }
+            const el = document.getElementById(`mdu-tab-count-${e}`);
+            if (el) el.textContent = connectedCount.toString();
+        }
+    }
 };

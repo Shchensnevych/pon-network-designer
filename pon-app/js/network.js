@@ -1,4 +1,8 @@
 ﻿// @ts-check
+/// <reference path="./types.d.ts" />
+/** @type {typeof import('leaflet')} */
+const L = window["L"];
+
 // Core map + network logic for modular PON Designer.
 // Signal calculations live in signal.js, shared arrays in state.js.
 
@@ -65,7 +69,7 @@ let connStart = null;
 
 /** @type {ReturnType<typeof setTimeout> | null} */
 let dragUpdateTimer = null; // Throttle для оновлення під час драгу
-/** @type {import('leaflet').Polyline[]} */
+/** @type {(import('leaflet').Polyline | import('leaflet').CircleMarker)[]} */
 let onuLeaderLines = []; // Leader lines for dense ONU clusters
 /** @type {Map<string, import('leaflet').Polyline>} */
 let onuLeaderLinesByNodeId = new Map();
@@ -1152,13 +1156,15 @@ function updateNodeLabel(n) {
   n.marker.off("mouseover.popup mouseout.popup");
   n.marker.on("mouseover.popup", () => {
     const leaderLine = onuLeaderLinesByNodeId.get(n.id);
-    if (leaderLine && leaderLine.getElement && leaderLine.getElement()) {
-        L.DomUtil.addClass(leaderLine.getElement(), 'onu-leader-line-hover');
+    const llEl = /** @type {HTMLElement} */ (leaderLine && leaderLine.getElement ? leaderLine.getElement() : null);
+    if (llEl) {
+        L.DomUtil.addClass(llEl, 'onu-leader-line-hover');
         leaderLine.bringToFront();
     }
     const endpoint = onuEndpointsByNodeId.get(n.id);
-    if (endpoint && endpoint.getElement && endpoint.getElement()) {
-        L.DomUtil.addClass(endpoint.getElement(), 'onu-endpoint-hover');
+    const epEl = /** @type {HTMLElement} */ (endpoint && endpoint.getElement ? endpoint.getElement() : null);
+    if (epEl) {
+        L.DomUtil.addClass(epEl, 'onu-endpoint-hover');
     }
     const tt = n.marker.getTooltip();
     if (tt && tt._container) L.DomUtil.addClass(tt._container, 'tooltip-hover-glow');
@@ -1170,12 +1176,14 @@ function updateNodeLabel(n) {
   });
   n.marker.on("mouseout.popup", () => {
     const leaderLine = onuLeaderLinesByNodeId.get(n.id);
-    if (leaderLine && leaderLine.getElement && leaderLine.getElement()) {
-        L.DomUtil.removeClass(leaderLine.getElement(), 'onu-leader-line-hover');
+    const llEl = /** @type {HTMLElement} */ (leaderLine && leaderLine.getElement ? leaderLine.getElement() : null);
+    if (llEl) {
+        L.DomUtil.removeClass(llEl, 'onu-leader-line-hover');
     }
     const endpoint = onuEndpointsByNodeId.get(n.id);
-    if (endpoint && endpoint.getElement && endpoint.getElement()) {
-        L.DomUtil.removeClass(endpoint.getElement(), 'onu-endpoint-hover');
+    const epEl = /** @type {HTMLElement} */ (endpoint && endpoint.getElement ? endpoint.getElement() : null);
+    if (epEl) {
+        L.DomUtil.removeClass(epEl, 'onu-endpoint-hover');
     }
     const tt = n.marker.getTooltip();
     if (tt && tt._container) L.DomUtil.removeClass(tt._container, 'tooltip-hover-glow');
@@ -1201,7 +1209,7 @@ function updateNodeTooltip(node, content) {
   if (node._isDragging) return;
 
   const zoom = map.getZoom();
-  const minZoomForPermanent = 17;
+  const minZoomForPermanent = 16;
   
   if (tooltipMode === "HIDDEN") {
     const tt = node.marker.getTooltip();
@@ -1275,29 +1283,35 @@ function updateNodeTooltip(node, content) {
             tt._container._hoverAttached = true;
             L.DomEvent.on(tt._container, 'mouseenter', () => {
                 const leaderLine = onuLeaderLinesByNodeId.get(node.id);
-                if (leaderLine && leaderLine.getElement && leaderLine.getElement()) {
-                    L.DomUtil.addClass(leaderLine.getElement(), 'onu-leader-line-hover');
+                const llEl = /** @type {HTMLElement} */ (leaderLine && leaderLine.getElement ? leaderLine.getElement() : null);
+                if (llEl) {
+                    L.DomUtil.addClass(llEl, 'onu-leader-line-hover');
                     leaderLine.bringToFront();
                 }
                 const endpoint = onuEndpointsByNodeId.get(node.id);
-                if (endpoint && endpoint.getElement && endpoint.getElement()) {
-                    L.DomUtil.addClass(endpoint.getElement(), 'onu-endpoint-hover');
+                const epEl = /** @type {HTMLElement} */ (endpoint && endpoint.getElement ? endpoint.getElement() : null);
+                if (epEl) {
+                    L.DomUtil.addClass(epEl, 'onu-endpoint-hover');
                 }
-                if (node.marker && node.marker.getElement && node.marker.getElement()) {
-                    L.DomUtil.addClass(node.marker.getElement(), 'highlighted-marker');
+                const mEl = node.marker && node.marker.getElement ? node.marker.getElement() : null;
+                if (mEl) {
+                    L.DomUtil.addClass(mEl, 'highlighted-marker');
                 }
             });
             L.DomEvent.on(tt._container, 'mouseleave', () => {
                 const leaderLine = onuLeaderLinesByNodeId.get(node.id);
-                if (leaderLine && leaderLine.getElement && leaderLine.getElement()) {
-                    L.DomUtil.removeClass(leaderLine.getElement(), 'onu-leader-line-hover');
+                const llEl = /** @type {HTMLElement} */ (leaderLine && leaderLine.getElement ? leaderLine.getElement() : null);
+                if (llEl) {
+                    L.DomUtil.removeClass(llEl, 'onu-leader-line-hover');
                 }
                 const endpoint = onuEndpointsByNodeId.get(node.id);
-                if (endpoint && endpoint.getElement && endpoint.getElement()) {
-                    L.DomUtil.removeClass(endpoint.getElement(), 'onu-endpoint-hover');
+                const epEl = /** @type {HTMLElement} */ (endpoint && endpoint.getElement ? endpoint.getElement() : null);
+                if (epEl) {
+                    L.DomUtil.removeClass(epEl, 'onu-endpoint-hover');
                 }
-                if (node.marker && node.marker.getElement && node.marker.getElement()) {
-                    L.DomUtil.removeClass(node.marker.getElement(), 'highlighted-marker');
+                const mEl = node.marker && node.marker.getElement ? node.marker.getElement() : null;
+                if (mEl) {
+                    L.DomUtil.removeClass(mEl, 'highlighted-marker');
                 }
             });
         }
@@ -1311,14 +1325,14 @@ function updateTooltipsVisibility() {
 
   const mapEl = document.getElementById("map");
   if (mapEl) {
-    if (zoom < 17) {
+    if (zoom < 16) {
       mapEl.classList.add("map-zoomed-out");
     } else {
       mapEl.classList.remove("map-zoomed-out");
     }
   }
 
-  if (zoom < 17 || tooltipMode === "HIDDEN") {
+  if (zoom < 16 || tooltipMode === "HIDDEN") {
     clearONULeaderLines();
   }
 
@@ -1367,7 +1381,7 @@ function layoutONUTooltips() {
   onuLeaderLines = [];
 
   const zoom = map.getZoom();
-  if (zoom < 17 || tooltipMode === "HIDDEN") return;
+  if (zoom < 16 || tooltipMode === "HIDDEN") return;
 
   const onus = nodes.filter((n) => n.type === "ONU" || n.type === "MDU");
   if (onus.length === 0) return;
@@ -1524,10 +1538,10 @@ function layoutONUTooltips() {
               const mLL = map.containerPointToLatLng(item.pt);
               const tLL = map.containerPointToLatLng(tp);
               
-              const line = L.polyline([mLL, tLL], {
+              const line = L.polyline([mLL, tLL], /** @type {any} */ ({
                  weight: 1.5, color: "#ffffffbb", dashArray: "6,4",
                  interactive: false, className: "onu-leader-line", pmIgnore: true,
-              }).addTo(map);
+              })).addTo(map);
 
               const endpoint = L.circleMarker(tLL, {
                   radius: 3.5, fillColor: "#58a6ff", fillOpacity: 1, 

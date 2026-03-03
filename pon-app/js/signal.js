@@ -1,6 +1,10 @@
 // @ts-check
+/// <reference path="./types.d.ts" />
 // PON signal calculation and port logic.
 // Pure functions that compute signal levels, losses, port status, distances.
+
+/** @type {typeof import('leaflet')} */
+const L = window["L"];
 
 import { FBT_LOSSES, PLC_LOSSES, MECH, ONU_MIN, FIBER_DB_KM } from "./config.js";
 import { nodes, conns, map } from "./state.js";

@@ -1,6 +1,11 @@
 // @ts-check
+/// <reference path="./types.d.ts" />
 // Signal path highlighting & signal animation overlays.
 // Extracted from network.js — pure visualization, no business logic.
+
+/** @type {typeof import('leaflet')} */
+const L = window["L"];
+
 import { nodes, conns, map } from "./state.js";
 import { hasOLTPath } from "./signal.js";
 

@@ -1,4 +1,8 @@
 // @ts-check
+/// <reference path="./types.d.ts" />
+/** @type {typeof import('leaflet')} */
+const L = window["L"];
+
 // Core constants and icon definitions for modular PON Designer.
 // Extracted from the original PON_Leaflet.html <script> block.
 

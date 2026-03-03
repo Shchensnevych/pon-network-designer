@@ -22,6 +22,12 @@ declare module 'leaflet' {
     /** Geoman: exclude this polyline from editing */
     pmIgnore?: boolean;
   }
+  interface CircleMarkerOptions {
+    /** Geoman: exclude this circle marker from editing */
+    pmIgnore?: boolean;
+    /** Custom CSS class name */
+    className?: string;
+  }
   interface Polyline {
     pm: {
       enable(options?: Record<string, unknown>): void;
@@ -37,12 +43,14 @@ declare module 'leaflet' {
     _icon?: HTMLElement;
     _map?: Map;
   }
+  interface Tooltip {
+    _container?: HTMLElement & { _hoverAttached?: boolean };
+  }
 }
 
 declare global {
   // ─── Make Leaflet 'L' available as a global value ───
-  // (loaded via <script src="leaflet.js"> in index.html)
-  const L: typeof _L;
+  // (L is already exported globally by @types/leaflet via `export as namespace L`)
 
   // ─── html2canvas global ───
   function html2canvas(
@@ -125,6 +133,9 @@ declare global {
     checkMDUPorts: Function;
     updateConnCapacity: Function;
     setTooltipMode: Function;
+    updateTooltipConfig: Function;
+    renderSplitterProgressBar: Function;
+    switchMDUTab: Function;
   }
 
   // ═══════════════════════════════════════════════
@@ -148,6 +159,10 @@ declare global {
     _tooltipOffset?: [number, number];
     /** Whether a leader line is active */
     _hasLeader?: boolean;
+    /** Configuration for tooltip radius/spacing */
+    _tooltipConfig?: any;
+    /** Temporary DOM hover tracking */
+    _hoverAttached?: boolean;
     
     /** Splice Matrix / ODF Matrix data */
     crossConnects?: CrossConnection[];
