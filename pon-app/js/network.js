@@ -67,6 +67,10 @@ let connStart = null;
 let dragUpdateTimer = null; // Throttle для оновлення під час драгу
 /** @type {import('leaflet').Polyline[]} */
 let onuLeaderLines = []; // Leader lines for dense ONU clusters
+/** @type {Map<string, import('leaflet').Polyline>} */
+let onuLeaderLinesByNodeId = new Map();
+/** @type {Map<string, import('leaflet').CircleMarker>} */
+let onuEndpointsByNodeId = new Map();
 
 /**
  * Initialize Leaflet map and basic interactions.
@@ -1147,12 +1151,35 @@ function updateNodeLabel(n) {
   // Show/hide popup on hover (but not during cable/patchcord drawing)
   n.marker.off("mouseover.popup mouseout.popup");
   n.marker.on("mouseover.popup", () => {
+    const leaderLine = onuLeaderLinesByNodeId.get(n.id);
+    if (leaderLine && leaderLine.getElement && leaderLine.getElement()) {
+        L.DomUtil.addClass(leaderLine.getElement(), 'onu-leader-line-hover');
+        leaderLine.bringToFront();
+    }
+    const endpoint = onuEndpointsByNodeId.get(n.id);
+    if (endpoint && endpoint.getElement && endpoint.getElement()) {
+        L.DomUtil.addClass(endpoint.getElement(), 'onu-endpoint-hover');
+    }
+    const tt = n.marker.getTooltip();
+    if (tt && tt._container) L.DomUtil.addClass(tt._container, 'tooltip-hover-glow');
+
     // Don't show popup if we're drawing a connection or if connection is already started
     if (!["cable", "patchcord"].includes(tool) && !connStart) {
       n.marker.openPopup();
     }
   });
   n.marker.on("mouseout.popup", () => {
+    const leaderLine = onuLeaderLinesByNodeId.get(n.id);
+    if (leaderLine && leaderLine.getElement && leaderLine.getElement()) {
+        L.DomUtil.removeClass(leaderLine.getElement(), 'onu-leader-line-hover');
+    }
+    const endpoint = onuEndpointsByNodeId.get(n.id);
+    if (endpoint && endpoint.getElement && endpoint.getElement()) {
+        L.DomUtil.removeClass(endpoint.getElement(), 'onu-endpoint-hover');
+    }
+    const tt = n.marker.getTooltip();
+    if (tt && tt._container) L.DomUtil.removeClass(tt._container, 'tooltip-hover-glow');
+
     // Close popup on mouseout, but keep it closed if we're drawing
     if (!connStart) {
       n.marker.closePopup();
@@ -1220,7 +1247,7 @@ function updateNodeTooltip(node, content) {
           currX = currOff.x !== undefined ? currOff.x : currOff[0];
           currY = currOff.y !== undefined ? currOff.y : currOff[1];
       }
-      if (currX !== offset[0] || currY !== offset[1] || tt.options.className !== className) {
+      if (currX !== offset[0] || currY !== offset[1] || tt.options.className !== className || tt.options.direction !== (node._tooltipDir || "bottom")) {
         needsRebind = true;
       }
     }
@@ -1229,7 +1256,7 @@ function updateNodeTooltip(node, content) {
       if (tt) node.marker.unbindTooltip();
       node.marker.bindTooltip(content, {
         permanent: shouldBePermanent,
-        direction: "bottom",
+        direction: node._tooltipDir || "bottom",
         className: className,
         offset: offset,
         sticky: !shouldBePermanent, 
@@ -1239,6 +1266,42 @@ function updateNodeTooltip(node, content) {
       // Normal update without geometry changes
       node.marker.setTooltipContent(content);
     }
+
+    // Attach cross-highlight events for the transparent tooltip box
+    // using a timeout to ensure Leaflet has pushed _container into the DOM
+    setTimeout(() => {
+        const tt = node.marker.getTooltip();
+        if (tt && tt._container && !tt._container._hoverAttached) {
+            tt._container._hoverAttached = true;
+            L.DomEvent.on(tt._container, 'mouseenter', () => {
+                const leaderLine = onuLeaderLinesByNodeId.get(node.id);
+                if (leaderLine && leaderLine.getElement && leaderLine.getElement()) {
+                    L.DomUtil.addClass(leaderLine.getElement(), 'onu-leader-line-hover');
+                    leaderLine.bringToFront();
+                }
+                const endpoint = onuEndpointsByNodeId.get(node.id);
+                if (endpoint && endpoint.getElement && endpoint.getElement()) {
+                    L.DomUtil.addClass(endpoint.getElement(), 'onu-endpoint-hover');
+                }
+                if (node.marker && node.marker.getElement && node.marker.getElement()) {
+                    L.DomUtil.addClass(node.marker.getElement(), 'highlighted-marker');
+                }
+            });
+            L.DomEvent.on(tt._container, 'mouseleave', () => {
+                const leaderLine = onuLeaderLinesByNodeId.get(node.id);
+                if (leaderLine && leaderLine.getElement && leaderLine.getElement()) {
+                    L.DomUtil.removeClass(leaderLine.getElement(), 'onu-leader-line-hover');
+                }
+                const endpoint = onuEndpointsByNodeId.get(node.id);
+                if (endpoint && endpoint.getElement && endpoint.getElement()) {
+                    L.DomUtil.removeClass(endpoint.getElement(), 'onu-endpoint-hover');
+                }
+                if (node.marker && node.marker.getElement && node.marker.getElement()) {
+                    L.DomUtil.removeClass(node.marker.getElement(), 'highlighted-marker');
+                }
+            });
+        }
+    }, 50);
   }
 }
 
@@ -1282,6 +1345,8 @@ function updateTooltipsVisibility() {
 function clearONULeaderLines() {
   onuLeaderLines.forEach((l) => map.removeLayer(l));
   onuLeaderLines = [];
+  onuLeaderLinesByNodeId.clear();
+  onuEndpointsByNodeId.clear();
   // Reset layout hints on all ONU nodes
   nodes.forEach((n) => {
     if (n.type === "ONU" || n.type === "MDU") {
@@ -1343,81 +1408,192 @@ function layoutONUTooltips() {
       
       const layoutArc = (items) => {
           if (items.length === 0) return;
-          // Sort items visually by their current screen X to prevent crossed leader lines
-          items.sort((a, b) => a.pt.x - b.pt.x);
 
-          // Calculate center of mass to decide if arc goes UP or DOWN
-          let sumY = 0;
-          items.forEach(it => { sumY += it.pt.y; });
-          const avgY = sumY / items.length;
-          
-          // If average ONU position is visually ABOVE the FOB (y is smaller), then top arc. Otherwise bottom.
-          const isTopArc = avgY <= fobPt.y;
+          // Check for manual overrides
+          const tCfg = group.fob._tooltipConfig || { direction: "AUTO", distance: 250 };
+          let dirAngle = 0;
+
+          if (tCfg.direction !== "AUTO") {
+             // Map joystick direction to radians (0 is Right, -PI/2 is Up, PI/2 is Down)
+             const dirMap = {
+                 "RIGHT": 0, "BOTTOM_RIGHT": Math.PI/4, "DOWN": Math.PI/2, "BOTTOM_LEFT": Math.PI*0.75,
+                 "LEFT": Math.PI, "TOP_LEFT": -Math.PI*0.75, "UP": -Math.PI/2, "TOP_RIGHT": -Math.PI/4
+             };
+             dirAngle = dirMap[tCfg.direction] !== undefined ? dirMap[tCfg.direction] : Math.PI/2;
+          } else {
+             // Calculate center of mass to decide if arc goes UP or DOWN automatically
+             let sumY = 0;
+             items.forEach(it => { sumY += it.pt.y; });
+             const avgY = sumY / items.length;
+             dirAngle = avgY <= fobPt.y ? -Math.PI/2 : Math.PI/2;
+          }
 
           const count = items.length;
-          const centerAngle = isTopArc ? -Math.PI/2 : Math.PI/2;
-          
-          // Max limits per row (ring)
-          const MAX_PER_ROW = 6;
-          
+          let slots = [];
+          const baseDist = parseInt(tCfg.distance) || 250;
+
+          // Determine grid block orientation
+          // We always use an axis-aligned dense grid to map the wide rectangular tooltips perfectly.
+          // Only the grid's ANCHOR orbits the FOB at `baseDist` and `dirAngle`.
+          const isHorizontal = Math.abs(Math.cos(dirAngle)) > 0.8; 
+          const itemsPerTier = isHorizontal ? 6 : 5; 
+
+          // Safe tooltip bounding box sizing for 4-5 line properties
+          const scale = (tCfg.spacing !== undefined ? tCfg.spacing : 100) / 100;
+          const boxW = 165 * scale;
+          const boxH = 85 * scale; 
+
+          const Fsign = isHorizontal ? Math.sign(Math.cos(dirAngle)) : Math.sign(Math.sin(dirAngle)) || 1;
+
+          const anchorX = fobPt.x + Math.cos(dirAngle) * baseDist;
+          const anchorY = fobPt.y + Math.sin(dirAngle) * baseDist;
+
+          // Generate geometric slots in the dense grid
+          for (let i = 0; i < count; i++) {
+              const tier = Math.floor(i / itemsPerTier); 
+              const itemsInThisTier = Math.min(itemsPerTier, count - tier * itemsPerTier);
+              const posInTier = i % itemsPerTier;
+
+              // Center the tier laterally
+              const lateralOffset = posInTier - (itemsInThisTier - 1) / 2;
+
+              let sx = anchorX;
+              let sy = anchorY;
+
+              if (isHorizontal) {
+                  // Grid GROWS along X, SPREADS along Y 
+                  sx += tier * boxW * Fsign;
+                  sy += lateralOffset * boxH;
+              } else {
+                  // Grid GROWS along Y, SPREADS along X
+                  sx += lateralOffset * boxW;
+                  sy += tier * boxH * Fsign;
+              }
+
+              slots.push({ x: sx, y: sy });
+          }
+
+          // Projection mathematics: To completely avoid crossed lines, we sort both the houses
+          // and the layout slots by their position precisely along the Lateral axis, 
+          // breaking ties using the Forward axis. 
+          const latAxis = isHorizontal ? 'y' : 'x';
+          const fwdAxis = isHorizontal ? 'x' : 'y';
+
+          const sortFn = (a, b) => {
+             // For houses, properties are inside .pt. For slots, they are top-level.
+             const ptA = a.pt || a;
+             const ptB = b.pt || b;
+             
+             const diffLat = ptA[latAxis] - ptB[latAxis];
+             if (Math.abs(diffLat) > 5) return diffLat; 
+             return (ptA[fwdAxis] - ptB[fwdAxis]) * Fsign;
+          };
+
+          items.sort(sortFn);
+          slots.sort(sortFn);
+
+          // Assign each item to its perfectly matched slot
+          const w2 = boxW / 2;
+          const h2 = boxH / 2;
+
           for (let i = 0; i < count; i++) {
               const item = items[i];
-              const n = item.node;
+              const slot = slots[i];
               
-              // Determine which row/ring this item falls into (0-indexed)
-              const rowIndex = Math.floor(i / MAX_PER_ROW);
-              const itemsInThisRow = Math.min(MAX_PER_ROW, count - rowIndex * MAX_PER_ROW);
-              const rankInRow = i % MAX_PER_ROW;
-              
-              const spread = Math.min(Math.PI * 0.9, itemsInThisRow * 0.45);
-              const startA = centerAngle - spread/2;
-              const stepA = itemsInThisRow > 1 ? spread / (itemsInThisRow - 1) : 0;
-              
-              // Angle mapping: TopArc maps left-to-right (increasing angle)
-              // BottomArc maps left-to-right to decreasing angle
-              const angle = isTopArc ? (startA + rankInRow * stepA) : (startA + (itemsInThisRow - 1 - rankInRow) * stepA);
-              
-              // Base Radius + increase per row to create concentric rings of "seats"
-              // Bottom arc needs a much higher starting Y radius to clear the FOB popup window
-              // We use massive radii so tooltips are pushed FAR past the actual house markers
-              const baseRadX = 250;
-              const baseRadY = isTopArc ? 200 : 280;
-              const rowSpacing = 85; // 85px between rings
-              
-              const radiusX = baseRadX + rowIndex * rowSpacing;
-              const radiusY = baseRadY + rowIndex * rowSpacing;
-              
-              const targetX = fobPt.x + Math.cos(angle) * radiusX;
-              const targetY = fobPt.y + Math.sin(angle) * radiusY;
-              
-              const offX = Math.round(targetX - item.pt.x);
-              const offY = Math.round(targetY - ONU_H/2 - item.pt.y);
+              const dx = item.pt.x - slot.x;
+              const dy = item.pt.y - slot.y;
+              let anchorX = slot.x;
+              let anchorY = slot.y;
+              /** @type {import('leaflet').Direction} */
+              let tDir = "top";
 
-              n._tooltipDir = "bottom"; 
-              n._tooltipOffset = [offX, offY];
+              if (Math.abs(dx) > Math.abs(dy)) {
+                  if (dx > 0) { anchorX += w2; tDir = "left"; }
+                  else        { anchorX -= w2; tDir = "right"; }
+              } else {
+                  if (dy > 0) { anchorY += h2; tDir = "top"; }
+                  else        { anchorY -= h2; tDir = "bottom"; }
+              }
+
+              const n = item.node;
+              n._tooltipDir = tDir; 
+              n._tooltipOffset = [Math.round(anchorX - item.pt.x), Math.round(anchorY - item.pt.y)];
               n._hasLeader = true;
 
-              const tp = L.point(item.pt.x + offX, item.pt.y + offY);
+              const tp = L.point(anchorX, anchorY);
               const mLL = map.containerPointToLatLng(item.pt);
               const tLL = map.containerPointToLatLng(tp);
+              
               const line = L.polyline([mLL, tLL], {
                  weight: 1.5, color: "#ffffffbb", dashArray: "6,4",
                  interactive: false, className: "onu-leader-line", pmIgnore: true,
               }).addTo(map);
+
+              const endpoint = L.circleMarker(tLL, {
+                  radius: 3.5, fillColor: "#58a6ff", fillOpacity: 1, 
+                  color: "#0d1117", weight: 1.5,
+                  interactive: false, pmIgnore: true,
+                  className: "onu-endpoint-dot"
+              }).addTo(map);
+
               onuLeaderLines.push(line);
+              onuLeaderLines.push(endpoint);
+              onuLeaderLinesByNodeId.set(n.id, line);
+              onuEndpointsByNodeId.set(n.id, endpoint);
           }
       };
 
       layoutArc(group.nodes);
   }
 
-  // 3. Reset orphans to default position
   ORPHANS.forEach(n => {
       n._tooltipDir = "bottom";
       n._tooltipOffset = [0, 5];
       n._hasLeader = false;
   });
 }
+
+/**
+ * Handle UI manual overrides for Tooltip positioning logic per node
+ * @param {string} id 
+ * @param {string} prop "direction" | "distance"
+ * @param {any} val 
+ * @param {boolean} shouldRedraw 
+ */
+window.updateTooltipConfig = function(id, prop, val, shouldRedraw = true) {
+    const n = nodes.find(x => x.id === id);
+    if (!n) return;
+    if (!n._tooltipConfig) n._tooltipConfig = { direction: "AUTO", distance: 250, spacing: 100 };
+    n._tooltipConfig[prop] = val;
+    
+    // Save to global state so it exports to JSON
+    saveState();
+    
+    // Rerender properties panel to update active joystick button color
+    if (prop === "direction") {
+        showProps(n);
+    }
+    
+    // Only trigger full map line redraw if explicitly requested or if it's a structural property change
+    if (shouldRedraw) {
+        // Force unbind to reset offsets, then recalculate arcs, then re-bind
+        nodes.forEach(no => {
+            if ((no.type === "ONU" || no.type === "MDU") && no.marker) {
+                // If it's connected to THIS FOB, force a complete rebuild of its tooltip location
+                const c = conns.find(cc => cc.to === no && (cc.type === "patchcord" || cc.type === "cable"));
+                if (c && c.from && c.from.id === id) {
+                    no.marker.closeTooltip();
+                    no.marker.unbindTooltip();
+                    delete no._tooltipOffset;
+                    delete no._tooltipDir;
+                    delete no._hasLeader;
+                }
+            }
+        });
+        clearONULeaderLines();
+        updateTooltipsVisibility();
+    }
+};
 
 // updateStats() is defined below (ported from monolith)
 
@@ -1717,6 +1893,66 @@ function showProps(n) {
 
     // We now use pure optical tracing, no legacy branch dropdowns
     // inConns removed
+
+    // --- NEW: Manual Tooltip Config ---
+    const tCfg = n._tooltipConfig || { direction: "AUTO", distance: 250 };
+    
+    h += `<div style="margin-top:10px; border:1px solid #30363d; border-radius:6px; background:#161b22; padding:10px;">`;
+    h += `<div style="color:#c9d1d9; font-size:12px; margin-bottom:8px; font-weight:bold;">
+             🎭 Розташування підписів
+          </div>`;
+          
+    // Joystick 3x3 Grid
+    h += `<div style="display:flex; gap:10px; align-items:center; margin-bottom:10px;">
+            <div style="display:grid; grid-template-columns:repeat(3, 24px); grid-gap:2px; background:#0d1117; padding:4px; border-radius:4px; border:1px solid #30363d;">`;
+    
+    const dirs = [
+       { label: "↖", val: "TOP_LEFT" }, { label: "↑", val: "UP" }, { label: "↗", val: "TOP_RIGHT" },
+       { label: "←", val: "LEFT" }, { label: "A", val: "AUTO", title: "Авто" }, { label: "→", val: "RIGHT" },
+       { label: "↙", val: "BOTTOM_LEFT" }, { label: "↓", val: "DOWN" }, { label: "↘", val: "BOTTOM_RIGHT" }
+    ];
+    
+    dirs.forEach(d => {
+        const bg = tCfg.direction === d.val ? "#1f6feb" : "#21262d";
+        const c = tCfg.direction === d.val ? "#fff" : "#8b949e";
+        h += `<button onclick="window.updateTooltipConfig('${n.id}', 'direction', '${d.val}')" 
+                      title="${d.title || d.val}"
+                      style="width:24px; height:24px; background:${bg}; color:${c}; border:1px solid #30363d; border-radius:3px; cursor:pointer; font-size:12px; padding:0; display:flex; align-items:center; justify-content:center;">
+                  ${d.label}
+              </button>`;
+    });        
+    h += `  </div>
+            <div style="font-size:10px; color:#8b949e; flex:1;">
+               Оберіть напрямок віяла (або A - Авто).
+            </div>
+          </div>`;
+          
+    // Distance Slider
+    h += `<div style="display:flex; flex-direction:column; gap:4px;">
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:#c9d1d9;">
+                <span>Відстань від вузла:</span>
+                <span id="tt-dist-val-${n.id}">${tCfg.distance}px</span>
+            </div>
+            <input type="range" min="50" max="600" step="10" value="${tCfg.distance}" 
+                   oninput="document.getElementById('tt-dist-val-${n.id}').innerText=this.value+'px'; window.updateTooltipConfig('${n.id}', 'distance', parseInt(this.value), false);"
+                   onchange="window.updateTooltipConfig('${n.id}', 'distance', parseInt(this.value), true);"
+                   style="width:100%;">
+          </div>`;
+          
+    // Spacing (Density) Slider
+    const spacing = tCfg.spacing !== undefined ? tCfg.spacing : 100;
+    h += `<div style="display:flex; flex-direction:column; gap:4px; margin-top:8px;">
+            <div style="display:flex; justify-content:space-between; font-size:11px; color:#c9d1d9;">
+                <span>Інтервал (щільність):</span>
+                <span id="tt-space-val-${n.id}">${spacing}%</span>
+            </div>
+            <input type="range" min="50" max="250" step="5" value="${spacing}" 
+                   oninput="document.getElementById('tt-space-val-${n.id}').innerText=this.value+'%'; window.updateTooltipConfig('${n.id}', 'spacing', parseInt(this.value), false);"
+                   onchange="window.updateTooltipConfig('${n.id}', 'spacing', parseInt(this.value), true);"
+                   style="width:100%;">
+          </div>`;
+          
+    h += `</div>`;
 
     h += `<div style="font-size:10px;margin-top:6px;border-top:1px solid #30363d;padding-top:4px">
       Free Cable: ${fC} <br> Free ONU: ${fP}

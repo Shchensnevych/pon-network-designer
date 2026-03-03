@@ -1212,7 +1212,8 @@ tr:hover td {
 /* ── LEAFLET CUSTOM ── */
 /* ── NODE LABELS (permanent tooltip on map) ── */
 .leaflet-tooltip.node-label {
-  background: rgba(13, 17, 23, 0.92);
+  background: rgba(13, 17, 23, 0.80);
+  backdrop-filter: blur(3px);
   border: 1px solid #58636e;
   color: #e6edf3;
   font-family: "Segoe UI", sans-serif;
@@ -1225,6 +1226,7 @@ tr:hover td {
     0 0 0 1px rgba(88, 99, 110, 0.3);
   line-height: 1.4;
   white-space: nowrap;
+  transition: all 0.2s;
 }
 
 .lbl-name {
@@ -1326,6 +1328,32 @@ tr:hover td {
   pointer-events: none !important;
   z-index: 399 !important;
   filter: drop-shadow(0 0 2px rgba(0, 0, 0, 0.6));
+  transition: stroke 0.2s, stroke-width 0.2s;
+}
+
+.onu-leader-line-hover {
+  stroke: #ffea00 !important;
+  stroke-width: 2.5px !important;
+  stroke-linecap: round !important;
+  stroke-dasharray: none !important;
+  filter: drop-shadow(0 0 6px rgba(255, 234, 0, 0.8)) !important;
+  z-index: 1000 !important;
+}
+
+.onu-endpoint-dot {
+  transition: all 0.2s;
+}
+
+.onu-endpoint-hover {
+  fill: #ffea00 !important;
+  filter: drop-shadow(0 0 6px #ffea00) !important;
+}
+
+.tooltip-hover-glow {
+  border-color: #ffea00 !important;
+  box-shadow: 0 0 8px rgba(255, 234, 0, 0.5), 0 0 15px rgba(0,0,0,0.8) !important;
+  transform: translateY(-2px);
+  z-index: 800 !important;
 }
 
 .leaflet-tooltip.node-label.onu-callout {
