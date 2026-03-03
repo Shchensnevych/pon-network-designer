@@ -124,6 +124,7 @@ declare global {
     checkFobPorts: Function;
     checkMDUPorts: Function;
     updateConnCapacity: Function;
+    setTooltipMode: Function;
   }
 
   // ═══════════════════════════════════════════════

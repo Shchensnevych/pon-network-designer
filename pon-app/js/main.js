@@ -15,6 +15,7 @@ import {
   serializeNetwork,
   restoreNetwork,
   clearNetwork,
+  setTooltipMode,
 } from "./network.js";
 import { setFiberLoss } from "./config.js";
 import {
@@ -76,6 +77,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.redo = redo;
   window.toggleEditMode = toggleEditMode;
   window.toggleSignalAnim = toggleSignalAnim;
+  window.setTooltipMode = setTooltipMode;
 
   // Settings: fiber loss update
   window.updateFiberLoss = (val) => {

@@ -1160,13 +1160,27 @@ function updateNodeLabel(n) {
   });
 }
 
+export let tooltipMode = 'AUTO';
+export function setTooltipMode(mode) {
+  tooltipMode = mode;
+  document.getElementById("btn-tt-smart")?.classList.toggle("active", mode === "AUTO");
+  document.getElementById("btn-tt-hide")?.classList.toggle("active", mode === "HIDDEN");
+  updateTooltipsVisibility();
+}
+
 // Адаптивне відображення tooltip'ів
 function updateNodeTooltip(node, content) {
   // SKIP rebinding during drag to prevent tooltip disappearing or jittering
   if (node._isDragging) return;
 
   const zoom = map.getZoom();
-  const minZoomForPermanent = 15;
+  const minZoomForPermanent = 17;
+  
+  if (tooltipMode === "HIDDEN") {
+    const tt = node.marker.getTooltip();
+    if (tt) node.marker.unbindTooltip();
+    return;
+  }
   
   if (node.type === "OLT" || node.type === "FOB") {
     const tt = node.marker.getTooltip();
@@ -1241,7 +1255,7 @@ function updateTooltipsVisibility() {
     }
   }
 
-  if (zoom < 15) {
+  if (zoom < 17 || tooltipMode === "HIDDEN") {
     clearONULeaderLines();
   }
 
@@ -1279,17 +1293,16 @@ function clearONULeaderLines() {
 }
 
 /**
- * Lay out ONU tooltips using iterative force-based relaxation.
- * - Collects ALL tooltip bounding boxes (ONU movable, FOB/OLT fixed obstacles)
- * - Iteratively pushes ONU tooltips apart from each other and from obstacles
- * - Draws leader lines for displaced ONU tooltips
+ * Lay out ONU tooltips using a Topology-Based "Theatre" layout.
+ * ONUs are grouped by their logical upstream connection (FOB/OLT) and arranged
+ * in arcs above or below the parent node based on the splitter branch.
  */
 function layoutONUTooltips() {
   onuLeaderLines.forEach((l) => map.removeLayer(l));
   onuLeaderLines = [];
 
   const zoom = map.getZoom();
-  if (zoom < 15) return;
+  if (zoom < 17 || tooltipMode === "HIDDEN") return;
 
   const onus = nodes.filter((n) => n.type === "ONU" || n.type === "MDU");
   if (onus.length === 0) return;
@@ -1298,133 +1311,112 @@ function layoutONUTooltips() {
   const visibleOnus = onus.filter((n) => bounds.contains([n.lat, n.lng]));
   if (visibleOnus.length === 0) return;
 
-  // --- Tooltip size estimates (px) ---
   const ONU_W = 110, ONU_H = 40;
-  const FOB_W = 145, FOB_H = 120;
-  const OLT_W = 140, OLT_H = 70;
+  
+  const FOB_GROUPS = new Map();
+  const ORPHANS = [];
 
-  // --- Collect fixed obstacles (FOB/OLT tooltips + their markers) ---
-  const fixed = [];
-  nodes.forEach((n) => {
-    if ((n.type === "FOB" || n.type === "OLT") && n.marker && bounds.contains([n.lat, n.lng])) {
-      const pt = map.latLngToContainerPoint([n.lat, n.lng]);
-      const w = n.type === "FOB" ? FOB_W : OLT_W;
-      const h = n.type === "FOB" ? FOB_H : OLT_H;
-      fixed.push({ cx: pt.x, cy: pt.y + 5 + h / 2, w, h });
-    }
+  // 1. Group ONUs by their upstream node (stage)
+  visibleOnus.forEach(n => {
+     let placed = false;
+     const conn = conns.find(c => c.to === n && (c.type === "patchcord" || c.type === "cable"));
+     if (conn && conn.from && (conn.from.type === "FOB" || conn.from.type === "OLT")) {
+         const fob = conn.from;
+
+         if (!FOB_GROUPS.has(fob.id)) {
+             FOB_GROUPS.set(fob.id, { fob: fob, nodes: [] });
+         }
+         
+         const pt = map.latLngToContainerPoint([n.lat, n.lng]);
+         FOB_GROUPS.get(fob.id).nodes.push({ node: n, pt: pt });
+         placed = true;
+     }
+
+     if (!placed) {
+         ORPHANS.push(n);
+     }
   });
 
-  // --- Build movable ONU items ---
-  const items = visibleOnus.map((n) => {
-    const pt = map.latLngToContainerPoint([n.lat, n.lng]);
-    return {
-      node: n,
-      ax: pt.x,                     // anchor X (marker position)
-      ay: pt.y,                     // anchor Y
-      cx: pt.x,                     // tooltip center X (starts at anchor)
-      cy: pt.y + 5 + ONU_H / 2,    // tooltip center Y (starts below marker)
-      w: ONU_W,
-      h: ONU_H,
-    };
+  // 2. Lay out each group in a single sweeping arc around the FOB
+  for (const [fobId, group] of FOB_GROUPS.entries()) {
+      const fobPt = map.latLngToContainerPoint([group.fob.lat, group.fob.lng]);
+      
+      const layoutArc = (items) => {
+          if (items.length === 0) return;
+          // Sort items visually by their current screen X to prevent crossed leader lines
+          items.sort((a, b) => a.pt.x - b.pt.x);
+
+          // Calculate center of mass to decide if arc goes UP or DOWN
+          let sumY = 0;
+          items.forEach(it => { sumY += it.pt.y; });
+          const avgY = sumY / items.length;
+          
+          // If average ONU position is visually ABOVE the FOB (y is smaller), then top arc. Otherwise bottom.
+          const isTopArc = avgY <= fobPt.y;
+
+          const count = items.length;
+          const centerAngle = isTopArc ? -Math.PI/2 : Math.PI/2;
+          
+          // Max limits per row (ring)
+          const MAX_PER_ROW = 6;
+          
+          for (let i = 0; i < count; i++) {
+              const item = items[i];
+              const n = item.node;
+              
+              // Determine which row/ring this item falls into (0-indexed)
+              const rowIndex = Math.floor(i / MAX_PER_ROW);
+              const itemsInThisRow = Math.min(MAX_PER_ROW, count - rowIndex * MAX_PER_ROW);
+              const rankInRow = i % MAX_PER_ROW;
+              
+              const spread = Math.min(Math.PI * 0.9, itemsInThisRow * 0.45);
+              const startA = centerAngle - spread/2;
+              const stepA = itemsInThisRow > 1 ? spread / (itemsInThisRow - 1) : 0;
+              
+              // Angle mapping: TopArc maps left-to-right (increasing angle)
+              // BottomArc maps left-to-right to decreasing angle
+              const angle = isTopArc ? (startA + rankInRow * stepA) : (startA + (itemsInThisRow - 1 - rankInRow) * stepA);
+              
+              // Base Radius + increase per row to create concentric rings of "seats"
+              // Bottom arc needs a much higher starting Y radius to clear the FOB popup window
+              // We use massive radii so tooltips are pushed FAR past the actual house markers
+              const baseRadX = 250;
+              const baseRadY = isTopArc ? 200 : 280;
+              const rowSpacing = 85; // 85px between rings
+              
+              const radiusX = baseRadX + rowIndex * rowSpacing;
+              const radiusY = baseRadY + rowIndex * rowSpacing;
+              
+              const targetX = fobPt.x + Math.cos(angle) * radiusX;
+              const targetY = fobPt.y + Math.sin(angle) * radiusY;
+              
+              const offX = Math.round(targetX - item.pt.x);
+              const offY = Math.round(targetY - ONU_H/2 - item.pt.y);
+
+              n._tooltipDir = "bottom"; 
+              n._tooltipOffset = [offX, offY];
+              n._hasLeader = true;
+
+              const tp = L.point(item.pt.x + offX, item.pt.y + offY);
+              const mLL = map.containerPointToLatLng(item.pt);
+              const tLL = map.containerPointToLatLng(tp);
+              const line = L.polyline([mLL, tLL], {
+                 weight: 1.5, color: "#ffffffbb", dashArray: "6,4",
+                 interactive: false, className: "onu-leader-line", pmIgnore: true,
+              }).addTo(map);
+              onuLeaderLines.push(line);
+          }
+      };
+
+      layoutArc(group.nodes);
+  }
+
+  // 3. Reset orphans to default position
+  ORPHANS.forEach(n => {
+      n._tooltipDir = "bottom";
+      n._tooltipOffset = [0, 5];
+      n._hasLeader = false;
   });
-
-  // --- AABB overlap check returning push vector ---
-  function overlap(a, b) {
-    const ax1 = a.cx - a.w / 2, ax2 = a.cx + a.w / 2;
-    const ay1 = a.cy - a.h / 2, ay2 = a.cy + a.h / 2;
-    const bx1 = b.cx - b.w / 2, bx2 = b.cx + b.w / 2;
-    const by1 = b.cy - b.h / 2, by2 = b.cy + b.h / 2;
-    if (ax1 >= bx2 || ax2 <= bx1 || ay1 >= by2 || ay2 <= by1) return null;
-    return {
-      ox: Math.min(ax2 - bx1, bx2 - ax1),
-      oy: Math.min(ay2 - by1, by2 - ay1),
-    };
-  }
-
-  // --- Zoom-aware force parameters ---
-  const t = Math.min(1, Math.max(0, (zoom - 15) / 4)); // 0 at z15, 1 at z19
-  const PUSH_ONU  = 0.52 - t * 0.20;   // 0.52 → 0.32
-  const PUSH_OBS  = 0.70 - t * 0.25;   // 0.70 → 0.45
-  const MAX_DISP  = 120  - t * 70;      // 120  → 50
-  const ITERS     = Math.round(15 - t * 7); // 15 → 8
-
-  // Phase 1: Pure separation — push overlapping tooltips apart (NO anchor pull)
-  for (let iter = 0; iter < ITERS; iter++) {
-    // ONU vs ONU
-    for (let i = 0; i < items.length; i++) {
-      for (let j = i + 1; j < items.length; j++) {
-        const ov = overlap(items[i], items[j]);
-        if (!ov) continue;
-        if (ov.ox < ov.oy) {
-          const d = (items[i].cx < items[j].cx ? -1 : 1) * ov.ox * PUSH_ONU;
-          items[i].cx += d; items[j].cx -= d;
-        } else {
-          const d = (items[i].cy < items[j].cy ? -1 : 1) * ov.oy * PUSH_ONU;
-          items[i].cy += d; items[j].cy -= d;
-        }
-      }
-    }
-    // ONU vs fixed FOB/OLT
-    for (const it of items) {
-      for (const obs of fixed) {
-        const ov = overlap(it, obs);
-        if (!ov) continue;
-        if (ov.ox < ov.oy) {
-          it.cx += (it.cx < obs.cx ? -1 : 1) * ov.ox * PUSH_OBS;
-        } else {
-          it.cy += (it.cy < obs.cy ? -1 : 1) * ov.oy * PUSH_OBS;
-        }
-      }
-    }
-  }
-
-  // Phase 2: One-time gentle anchor pull + cap displacement
-  const ANCHOR = 0.15 + t * 0.10; // 0.15 at z16, 0.25 at z19
-  for (const it of items) {
-    it.cx += (it.ax - it.cx) * ANCHOR;
-    it.cy += (it.ay + 5 + ONU_H / 2 - it.cy) * ANCHOR;
-    // Cap max displacement
-    const dx = it.cx - it.ax;
-    const dy = it.cy - (it.ay + 5 + ONU_H / 2);
-    const d = Math.sqrt(dx * dx + dy * dy);
-    if (d > MAX_DISP) {
-      const scale = MAX_DISP / d;
-      it.cx = it.ax + dx * scale;
-      it.cy = (it.ay + 5 + ONU_H / 2) + dy * scale;
-    }
-  }
-
-  // --- Apply: rebind tooltips + draw leader lines ---
-  for (const it of items) {
-    const n = it.node;
-    const offX = Math.round(it.cx - it.ax);
-    const offY = Math.round(it.cy - ONU_H / 2 - it.ay);
-    const dist = Math.sqrt(offX * offX + offY * offY);
-    const moved = dist > 15;
-
-    let dir;
-    if (Math.abs(offX) > Math.abs(offY)) {
-      dir = offX > 0 ? "right" : "left";
-    } else {
-      dir = offY > 0 ? "bottom" : "top";
-    }
-
-    n._tooltipDir = dir;
-    n._tooltipOffset = [offX, offY];
-    n._hasLeader = moved;
-
-    // Leader line
-    if (moved) {
-      const tp = L.point(it.ax + offX, it.ay + offY);
-      const mLL = map.containerPointToLatLng(L.point(it.ax, it.ay));
-      const tLL = map.containerPointToLatLng(tp);
-      const line = L.polyline([mLL, tLL], {
-        weight: 1.5, color: "#ffffffbb", dashArray: "6,4",
-        interactive: false, className: "onu-leader-line", pmIgnore: true,
-      }).addTo(map);
-      onuLeaderLines.push(line);
-    }
-  }
 }
 
 // updateStats() is defined below (ported from monolith)
