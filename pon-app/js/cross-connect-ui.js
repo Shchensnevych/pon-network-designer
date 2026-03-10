@@ -1,5 +1,5 @@
 import { nodes, conns } from "./state.js";
-import { FIBER_DB_KM } from "./config.js";
+import { FIBER_DB_KM, FBT_LOSSES, PLC_LOSSES } from "./config.js";
 import { traceOpticalPath, sigFBT, sigPLC, connKm, sigSplitter } from "./signal.js";
 
 // Modal HTML generation
@@ -331,24 +331,17 @@ function getIncomingCorePath(targetFob, cableId, coreIndex) {
     return "";
 }
 
-function renderFOBCrossUI(node) {
+
+window.getFobSourceOptions = function(node) {
     const inCables = conns.filter(c => c.to === node && c.type === "cable");
-    const outConns = conns.filter(c => c.from === node && (c.type === "cable" || c.type === "patchcord"));
-    outConns.sort((a, b) => {
-        if (a.type === "cable" && b.type !== "cable") return -1;
-        if (a.type !== "cable" && b.type === "cable") return 1;
+    inCables.sort((a, b) => {
+        if (!a.to && b.to) return -1;
+        if (a.to && !b.to) return 1;
         return (a.to ? a.to.name : "").localeCompare(b.to ? b.to.name : "");
     });
     
-    // We will build options for routing sources:
-    // 1. Cables IN -> Cores
-    // 2. Splitters -> Output Branches (X, Y or 1..N)
-    
-    // Gather all possible incoming sources for dropdowns
-    // Start with a default empty option
     let sourceOptions = `<option value="">--- Не підключено ---</option>`;
     
-    // Cables in
     inCables.forEach(c => {
         const cores = c.capacity || 1;
         for(let i=0; i<cores; i++) {
@@ -380,7 +373,6 @@ function renderFOBCrossUI(node) {
         sourceOptions += `<option value="PATCHCORD|${c.id}|0" style="color:#e3b341" data-color="#e3b341">● Вхід: Патчкорд від ${c.from.name}${sigStr}</option>`;
     });
 
-    // Group splitters by type & ratio to enumerate them
     const splitters = node.splitters || [];
     const spCounts = {};
     const spLabels = {};
@@ -423,7 +415,6 @@ function renderFOBCrossUI(node) {
         }
     });
 
-    // Include legacy splitters for now: FBT and PLC if they exist.
     if (node.fbtType && !splitters.some(s => s.id === "legacy_fbt")) {
         const sx = sigFBT(node, "X");
         const sy = sigFBT(node, "Y");
@@ -444,12 +435,52 @@ function renderFOBCrossUI(node) {
             sourceOptions += `<option value="SPLITTER|legacy_plc|${i}" style="color:${color}" data-color="${color}">${icon} Від: PLC ${node.plcType} (Вихід ${i})${sStr}</option>`;
         }
     }
+    
+    return sourceOptions;
+};
+
+/**
+ * @param {any} node
+ * @returns {string}
+ */
+function renderFOBCrossUI(node) {
+    // Top section
+
+    let sourceOptions = window.getFobSourceOptions(node);
+
+    const splitters = node.splitters || [];
+    const spCounts = {};
+    const spLabels = {};
+
+    splitters.forEach(sp => {
+        const key = `${sp.type}_${sp.ratio}`;
+        spCounts[key] = (spCounts[key] || 0) + 1;
+    });
+
+    const spCurrent = {};
+    splitters.forEach(sp => {
+        const key = `${sp.type}_${sp.ratio}`;
+        if (spCounts[key] > 1) {
+            spCurrent[key] = (spCurrent[key] || 0) + 1;
+            spLabels[sp.id] = `${sp.type} ${sp.ratio} #${spCurrent[key]}`;
+        } else {
+            spLabels[sp.id] = `${sp.type} ${sp.ratio}`;
+        }
+    });
 
     // --- HTML Structure ---
     
     // Top: INCOMING (Full Width, Compact Grid)
     let inHtml = `<div style="border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; margin-bottom: 15px; max-height: 180px; overflow-y: auto;">
         <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; font-size:14px; text-align:center;">📥 Входи (IN)</h3>`;
+
+    const inCables = conns.filter(c => c.to === node && c.type === "cable");
+    inCables.sort((a, b) => {
+        if (!a.to && b.to) return -1;
+        if (a.to && !b.to) return 1;
+        return (a.to ? a.to.name : "").localeCompare(b.to ? b.to.name : "");
+    });
+
     inCables.forEach(c => {
         const cores = c.capacity || 1;
         inHtml += `<div style="background:#21262d; border-radius:4px; border:1px solid #30363d; margin-bottom:8px; overflow:hidden;">
@@ -495,7 +526,25 @@ function renderFOBCrossUI(node) {
     
     // Middle: DEVICES (Splitters)
     let midHtml = `<div style="flex: 1; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto;">
-        <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">📦 Сплітери</h3>`;
+        <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">📦 Сплітери</h3>
+        
+        <div style="background:#21262d; border:1px solid #30363d; padding:10px; border-radius:6px; margin-bottom:20px;">
+            <div style="font-size:12px; color:#c9d1d9; font-weight:bold; margin-bottom:6px;">🛠️ Додати новий дільник</div>
+            <div style="display:flex; gap:5px; margin-bottom:5px;">
+                <select id="cc-add-fbt" style="flex:1; padding:4px; font-size:11px; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:3px;">
+                    <option value="">+ FBT (Несиметричний)</option>
+                    ${Object.keys(FBT_LOSSES).map(k => `<option value="${k}">${k}</option>`).join('')}
+                </select>
+                <button onclick="const v=document.getElementById('cc-add-fbt').value; if(v) window.addSplitter('${node.id}', 'FBT', v);" style="background:#2ea043; color:white; border:none; border-radius:3px; cursor:pointer; font-size:11px; padding:0 12px; font-weight:bold;">Додати</button>
+            </div>
+            <div style="display:flex; gap:5px;">
+                <select id="cc-add-plc" style="flex:1; padding:4px; font-size:11px; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:3px;">
+                    <option value="">+ PLC (Симетричний)</option>
+                    ${Object.keys(PLC_LOSSES).map(k => `<option value="${k}">${k}</option>`).join('')}
+                </select>
+                <button onclick="const v=document.getElementById('cc-add-plc').value; if(v) window.addSplitter('${node.id}', 'PLC', v);" style="background:#2ea043; color:white; border:none; border-radius:3px; cursor:pointer; font-size:11px; padding:0 12px; font-weight:bold;">Додати</button>
+            </div>
+        </div>`;
         
     const buildSplitterBox = (id, type, name, ratio) => {
         const existing = (node.crossConnects || []).find(xc => xc.toType === "SPLITTER" && xc.toId === id);
@@ -504,7 +553,7 @@ function renderFOBCrossUI(node) {
         let safeSourceOptions = sourceOptions;
         // Prevent self-loop in the option list!
         if (id !== "legacy_fbt" && id !== "legacy_plc") {
-            const regex = new RegExp(`<option value="SPLITTER\\|${id}\\|[^>]+>.*?<\\\/option>`, "g");
+            const regex = new RegExp(`<option value="SPLITTER\\|${id}\\|[^>]+>.*?</option>`, "g");
             safeSourceOptions = safeSourceOptions.replace(regex, "");
         }
         if (id === "legacy_fbt") safeSourceOptions = safeSourceOptions.replace(/<option value="SPLITTER\|legacy_fbt[^>]+>.*?<\/option>/g, "");
@@ -521,12 +570,20 @@ function renderFOBCrossUI(node) {
         }
         
         const spTotalOuts = type === "PLC" ? parseInt((ratio || "1x2").split("x")[1] || 2) : 2;
+        
+        const delBtnHtml = id !== "legacy_fbt" && id !== "legacy_plc" 
+            ? `<button onclick="window.removeSplitter('${node.id}', '${id}')" style="background:transparent; border:none; color:#f85149; cursor:pointer; font-size:14px; padding:0; display:flex; align-items:center;" title="Видалити цей дільник">✕</button>` 
+            : "";
+
         return `<div style="background:#21262d; padding:8px; border-radius:4px; border:1px solid #30363d; margin-bottom:10px;">
-            <div style="display:flex; justify-content:space-between; margin-bottom:6px;">
-                <b style="color:${color}; font-size:12px;">${getSplitterIcon(type, ratio, "main")} ${spLbl}</b>
-                <div>
-                    <span style="font-size:12px;">Вхід (IN):</span>
-                    <select class="fob-cross" data-totype="SPLITTER" data-toid="${id}" data-targetname="${name}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
+            <div style="display:flex; justify-content:space-between; align-items:flex-start; margin-bottom:6px; gap:8px;">
+                <div style="display:flex; align-items:center; gap:8px; flex-shrink:0; padding-top:4px;">
+                    <b style="color:${color}; font-size:12px; white-space:nowrap;">${getSplitterIcon(type, ratio, "main")} ${spLbl}</b>
+                    ${delBtnHtml}
+                </div>
+                <div style="display:flex; flex-direction:column; flex:1; min-width:0; align-items:flex-end;">
+                    <span style="font-size:10px; color:#8b949e; margin-bottom:2px;">Вхід (IN):</span>
+                    <select class="fob-cross" data-totype="SPLITTER" data-toid="${id}" data-targetname="${name}" style="width:100%; max-width:100%; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px; padding:2px;" onchange="window.checkFobPorts(this, '${node.id}')">
                         ${sOpt}
                     </select>
                 </div>
@@ -546,6 +603,15 @@ function renderFOBCrossUI(node) {
     midHtml += `</div>`;
 
     // Right: OUTGOING
+    const outCables = conns.filter(c => c.from === node && c.type === "cable");
+    const outPatchcords = conns.filter(c => c.from === node && c.type === "patchcord");
+    const outConns = [...outCables, ...outPatchcords];
+    outConns.sort((a, b) => {
+        if (a.type === "cable" && b.type !== "cable") return -1;
+        if (a.type !== "cable" && b.type === "cable") return 1;
+        return (a.to ? a.to.name : "").localeCompare(b.to ? b.to.name : "");
+    });
+
     let outHtml = `<div style="flex: 1; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y:auto; overflow-x:hidden;">
         <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">📤 Виходи (OUT)</h3>`;
     
@@ -577,7 +643,7 @@ function renderFOBCrossUI(node) {
                     <div style="font-size:11px; width:65px; display:flex; align-items:center;">
                         ${getFiberDotHtml(i)} Жила ${i+1}
                     </div>
-                    <select class="fob-cross" data-totype="CABLE" data-toid="${c.id}" data-tocore="${i}" data-targetname="${c.to ? c.to.name : 'Кабель'}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
+                    <select class="fob-cross" data-totype="CABLE" data-toid="${c.id}" data-tocore="${i}" data-targetname="${c.to ? c.to.name : 'Кабель'}" style="flex:1; min-width:0; width:100%; max-width:100%; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this, '${node.id}')">
                         ${sOpt}
                     </select>
                 </div>`;
@@ -599,7 +665,7 @@ function renderFOBCrossUI(node) {
                 <div style="font-size:11px; width:65px; display:flex; align-items:center;">
                     <div style="width:8px;height:8px;border-radius:50%;background:#ffd700;margin-right:6px;box-shadow:0 0 3px #ffd700;"></div> Патчкорд
                 </div>
-                <select class="fob-cross" data-totype="PATCHCORD" data-toid="${c.id}" data-targetname="${c.to ? c.to.name : 'Юніт'}" style="flex:1; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this)">
+                <select class="fob-cross" data-totype="PATCHCORD" data-toid="${c.id}" data-targetname="${c.to ? c.to.name : 'Юніт'}" style="flex:1; min-width:0; width:100%; max-width:100%; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:11px;" onchange="window.checkFobPorts(this, '${node.id}')">
                     ${sOpt}
                 </select>
             </div>`;
@@ -669,6 +735,7 @@ function saveCrossConnect(nodeId, skipClose = false) {
         alert("Помилка збереження: " + err.message);
     }
 }
+window.saveCrossConnect = saveCrossConnect;
 
 window.updateConnCapacity = function(connId, newCap, nodeId, nodeType) {
     const c = conns.find(x => x.id === connId);
@@ -745,10 +812,30 @@ window.checkOltPorts = function(selectElement) {
     });
 };
 
-window.checkFobPorts = function(selectElement) {
+window.checkFobPorts = function(selectElement, passedNodeId) {
     /** @type {NodeListOf<HTMLSelectElement>} */
     const allSelects = document.querySelectorAll(".fob-cross");
     const selEl = /** @type {HTMLSelectElement} */ (selectElement);
+
+    if (passedNodeId && selEl) {
+        // Quietly save cross connects to recalculate optical signals correctly
+        if (typeof window.saveCrossConnect === "function") window.saveCrossConnect(passedNodeId, true);
+        const node = nodes.find(n => n.id === passedNodeId);
+        if (node && typeof window.getFobSourceOptions === "function") {
+            const newOptsHtml = window.getFobSourceOptions(node);
+            allSelects.forEach(sel => {
+                const currentVal = sel.value;
+                let targetOpts = newOptsHtml;
+                if (sel.dataset.totype === "SPLITTER") {
+                    const spId = sel.dataset.toid;
+                    const regex = new RegExp(`<option value="SPLITTER\\|${spId}\\|[^>]+>.*?</option>`, "g");
+                    targetOpts = targetOpts.replace(regex, "");
+                }
+                sel.innerHTML = targetOpts;
+                sel.value = currentVal;
+            });
+        }
+    }
     
     // 1. Clear duplicates if this was a new selection
     if (selEl && selEl.value !== "") {
@@ -905,6 +992,12 @@ window.autoTransit = function(outCableId, nodeId) {
         
         node.crossConnects = cross;
         document.getElementById("cc-modal-body").innerHTML = renderFOBCrossUI(node);
+        
+        // Make sure to re-evaluate the progress bars after the new HTML is injected!
+        setTimeout(() => {
+            if (typeof window.checkFobPorts === "function") window.checkFobPorts(null);
+        }, 10);
+        
     } catch (e) {
         console.error("Auto Transit error:", e);
     }

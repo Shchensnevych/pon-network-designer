@@ -72,6 +72,8 @@ declare global {
     reassignBranch: Function;
     openPatchPanel: Function;
     openCrossConnect: Function;
+    saveCrossConnect: Function;
+    getFobSourceOptions: Function;
     autoTransit: Function;
     refreshNetworkUI: Function;
     addSplitter: Function;

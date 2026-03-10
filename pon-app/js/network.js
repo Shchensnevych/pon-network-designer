@@ -1,4 +1,4 @@
-﻿// @ts-check
+// @ts-check
 /// <reference path="./types.d.ts" />
 /** @type {typeof import('leaflet')} */
 const L = window["L"];
@@ -37,7 +37,7 @@ import {
   freeCablePorts, freePatchPorts,
   fobPortStatus, connKm, sigIn, 
   hasOLTPath, sigAtONU, sigONU, sigFBT, sigSplitter,
-  cntONUport, cntSubsPort, updateCableColors, traceOpticalPath
+  cntONUport, cntSubsPort, updateCableColors, traceOpticalPath, calculateMDUSignal
 } from "./signal.js";
 
 // Signal path highlighting & animation — extracted to signal-path.js
@@ -1076,7 +1076,7 @@ function buildNodeLabelContent(n) {
                      let spInst = /** @type {any} */(conn.from).splitters.find(/** @type {any} */s=>s.id === xc.fromId);
                      if (spInst) spName = `${spInst.type} ${spInst.ratio}`;
                  }
-                 let port = xc.fromCore !== undefined ? xc.fromCore + 1 : xc.fromBranch;
+                 let port = xc.fromCore !== undefined ? xc.fromCore : xc.fromBranch;
                  L2 += `<br><span class="lbl-dim">🔗 Порт: ${spName} (Вихід ${port})</span>`;
               } else if (xc.fromType === "CABLE") {
                  let inConn = conns.find(c => c.id === xc.fromId);
@@ -1604,8 +1604,12 @@ window.updateTooltipConfig = function(id, prop, val, shouldRedraw = true) {
                 }
             }
         });
-        clearONULeaderLines();
-        updateTooltipsVisibility();
+        if (typeof window.renderLinks === 'function') {
+            window.renderLinks();
+        } else {
+            clearONULeaderLines();
+            updateTooltipsVisibility();
+        }
     }
 };
 
@@ -1697,7 +1701,7 @@ function buildTooltip(n) {
                    let spInst = /** @type {any} */(conn.from).splitters.find(/** @type {any} */s=>s.id === xc.fromId);
                    if (spInst) spName = `${spInst.type} ${spInst.ratio}`;
                }
-               let port = xc.fromCore !== undefined ? xc.fromCore + 1 : xc.fromBranch;
+               let port = xc.fromCore !== undefined ? xc.fromCore : xc.fromBranch;
                t += `🔗 Порт: ${spName} (Вихід ${port})<br>`;
             } else if (xc.fromType === "CABLE") {
                let inConn = conns.find(c => c.id === xc.fromId);
@@ -1828,149 +1832,179 @@ function showProps(n) {
 
     h += `<button class="btn" style="margin-top:15px;width:100%;background:#1f6feb;color:#ffffff;border:1px solid #388bfd;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#388bfd';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#1f6feb';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openPatchPanel('${n.id}')">🎛️ Оптичний крос (ODF)</button>`;
   } else if (n.type === "FOB") {
-    h += `<div style="margin-top:10px; border:1px solid #30363d; border-radius:6px; background:#161b22; padding:10px;">`;
-    h += `<div style="color:#8b949e; font-size:12px; margin-bottom:8px; display:flex; justify-content:space-between; align-items:center;">
-             <b>⚙️ Дільники</b>
-          </div>`;
-    
-    const splitters = n.splitters || [];
-
-    const spCounts = {};
-    const spLabels = {};
-    splitters.forEach(sp => {
-        const key = `${sp.type}_${sp.ratio}`;
-        spCounts[key] = (spCounts[key] || 0) + 1;
-    });
-    const spCurrent = {};
-    splitters.forEach(sp => {
-        const key = `${sp.type}_${sp.ratio}`;
-        if (spCounts[key] > 1) {
-            spCurrent[key] = (spCurrent[key] || 0) + 1;
-            spLabels[sp.id] = `${sp.type} ${sp.ratio} #${spCurrent[key]}`;
-        } else {
-            spLabels[sp.id] = `${sp.type} ${sp.ratio}`;
-        }
-    });
-
-    if (n.fbtType || n.plcType) {
-        h += `<div style="font-size:11px; color:#d29922; margin-bottom:5px;">⚠️ Є старі дільники. Вони працюють, але краще додати їх через цю панель і перезібрати касету.</div>`;
-    }
-
-    splitters.forEach(sp => {
-        const icon = sp.type === "FBT" ? "🔀" : "📊";
-        h += `<div style="background:#21262d; border:1px solid #30363d; padding:4px 8px; border-radius:4px; margin-bottom:4px; display:flex; justify-content:space-between; align-items:center; font-size:12px;">
-                 <span>${icon} ${spLabels[sp.id]}</span>
-                 <button onclick="window.removeSplitter('${n.id}', '${sp.id}')" style="background:transparent; border:none; color:#f85149; cursor:pointer;" title="Видалити">✕</button>
-              </div>`;
-    });
-
-    h += `<div style="display:flex; gap:5px; margin-top:8px;">`;
-    h += `<select id="add-fbt-sel" style="flex:1; padding:2px; font-size:11px; background:#0d1117; color:#c9d1d9; border:1px solid #30363d;">
-            <option value="">+ FBT</option>
-            ${Object.keys(FBT_LOSSES).map(k => `<option value="${k}">${k}</option>`).join('')}
-          </select>`;
-    h += `<button onclick="const v=document.getElementById('add-fbt-sel').value; if(v) window.addSplitter('${n.id}', 'FBT', v);" style="background:#238636; color:white; border:none; border-radius:3px; cursor:pointer; font-size:11px;">Додати</button>`;
-    h += `</div>`;
-    
-    h += `<div style="display:flex; gap:5px; margin-top:5px;">`;
-    h += `<select id="add-plc-sel" style="flex:1; padding:2px; font-size:11px; background:#0d1117; color:#c9d1d9; border:1px solid #30363d;">
-            <option value="">+ PLC</option>
-            ${Object.keys(PLC_LOSSES).map(k => `<option value="${k}">${k}</option>`).join('')}
-          </select>`;
-    h += `<button onclick="const v=document.getElementById('add-plc-sel').value; if(v) window.addSplitter('${n.id}', 'PLC', v);" style="background:#238636; color:white; border:none; border-radius:3px; cursor:pointer; font-size:11px;">Додати</button>`;
-    h += `</div></div>`;
+    // "⚙️ Дільники" section moved to Cross-Connect Splice Cassette modal for better UX
 
     h += `<button class="btn" style="margin-top:15px;width:100%;background:#8957e5;color:#ffffff;border:1px solid #a371f7;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#a371f7';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#8957e5';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openCrossConnect('${n.id}')">🪛 Касета (Зварювання)</button>`;
+
+    // --- Calculate Capacity Stats ---
+    let totalSpOuts = 0;
+    if (n.splitters) {
+        n.splitters.forEach(sp => totalSpOuts += (sp.type === "PLC" ? (parseInt(sp.ratio.split("x")[1]) || 2) : 2));
+    }
+    if (n.fbtType && !(n.splitters||[]).some(s=>s.id==="legacy_fbt")) totalSpOuts += 2;
+    if (n.plcType && !(n.splitters||[]).some(s=>s.id==="legacy_plc")) totalSpOuts += (parseInt(n.plcType.split("x")[1]) || 2);
+    
+    const usedSpOuts = (n.crossConnects || []).filter(xc => xc.fromType === "SPLITTER").length;
+    const fP = Math.max(0, totalSpOuts - usedSpOuts);
+    
+    const inCables = conns.filter(c => c.to === n && c.type === "cable");
+    let totalInCores = 0;
+    inCables.forEach(c => totalInCores += parseInt(String(c.capacity || 1)));
+    const usedInCores = (n.crossConnects || []).filter(xc => xc.fromType === "CABLE").length;
+    const fC = Math.max(0, totalInCores - usedInCores);
+
+    let capacityText = `<div style="font-size:10px;margin-top:8px;border-top:1px dashed #444c56;padding-top:6px; color:#a5d6ff; display:flex; gap:10px; justify-content:space-around;">`;
+    if (totalSpOuts > 0) {
+        capacityText += `<span title="Вільні виходи дільників для підключення ONU/MDU" style="color:#8b949e"><i class="fa-solid fa-plug" style="margin-right:2px;"></i> На абонентів: <b style="color:#fff">${fP}</b></span>`;
+        if (totalInCores > 0) capacityText += `<span title="Вільні гілки дільників або транзитних жил для подальшої магістралі" style="color:#8b949e"><i class="fa-solid fa-satellite-dish" style="margin-right:2px;"></i> Транзит: <b style="color:#fff">${fC}</b></span>`;
+    } else {
+        if (totalInCores > 0) capacityText += `<span title="Вільні жили для транзиту або підключення дільників" style="color:#8b949e"><i class="fa-solid fa-layer-group" style="margin-right:2px;"></i> Вільних жил в касеті: <b style="color:#fff">${fC}</b></span>`;
+        else capacityText += `<span style="color:#8b949e; opacity:0.6;"><i class="fa-solid fa-link-slash" style="margin-right:2px;"></i> Магістраль не підключена</span>`;
+    }
+    capacityText += `</div>`;
 
     if (n.inputConn) {
       const dist = connKm(n.inputConn) * 1000;
       const loss = (dist / 1000) * FIBER_DB_KM;
       const s = sigIn(n);
-      h += `<div class="info-pill" style="margin-top:10px">Input <br> ${dist.toFixed(0)}м (${loss.toFixed(2)}дБ)<br>Sig: `;
-      if (s !== null) {
-        h += `<b class="${sigClass(s)}">${s.toFixed(2)} дБ</b></div>`;
-      } else {
-        h += `<b>---</b></div>`;
-      }
       
       let fromInfo = n.inputConn.from.name || n.inputConn.from.type;
       if (n.inputConn.branch) fromInfo += ` (гілка ${n.inputConn.branch})`;
       else if (n.inputConn.from.type === "FOB" && n.inputConn.from.plcType) fromInfo += ` (через PLC)`;
       
-      h += `<div style="font-size:10px;color:#8b949e;margin-top:4px;">Від: ${fromInfo}</div>`;
+      h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:10px; margin-top:10px;">`;
+      h += `<div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; gap:6px; text-transform:uppercase;"><i class="fa-solid fa-wave-square" style="font-size:11px;"></i> СИГНАЛ</div>`;
+      
+      let sigStr = s !== null ? `${s.toFixed(2)} дБ` : `---`;
+      let sigColor = s !== null ? (s >= -25 ? "#3fb950" : (s >= -28 ? "#d29922" : "#f85149")) : "#8b949e";
+      let pct = s !== null ? Math.max(0, Math.min(100, ((s + 26) / 26) * 100)) : 0;
+      
+      h += `<div style="display:flex; justify-content:space-between; align-items:flex-end; margin-bottom:4px;">
+          <span style="color:#8b949e; font-size:12px;">Від ${fromInfo}</span>
+          <span style="color:${sigColor}; font-size:14px; font-weight:bold;">${sigStr}</span>
+      </div>`;
+      h += `<div style="height:6px; background:#0d1117; border-radius:3px; overflow:hidden; position:relative; border:1px solid #30363d;">
+          <div style="height:100%; width:${pct}%; background:${sigColor}; transition:width 0.3s;"></div>
+      </div>`;
+      h += `<div style="display:flex; justify-content:space-between; margin-top:4px; font-size:10px; color:#8b949e;">
+          <span>-26</span>
+          <span>0 дБ</span>
+      </div>`;
+      h += `<div style="font-size:10px; color:#8b949e; margin-top:8px; text-align:right;">Довжина лінії: ${dist.toFixed(0)}м (втрати ~${loss.toFixed(2)}дБ)</div>`;
+      
+      h += capacityText;
+      h += `</div>`;
     } else {
-      h += `<div class="warn-pill" style="margin-top:10px">Не підключено</div>`;
+      h += `<div class="warn-pill" style="margin-top:10px; display:flex; align-items:center; justify-content:center; gap:6px;"><i class="fa-solid fa-triangle-exclamation"></i> Не підключено</div>`;
+      h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:10px; margin-top:10px;">
+              <div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:0px; display:flex; align-items:center; gap:6px; text-transform:uppercase;"><i class="fa-solid fa-wave-square" style="font-size:11px;"></i> СИГНАЛ</div>
+              ${capacityText}
+            </div>`;
     }
-
-    const fC = freeCablePorts(n);
-    const fP = freePatchPorts(n);
-
-    // We now use pure optical tracing, no legacy branch dropdowns
-    // inConns removed
 
     // --- NEW: Manual Tooltip Config ---
     const tCfg = n._tooltipConfig || { direction: "AUTO", distance: 250 };
     
-    h += `<div style="margin-top:10px; border:1px solid #30363d; border-radius:6px; background:#161b22; padding:10px;">`;
-    h += `<div style="color:#c9d1d9; font-size:12px; margin-bottom:8px; font-weight:bold;">
-             🎭 Розташування підписів
-          </div>`;
-          
-    // Joystick 3x3 Grid
-    h += `<div style="display:flex; gap:10px; align-items:center; margin-bottom:10px;">
-            <div style="display:grid; grid-template-columns:repeat(3, 24px); grid-gap:2px; background:#0d1117; padding:4px; border-radius:4px; border:1px solid #30363d;">`;
+    h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:10px; margin-top:10px;">`;
+    h += `<div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; gap:6px; text-transform:uppercase;"><i class="fa-solid fa-tag" style="font-size:11px;"></i> РОЗТАШУВАННЯ ПІДПИСІВ</div>`;
+    
+    h += `<div style="display:flex; gap:12px; align-items:center;">
+            <div style="display:grid; grid-template-columns:repeat(3, 20px); gap:2px; background:#0d1117; padding:4px; border-radius:4px; border:1px solid #30363d; flex-shrink:0;">`;
     
     const dirs = [
+       { label: "<i class='fa-solid fa-arrow-up-left'></i>", val: "TOP_LEFT", raw: "↖" }, { label: "<i class='fa-solid fa-arrow-up'></i>", val: "UP", raw: "↑" }, { label: "<i class='fa-solid fa-arrow-up-right'></i>", val: "TOP_RIGHT", raw: "↗" },
+       { label: "<i class='fa-solid fa-arrow-left'></i>", val: "LEFT", raw: "←" }, { label: "A", val: "AUTO", raw: "A", title: "Авто" }, { label: "<i class='fa-solid fa-arrow-right'></i>", val: "RIGHT", raw: "→" },
+       { label: "<i class='fa-solid fa-arrow-down-left'></i>", val: "BOTTOM_LEFT", raw: "↙" }, { label: "<i class='fa-solid fa-arrow-down'></i>", val: "DOWN", raw: "↓" }, { label: "<i class='fa-solid fa-arrow-down-right'></i>", val: "BOTTOM_RIGHT", raw: "↘" }
+    ];
+    // Fallback to text labels since diagonal arrows might be pro-only in FA6 free
+    const fallbackDirs = [
        { label: "↖", val: "TOP_LEFT" }, { label: "↑", val: "UP" }, { label: "↗", val: "TOP_RIGHT" },
        { label: "←", val: "LEFT" }, { label: "A", val: "AUTO", title: "Авто" }, { label: "→", val: "RIGHT" },
        { label: "↙", val: "BOTTOM_LEFT" }, { label: "↓", val: "DOWN" }, { label: "↘", val: "BOTTOM_RIGHT" }
     ];
     
-    dirs.forEach(d => {
+    fallbackDirs.forEach(d => {
         const bg = tCfg.direction === d.val ? "#1f6feb" : "#21262d";
         const c = tCfg.direction === d.val ? "#fff" : "#8b949e";
         h += `<button onclick="window.updateTooltipConfig('${n.id}', 'direction', '${d.val}')" 
                       title="${d.title || d.val}"
-                      style="width:24px; height:24px; background:${bg}; color:${c}; border:1px solid #30363d; border-radius:3px; cursor:pointer; font-size:12px; padding:0; display:flex; align-items:center; justify-content:center;">
+                      style="width:20px; height:20px; background:${bg}; color:${c}; border:1px solid #30363d; border-radius:3px; cursor:pointer; font-size:11px; padding:0; display:flex; align-items:center; justify-content:center;">
                   ${d.label}
               </button>`;
     });        
     h += `  </div>
-            <div style="font-size:10px; color:#8b949e; flex:1;">
-               Оберіть напрямок віяла (або A - Авто).
+            <div style="flex:1; display:flex; flex-direction:column; justify-content:center; gap:8px;">
+                <div style="display:flex; flex-direction:column; gap:2px;">
+                    <div style="display:flex; justify-content:space-between; font-size:10px; color:#c9d1d9;">
+                        <span>Відстань:</span>
+                        <span id="tt-dist-val-${n.id}">${tCfg.distance}px</span>
+                    </div>
+                    <input type="range" min="50" max="600" step="10" value="${tCfg.distance}" 
+                           oninput="document.getElementById('tt-dist-val-${n.id}').innerText=this.value+'px'; window.updateTooltipConfig('${n.id}', 'distance', parseInt(this.value), false);"
+                           onchange="window.updateTooltipConfig('${n.id}', 'distance', parseInt(this.value), true);"
+                           style="width:100%; height:4px; cursor:pointer;">
+                </div>
+                
+                <div style="display:flex; flex-direction:column; gap:2px;">
+                    <div style="display:flex; justify-content:space-between; font-size:10px; color:#c9d1d9;">
+                        <span>Щільність:</span>
+                        <span id="tt-space-val-${n.id}">${tCfg.spacing !== undefined ? tCfg.spacing : 100}%</span>
+                    </div>
+                    <input type="range" min="50" max="250" step="5" value="${tCfg.spacing !== undefined ? tCfg.spacing : 100}" 
+                           oninput="document.getElementById('tt-space-val-${n.id}').innerText=this.value+'%'; window.updateTooltipConfig('${n.id}', 'spacing', parseInt(this.value), false);"
+                           onchange="window.updateTooltipConfig('${n.id}', 'spacing', parseInt(this.value), true);"
+                           style="width:100%; height:4px; cursor:pointer;">
+                </div>
             </div>
           </div>`;
-          
-    // Distance Slider
-    h += `<div style="display:flex; flex-direction:column; gap:4px;">
-            <div style="display:flex; justify-content:space-between; font-size:11px; color:#c9d1d9;">
-                <span>Відстань від вузла:</span>
-                <span id="tt-dist-val-${n.id}">${tCfg.distance}px</span>
-            </div>
-            <input type="range" min="50" max="600" step="10" value="${tCfg.distance}" 
-                   oninput="document.getElementById('tt-dist-val-${n.id}').innerText=this.value+'px'; window.updateTooltipConfig('${n.id}', 'distance', parseInt(this.value), false);"
-                   onchange="window.updateTooltipConfig('${n.id}', 'distance', parseInt(this.value), true);"
-                   style="width:100%;">
-          </div>`;
-          
-    // Spacing (Density) Slider
-    const spacing = tCfg.spacing !== undefined ? tCfg.spacing : 100;
-    h += `<div style="display:flex; flex-direction:column; gap:4px; margin-top:8px;">
-            <div style="display:flex; justify-content:space-between; font-size:11px; color:#c9d1d9;">
-                <span>Інтервал (щільність):</span>
-                <span id="tt-space-val-${n.id}">${spacing}%</span>
-            </div>
-            <input type="range" min="50" max="250" step="5" value="${spacing}" 
-                   oninput="document.getElementById('tt-space-val-${n.id}').innerText=this.value+'%'; window.updateTooltipConfig('${n.id}', 'spacing', parseInt(this.value), false);"
-                   onchange="window.updateTooltipConfig('${n.id}', 'spacing', parseInt(this.value), true);"
-                   style="width:100%;">
-          </div>`;
-          
+
     h += `</div>`;
 
-    h += `<div style="font-size:10px;margin-top:6px;border-top:1px solid #30363d;padding-top:4px">
-      Free Cable: ${fC} <br> Free ONU: ${fP}
-    </div>`;
+    
+    // Connected nodes block
+    const connectedNodes = conns.filter(c => c.from === n).map(c => c.to);
+    if (connectedNodes.length > 0) {
+        h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:10px; margin-top:10px;">`;
+        h += `<div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; gap:6px; text-transform:uppercase;"><i class="fa-solid fa-network-wired" style="font-size:11px;"></i> Підключені вузли</div>`;
+        h += `<div style="display:flex; flex-direction:column; gap:6px;">`;
+        
+        connectedNodes.forEach(toNode => {
+            let toSig = null;
+            if (toNode.type === "ONU") toSig = sigAtONU(toNode);
+            else if (toNode.type === "MDU") toSig = calculateMDUSignal(toNode);
+            else toSig = sigIn(toNode);
+            
+            let tagHtml = "";
+            let dotColor = "#8b949e";
+            
+            if (toSig !== null) {
+                if (toSig >= -25) { 
+                    tagHtml = `<span style="border:1px solid #1c4528; background:#102216; color:#3fb950; font-size:10px; padding:2px 4px; border-radius:3px; font-weight:bold;">OK</span>`; 
+                    dotColor = "#3fb950";
+                } else if (toSig >= -28.5) {
+                    tagHtml = `<span style="border:1px solid #6b5314; background:#2c2108; color:#d29922; font-size:10px; padding:2px 4px; border-radius:3px; font-weight:bold;">Межа</span>`;
+                    dotColor = "#d29922";
+                } else {
+                    tagHtml = `<span style="border:1px solid #6e2723; background:#2e1114; color:#f85149; font-size:10px; padding:2px 4px; border-radius:3px; font-weight:bold;">Крит.</span>`;
+                    dotColor = "#f85149";
+                }
+            } else {
+                tagHtml = `<span style="border:1px solid #30363d; background:#161b22; color:#8b949e; font-size:10px; padding:2px 4px; border-radius:3px; font-weight:bold;">N/A</span>`;
+            }
+            
+            const toSigStr = toSig !== null ? `${toSig.toFixed(2)} дБ` : `---`;
+            h += `<div style="display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #30363d; padding:6px 10px; border-radius:4px;">
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <div style="width:8px; height:8px; border-radius:50%; background:${dotColor};"></div>
+                    <span style="color:#c9d1d9; font-size:12px; font-weight:bold;">${toNode.name}</span>
+                    <span style="color:#8b949e; font-size:12px;">·</span>
+                    <span style="color:#8b949e; font-size:12px;">${toSigStr}</span>
+                </div>
+                ${tagHtml}
+            </div>`;
+        });
+        h += `</div></div>`;
+    }
   } else if (n.type === "ONU") {
     const s = sigAtONU(n);
     if (s !== null) {
@@ -2125,6 +2159,11 @@ export function addSplitter(id, type, ratio) {
   if (!n || n.type !== "FOB") return;
   if (!n.splitters) n.splitters = [];
   
+  const modal = document.getElementById("cross-connect-modal");
+  if (modal && modal.style.display === "block") {
+     if (typeof window.saveCrossConnect === "function") window.saveCrossConnect(id, true);
+  }
+  
   const prefix = type === "FBT" ? "fbt" : "plc";
   const newId = `${prefix}_${Math.random().toString(36).substr(2, 4)}`;
   
@@ -2132,6 +2171,10 @@ export function addSplitter(id, type, ratio) {
   saveState();
   showProps(n);
   updateNodeLabel(n);
+  
+  if (modal && modal.style.display === "block") {
+     if (typeof window.openCrossConnect === "function") window.openCrossConnect(id);
+  }
 }
 
 /**
@@ -2143,6 +2186,11 @@ export function removeSplitter(nodeId, splitterId) {
   const n = nodes.find(x => x.id === nodeId);
   if (!n || n.type !== "FOB" || !n.splitters) return;
   
+  const modal = document.getElementById("cross-connect-modal");
+  if (modal && modal.style.display === "block") {
+     if (typeof window.saveCrossConnect === "function") window.saveCrossConnect(nodeId, true);
+  }
+
   if (n.crossConnects && n.crossConnects.some(xc => xc.fromId === splitterId || xc.toId === splitterId)) {
      if (!confirm("Цей дільник використовується у зварюваннях. При видаленні всі зварювання з ним також будуть видалені. Продовжити?")) {
         return;
@@ -2155,6 +2203,10 @@ export function removeSplitter(nodeId, splitterId) {
   showProps(n);
   updateStats();
   if (typeof window.refreshNetworkUI === "function") window.refreshNetworkUI();
+  
+  if (modal && modal.style.display === "block") {
+     if (typeof window.openCrossConnect === "function") window.openCrossConnect(nodeId);
+  }
 }
 /**
  * @param {any} n
