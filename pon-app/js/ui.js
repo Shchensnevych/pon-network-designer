@@ -52,6 +52,7 @@ function buildEconomicData() {
       } else {
         add("Активне обладнання", getBaseName(n.name, "OLT"), 1, "шт.", price);
       }
+      add("Активне обладнання", "Модуль SFP OLT PON C++", portCount, "шт.", 0);
     } 
     else if (n.type === "FOB") {
       // Estimate FOB size
@@ -62,8 +63,6 @@ function buildEconomicData() {
       const legacyFbt = /** @type {FOBNode} */ (n).fbtType;
       
       let totalSplices = 0;
-      // Rough estimation: each cable entering means we splice at least 1 core, or maybe transit.
-      // Easiest is to sum up all cores from all connected cables just to get a max capacity
       inOutCables.forEach(c => totalSplices += (c.capacity || 1));
       
       let splCount = splitters.length;
@@ -74,9 +73,16 @@ function buildEconomicData() {
       
       let estModel = "Муфта оптична";
       if (dropPorts > 0) {
-        estModel = `Бокс PON (на ${Math.max(4, Math.ceil(dropPorts/4)*4)} абон., до ${cablePorts} вводів)`;
+        estModel = `Бокс PON розподільчий (на ${Math.max(4, Math.ceil(dropPorts/4)*4)} абон., до ${cablePorts} вводів)`;
+        add("Монтажні матеріали", "Адаптер оптичний SC/UPC", dropPorts, "шт.", 0);
+        add("Монтажні матеріали", "Пігтейл оптичний SC/UPC", dropPorts, "шт.", 0);
+        totalSplices += dropPorts;
       } else {
-        estModel = `Муфта (до ${cablePorts} вводів, ${Math.max(12, Math.ceil(totalSplices/12)*12)} зварок)`;
+        estModel = `Муфта оптична (до ${cablePorts} вводів, ${Math.max(12, Math.ceil(totalSplices/12)*12)} зварок)`;
+      }
+
+      if (totalSplices > 0) {
+         add("Монтажні матеріали", "Гільза термосаджувальна (КДЗС)", totalSplices, "шт.", 0);
       }
 
       if (price === 0) {
@@ -98,7 +104,48 @@ function buildEconomicData() {
       add("Абонентське обладнання", getBaseName(n.name, "ONU"), 1, "шт.", price);
     }
     else if (n.type === "MDU") {
-      add("Абонентське обладнання", getBaseName(n.name, "MDU"), 1, "шт.", price);
+      add("Пасивне обладнання", getBaseName(n.name, "MDU"), 1, "шт.", price);
+      
+      const floors = n.floors || 5;
+      const entrances = n.entrances || 1;
+      const flatsPerFloor = n.flatsPerFloor || 4;
+      const penRate = typeof n.penetrationRate === "number" ? n.penetrationRate : 100;
+      
+      const totalFlats = floors * entrances * flatsPerFloor;
+      const activeSubs = Math.ceil(totalFlats * (penRate / 100));
+
+      const isFTTH = n.architecture !== "FTTB";
+      if (isFTTH) {
+        add("Пасивне обладнання", "Бокс оптичний головний (MDU Горище/Цоколь)", entrances, "шт.", 0);
+        
+        const floorBoxes = entrances * floors;
+        add("Пасивне обладнання", "Бокс поверховий розподільчий (FTTH MDU)", floorBoxes, "шт.", 0);
+        
+        let mduSplitters = [];
+        if (n.mainBox && n.mainBox.splitters) mduSplitters.push(...n.mainBox.splitters);
+        if (n.floorBoxes) n.floorBoxes.forEach(fb => mduSplitters.push(...(fb.splitters || [])));
+        
+        if (mduSplitters.length > 0) {
+           mduSplitters.forEach(sp => add("Сплітери оптичні", `Сплітер ${sp.type} ${sp.ratio}`, 1, "шт.", 0));
+        } else {
+           add("Сплітери оптичні", `Сплітер PLC 1x8 (Вторинний/Поверховий)`, floorBoxes, "шт.", 0);
+        }
+        
+        const riserMeters = entrances * (floors * 3 + 10);
+        add("Кабелі магістральні", "Кабель оптичний Riser (вертикальний)", riserMeters, "м", 0);
+        
+        const dropMeters = activeSubs * 15;
+        add("Кабелі абонентські", "Кабель абонентський (Inner Drop) FTTH", dropMeters, "м", 0);
+        
+        add("Монтажні матеріали", "Конектор швидкої фіксації (Fast Connector)", activeSubs * 2, "шт.", 0);
+        add("Абонентське обладнання", "ONU (FTTH)", activeSubs, "шт.", 0);
+      } else {
+        // FTTB: Switch, UTP cable
+        add("Активне обладнання", "Комутатор доступу (FTTB Switch)", entrances, "шт.", 0);
+        
+        const utpMeters = activeSubs * 20;
+        add("Кабелі абонентські", "Кабель UTP мідний (FTTB)", utpMeters, "м", 0);
+      }
     }
   });
 
@@ -109,12 +156,10 @@ function buildEconomicData() {
       const meters = connKm(c) * 1000;
       add("Кабелі магістральні", `Кабель оптичний ${cores}F`, meters, "м", 0);
     } else if (c.type === "patchcord") {
-      // For cross-connect auto-transit or actual UI patches
-      // We can count them by pieces or by length if desired. Usually drop cable is calculated.
       const meters = connKm(c) * 1000;
-      // Many PONs count drop cables in meters, or as a fixed 100m drop cable "piece". Both work. We'll use meters for accuracy.
-      add("Кабелі абонентські", "Drop-кабель (патчкорд)", meters, "м", 0);
-      add("Монтажні матеріали", "Конектор швидкої фіксації / Патчкорд", 1, "шт.", 0);
+      add("Кабелі абонентські", "Drop-кабель (вуличний)", meters, "м", 0);
+      add("Монтажні матеріали", "Конектор швидкої фіксації (Fast Connector)", 2, "шт.", 0);
+      add("Монтажні матеріали", "Затискач натяжний (Н3 / анкерний)", 2, "шт.", 0);
     }
   });
 
@@ -125,44 +170,90 @@ function buildEconomicData() {
 function buildReportData() {
   const rows = [];
   nodes
-    .filter((n) => n.type === "FOB")
-    .forEach((/** @type {FOBNode} */ fob) => {
-      const inCables = conns.filter(x => x.to === fob && x.type === "cable");
-      if (inCables.length === 0) {
-        rows.push({ name: fob.name, status: "NOT_CONNECTED" });
+    .filter((n) => n.type === "FOB" || n.type === "MDU")
+    .forEach((n) => {
+      const inConns = conns.filter(x => x.to === n && (x.type === "cable" || x.type === "patchcord"));
+      if (inConns.length === 0) {
+        rows.push({ name: n.name, type: n.type, status: "NOT_CONNECTED" });
         return;
       }
-      const c = inCables[0]; // Primary incoming cable
-      const dm = connKm(c) * 1000;
-      const cLoss = (dm / 1000) * FIBER_DB_KM;
-      const si = sigIn(fob) || 0;
-      const so = fob.splitters?.length || fob.plcType || fob.fbtType ? sigONU(fob) : null;
 
-      const splitters = fob.splitters || [];
-      const fbts = splitters.filter(s => s.type === "FBT").map(s => s.ratio).join(", ") || fob.fbtType || "—";
-      const plcs = splitters.filter(s => s.type === "PLC").map(s => s.ratio).join(", ") || fob.plcType || "—";
+      const totalDm = inConns.reduce((acc, c) => acc + connKm(c) * 1000, 0); // Total distance of incoming lines
+      const cLoss = (totalDm / 1000) * FIBER_DB_KM;
+      // @ts-ignore
+      const si = typeof sigIn === "function" ? (sigIn(n) || 0) : 0;
+      
+      let so = null;
+      if (n.type === "MDU") {
+          const mduSig = /** @type {any} */ (typeof calculateMDUSignal === "function" ? calculateMDUSignal(n) : { worstSignal: null });
+          so = mduSig.worstSignal !== null ? mduSig.worstSignal : null;
+      } else {
+          // FOB
+          const drops = conns.filter(x => x.from === n && x.type === "patchcord");
+          if (drops.length > 0) {
+             const sigs = drops.map(c => typeof trueSigAtONU === "function" ? trueSigAtONU(c.to) : sigONU(n)).filter(s => s !== null && s !== 0);
+             if (sigs.length > 0) so = Math.min(...sigs);
+          } else {
+             so = (n.splitters?.length || n.plcType || n.fbtType) ? sigONU(n) : null;
+          }
+      }
+
+      let fbts = "—"; let plcs = "—"; let plcBranch = "—";
+      if (n.type === "MDU") {
+          let sps = [];
+          if (n.mainBox && n.mainBox.splitters) sps.push(...n.mainBox.splitters);
+          if (n.floorBoxes) n.floorBoxes.forEach(fb => sps.push(...(fb.splitters || [])));
+          if (sps.length > 0) {
+              const fCount = sps.filter(s => s.type === "FBT").length;
+              const pCount = sps.filter(s => s.type === "PLC").length;
+              if(fCount) fbts = `FBT (${fCount} шт)`;
+              if(pCount) plcs = `PLC (${pCount} шт)`;
+          } else if (n.architecture !== "FTTB") {
+              plcs = `PLC 1x8 (Авто)`;
+          }
+      } else {
+          const splitters = n.splitters || [];
+          fbts = splitters.filter(s => s.type === "FBT").map(s => s.ratio).join(", ") || n.fbtType || "—";
+          plcs = splitters.filter(s => s.type === "PLC").map(s => s.ratio).join(", ") || n.plcType || "—";
+          plcBranch = n.plcBranch || "—";
+      }
+
+      let connectedONU = 0;
+      if (n.type === "MDU") {
+         const firstFlat = 1;
+         const lastFlat = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 4);
+         if (n.flats) {
+            connectedONU = n.flats.filter(f => f.flat >= firstFlat && f.flat <= lastFlat && f.crossConnect).length;
+         }
+      } else {
+         connectedONU = conns.filter((x) => x.from === n && x.type === "patchcord").reduce((acc, c) => acc + (c.to.type === "MDU" ? Math.ceil((c.to.floors || 0) * (c.to.entrances || 0) * (c.to.flatsPerFloor || 0) * ((typeof c.to.penetrationRate === 'number' ? c.to.penetrationRate : 100) / 100)) : 1), 0);
+      }
+
+      const origins = Array.from(new Set(inConns.map(c => c.from.name || c.from.type))).join(", ");
+      const branches = Array.from(new Set(inConns.map(c => c.branch || "—"))).join(", ");
 
       rows.push({
-        name: fob.name,
-        from: c.from.name || c.from.type,
-        branch: c.branch || "—",
-        dist: dm.toFixed(1),
+        name: n.name,
+        type: n.type,
+        from: origins,
+        branch: branches,
+        dist: totalDm.toFixed(1),
         cableLoss: cLoss.toFixed(3),
         mechLoss: MECH,
-        signalIn: si.toFixed(2),
+        signalIn: si < 0 ? si.toFixed(2) : "—",
         fbt: fbts,
         xLoss: "—",
         yLoss: "—",
         plc: plcs,
-        plcBranch: fob.plcBranch || "—",
+        plcBranch: plcBranch,
         plcLoss: "—",
         signalONU: so !== null ? so.toFixed(2) : "—",
-        onuCnt: conns.filter((x) => x.from === fob && x.type === "patchcord").reduce((acc, c) => acc + (c.to.type === "MDU" ? Math.ceil((c.to.floors || 0) * (c.to.entrances || 0) * (c.to.flatsPerFloor || 0) * ((typeof c.to.penetrationRate === 'number' ? c.to.penetrationRate : 100) / 100)) : 1), 0),
+        onuCnt: connectedONU,
         status:
           so !== null
             ? so >= ONU_MIN
               ? "ok"
-              : so >= ONU_MIN - 3
+              : so >= ONU_MIN - 2
               ? "warn"
               : "err"
             : "info",
@@ -318,7 +409,7 @@ export function closeModal(e) {
 export function downloadCSV() {
   const rows = buildReportData();
   const hdr =
-    "FOB;Від;Гілка;Відстань м;Затух. волокна дБ;Мех. дБ;Сигнал IN дБ;FBT;PLC;Гілка PLC;Сигнал ONU дБ;ONU;Статус\n";
+    "Вузол;Тип;Від;Гілка;Відстань м;Затух. волокна дБ;Мех. дБ;Сигнал IN дБ;FBT;PLC;Гілка PLC;Гірший сигнал OUT дБ;Абонентів;Статус\n";
 
   function csvEscapeCell(v) {
     const s = String(v ?? "");
@@ -356,9 +447,10 @@ export function downloadCSV() {
   const body = rows
     .map((r) =>
       r.status === "NOT_CONNECTED"
-        ? `${safeCell(r.name)};${safeCell("НЕ ПІДКЛЮЧЕНИЙ")};;;;;;;;;;;`
+        ? `${safeCell(r.name)};${safeCell(r.type)};${safeCell("НЕ ПІДКЛЮЧЕНИЙ")};;;;;;;;;;;`
         : [
             safeCell(r.name),
+            safeCell(r.type),
             safeCell(r.from),
             safeCell(r.branch),
             safeCell(r.dist),
@@ -418,7 +510,8 @@ export function downloadTXT() {
   const rows = buildReportData();
 
   const header = [
-    "FOB",
+    "Вузол",
+    "Тип",
     "Від",
     "Гілка",
     "Відстань м",
@@ -428,8 +521,8 @@ export function downloadTXT() {
     "FBT",
     "PLC",
     "Гілка PLC",
-    "Сигнал ONU дБ",
-    "ONU",
+    "Гірший сигнал OUT дБ",
+    "Абонентів",
     "Статус",
   ];
 
@@ -438,6 +531,7 @@ export function downloadTXT() {
     if (r.status === "NOT_CONNECTED") {
       table.push([
         r.name,
+        r.type,
         "НЕ ПІДКЛЮЧЕНИЙ",
         "",
         "",
@@ -454,6 +548,7 @@ export function downloadTXT() {
     } else {
       table.push([
         r.name,
+        r.type,
         r.from,
         r.branch,
         r.dist,

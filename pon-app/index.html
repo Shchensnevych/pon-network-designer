@@ -551,23 +551,27 @@
             </p>
             <ol class="onboarding-list">
               <li>
-                <strong>Розміщення:</strong> додайте <b style="color:#d2a8ff">OLT</b> (головна станція), <b style="color:#3fb950">FOB</b> (оптичні муфти), приватні будинки <b style="color:#ff7b72">ONU</b> чи багатоквартирні <b style="color:#a5d6ff">MDU</b> на карту. (Налаштування вузлів доступні в панелі <span style="background: #21262d; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap;">⚙️ Властивості</span> праворуч).
+                <strong>Розміщення:</strong> додайте <b style="color:#d2a8ff">OLT</b> (головна станція), <b style="color:#e3b341">Муфти</b> (транзитні вузли), <b style="color:#3fb950">FOB</b> (розподільчі коробки), приватні будинки <b style="color:#ff7b72">ONU</b> чи багатоквартирні <b style="color:#a5d6ff">MDU</b> на карту. (Налаштування вузлів доступні в панелі <span style="background: #21262d; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap;">⚙️ Властивості</span> праворуч).
               </li>
               <li>
                 <strong>З'єднання (Кабелі):</strong> 
-                використовуйте <span style="background: #21262d; border: 1px solid #f0883e; padding: 2px 6px; border-radius: 4px; font-size: 11px; color:#f0883e; white-space: nowrap;">〰 Магістраль</span> (багатожильні кабелі від 2 волокон) між вузлами розгалуження (OLT, FOB, MDU) або <span style="background: #21262d; border: 1px solid #58a6ff; padding: 2px 6px; border-radius: 4px; font-size: 11px; color:#58a6ff; white-space: nowrap;">〰 Патчкорд</span> (1 жила) для підключення кінцевих абонентів.
+                використовуйте <span style="background: #21262d; border: 1px solid #f0883e; padding: 2px 6px; border-radius: 4px; font-size: 11px; color:#f0883e; white-space: nowrap;">〰 Магістраль</span> (багатожильні кабелі від 2 волокон) між вузлами розгалуження (OLT, Муфта, FOB, MDU) або <span style="background: #21262d; border: 1px solid #58a6ff; padding: 2px 6px; border-radius: 4px; font-size: 11px; color:#58a6ff; white-space: nowrap;">〰 Патчкорд</span> (1 жила) для підключення кінцевих абонентів до найближчого дільника.
               </li>
               <li>
                 <strong>Оптичний крос (<span style="color:#d2a8ff">OLT</span>):</strong> 
                 клікніть на <b style="color:#d2a8ff">OLT</b>, відкрийте <span style="background: #161b22; border: 1px solid #8b949e; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap;">🎛️ Оптичний крос (ODF)</span> і з'єднайте PON-порти з вільними жилами відхідних магістралей.
               </li>
               <li>
-                <strong>Касети та Зварювання (<span style="color:#3fb950">FOB</span>):</strong> 
-                клікніть на <b style="color:#3fb950">FOB</b>, відкрийте <span style="background: #161b22; border: 1px solid #8b949e; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap;">🪛 Касета (Зварювання)</span>. Додайте дільники (FBT/PLC) та комутуйте вхідні жили (Cores) з дільниками та вихідними кабелями. <strong>Сигнал передається лише по зварених волокнах!</strong>
+                <strong>Касети та Зварювання (<span style="color:#e3b341">Муфта</span> / <span style="color:#3fb950">FOB</span>):</strong> 
+                відкрийте <span style="background: #161b22; border: 1px solid #8b949e; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap;">🪛 Касета (Зварювання)</span>. Додавайте дільники (FBT чи PLC) та комутуйте вхідні жили (Cores) зі сплітерами або робіть транзит безпосередньо у вихідні кабелі. <strong>Сигнал передається лише по фізично зварених волокнах!</strong>
               </li>
               <li>
                 <strong>Схема під'їздів (<span style="color:#a5d6ff">MDU</span>):</strong> 
-                перемкніть <b style="color:#a5d6ff">MDU</b> в режим <b style="color:#2ea043">FTTH</b>, відкрийте <span style="background: #161b22; border: 1px solid #8b949e; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap;">⚙️ Схема під'їзду</span> та будуйте вертикальну трубну розводку, додаючи поверхові дільники та підключаючи реальні квартири.
+                перемкніть <b style="color:#a5d6ff">MDU</b> в режим <b style="color:#2ea043">FTTH</b>, відкрийте <span style="background: #161b22; border: 1px solid #8b949e; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap;">⚙️ Схема під'їзду</span> та будуйте вертикальну трубну розводку, встановлюючи поверхові дільники та підключаючи реальні квартири.
+              </li>
+              <li>
+                <strong>Смарт-Аналітика:</strong>
+                у властивостях вузлів з'явився блок <span style="background: #21262d; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap; color:#8b949e"><i class="fa-solid fa-tag"></i> РОЗТАШУВАННЯ ПІДПИСІВ</span> для ручного керування виносками абонентів на карті (Arc-layout), а також динамічний аналіз <b>Ємності</b>, який розрізняє вільні жили транзиту та вільні виходи абонентських дільників на основі вашої матриці з'єднань.
               </li>
             </ol>
           </div>
