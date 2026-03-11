@@ -1044,7 +1044,7 @@ function buildNodeLabelContent(n) {
 
     if (n.inputConn) {
       const si = sigIn(n);
-      const srcIcon = n.inputConn.from.type === "OLT" ? "🔷" : (n.inputConn.from.subtype === "MUFTA" ? "🛢️" : "📦");
+      const srcIcon = n.inputConn.from.type === "OLT" ? "🗄️" : (n.inputConn.from.subtype === "MUFTA" ? "🛢️" : "📦");
       const src = n.inputConn.from.name || n.inputConn.from.type;
       let capStr = n.inputConn.capacity ? ` (${n.inputConn.capacity} жил)` : "";
       let br = "";
@@ -1096,7 +1096,7 @@ function buildNodeLabelContent(n) {
     if (s !== null) {
       L2 = `<span class="lbl-sig ${sigColorClass(s)}">${s.toFixed(1)}дБ</span>`;
       if (conn && conn.from) {
-          const fromIcon = (conn.from.type === "FOB" && conn.from.subtype === "MUFTA") ? "🛢️" : (conn.from.type === "OLT" ? "🔷" : "📦");
+          const fromIcon = (conn.from.type === "FOB" && conn.from.subtype === "MUFTA") ? "🛢️" : (conn.from.type === "OLT" ? "🗄️" : "📦");
           const fromTypeLabel = conn.type === "cable" ? "Кабель" : "Патч";
           L2 += `<br><span class="lbl-dim">Вхід: ${fromIcon} ${conn.from.name} (${fromTypeLabel})</span>`;
           
@@ -1604,7 +1604,9 @@ window.updateTooltipConfig = function(id, prop, val, shouldRedraw = true) {
                 }
             }
         });
+        // @ts-ignore
         if (typeof window.renderLinks === 'function') {
+            // @ts-ignore
             window.renderLinks();
         } else {
             clearONULeaderLines();
@@ -1663,7 +1665,7 @@ function buildTooltip(n) {
       if (n.inputConn.branch) branchTag = ` (гілка ${n.inputConn.branch})`;
       else if (n.inputConn.from.type === "FOB" && n.inputConn.from.plcType) branchTag = ` (через PLC)`;
       let capStr = n.inputConn.capacity ? ` (${n.inputConn.capacity} жил)` : "";
-      const srcIcon = n.inputConn.from.type === "OLT" ? "🔷" : (n.inputConn.from.subtype === "MUFTA" ? "🛢️" : "📦");
+      const srcIcon = n.inputConn.from.type === "OLT" ? "🗄️" : (n.inputConn.from.subtype === "MUFTA" ? "🛢️" : "📦");
       t += `📡 Від: ${srcIcon} ${n.inputConn.from.name || n.inputConn.from.type}${capStr}${branchTag}<br>`;
     } else {
       t += `⚠️ Не підключений (Input)<br>`;
@@ -1722,7 +1724,7 @@ function buildTooltip(n) {
     let t = `<strong style='color:#a371f7'>🏢 ${n.name} (${archTxt})</strong><br>`;
     if (s !== null) {
       t += `📶 Сигнал (вхід): <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
-      const fromIcon = (conn?.from?.type === "FOB" && conn.from.subtype === "MUFTA") ? "🛢️" : (conn?.from?.type === "OLT" ? "🔷" : "📦");
+      const fromIcon = (conn?.from?.type === "FOB" && conn.from.subtype === "MUFTA") ? "🛢️" : (conn?.from?.type === "OLT" ? "🗄️" : "📦");
       const fromTypeLabel = conn?.type === "cable" ? "Кабель" : "Патч";
       if (conn?.from) t += `${fromIcon} Вхід: ${conn.from.name} (${fromTypeLabel})<br>`;
       
@@ -1809,7 +1811,7 @@ function showProps(n) {
   }
 
   const fobIcon = (n.type === "FOB" && /** @type {any} */(n).subtype === "MUFTA") ? "🛢️" : "📦";
-  let h = `<div class="node-card"><h3>${n.type === "OLT" ? "🔷" : n.type === "FOB" ? fobIcon : "🏠"} ${n.name}</h3>`;
+  let h = `<div class="node-card"><h3>${n.type === "OLT" ? "🗄️" : n.type === "FOB" ? fobIcon : "🏠"} ${n.name}</h3>`;
 
   // Rename
   h += `<div style="display:flex;gap:5px;margin-bottom:10px"><input id="ren" value="${n.name}" style="flex:1" onchange="updNode('${n.id}', 'name', this.value)"></div>`;
@@ -1972,7 +1974,8 @@ function showProps(n) {
             let toSig = null;
             if (toNode.type === "ONU") toSig = sigAtONU(toNode);
             else if (toNode.type === "MDU") toSig = calculateMDUSignal(toNode);
-            else toSig = sigIn(toNode);
+            else if (toNode.type === "FOB") toSig = sigIn(toNode);
+            else toSig = null;
             
             let tagHtml = "";
             let dotColor = "#8b949e";

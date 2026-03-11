@@ -55,53 +55,27 @@
           </button>
 
           <div class="section-label">Компоненти</div>
-          <div class="btn-grid-components">
-            <button
-              class="tool-btn btn-comp-olt"
-              data-tool="olt"
-              onclick="selectTool('olt')"
-              draggable="true"
-              data-type="olt"
-            >
-              <span class="icon">🔷</span>Додати OLT
-            </button>
-            <button
-              class="tool-btn"
-              data-tool="fob"
-              onclick="selectTool('fob')"
-              draggable="true"
-              data-type="fob"
-            >
-              <span class="icon">📦</span>FOB
-            </button>
-            <button
-              class="tool-btn"
-              data-tool="mufta"
-              onclick="selectTool('mufta')"
-              draggable="true"
-              title="Оптична муфта (Splice Closure)"
-              data-type="mufta"
-            >
-              <span class="icon">🛢️</span>Муфта
-            </button>
-            <button
-              class="tool-btn"
-              data-tool="onu"
-              onclick="selectTool('onu')"
-              draggable="true"
-              data-type="onu"
-            >
-              <span class="icon">🏠</span>ONU
-            </button>
-            <button
-              class="tool-btn"
-              data-tool="mdu"
-              onclick="selectTool('mdu')"
-              draggable="true"
-              data-type="mdu"
-            >
-              <span class="icon">🏢</span>MDU
-            </button>
+          <div class="comp-container">
+            <div class="comp-btn tool-btn c-olt" data-tool="olt" onclick="selectTool('olt')" draggable="true" data-type="olt">
+              <span class="icon">🗄️</span>
+              <span class="comp-lbl">OLT</span>
+            </div>
+            <div class="comp-btn tool-btn c-fob" data-tool="fob" onclick="selectTool('fob')" draggable="true" data-type="fob">
+              <span class="icon">📦</span>
+              <span class="comp-lbl">FOB</span>
+            </div>
+            <div class="comp-btn tool-btn c-mufta" data-tool="mufta" onclick="selectTool('mufta')" draggable="true" data-type="mufta" title="Оптична муфта (Splice Closure)">
+              <span class="icon">🛢️</span>
+              <span class="comp-lbl">Муфта</span>
+            </div>
+            <div class="comp-btn tool-btn c-onu" data-tool="onu" onclick="selectTool('onu')" draggable="true" data-type="onu">
+              <span class="icon">🏠</span>
+              <span class="comp-lbl">ONU</span>
+            </div>
+            <div class="comp-btn tool-btn c-mdu" data-tool="mdu" onclick="selectTool('mdu')" draggable="true" data-type="mdu">
+              <span class="icon">🏢</span>
+              <span class="comp-lbl">MDU</span>
+            </div>
           </div>
 
           <div class="section-label">З'єднання</div>

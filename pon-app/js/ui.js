@@ -1355,7 +1355,7 @@ function getSpIcon(type, ratio) {
   // Iterate OLTs
   olts.forEach(olt => {
       const oltId = safeId(olt.id);
-      m += `  ${oltId}(["🔷 ${olt.name}<br/><b>Output: ${olt.outputPower} дБ</b><br/><small>${olt.ports} PON порт(ів)</small>"]):::olt\n`;
+      m += `  ${oltId}(["🗄️ ${olt.name}<br/><b>Output: ${olt.outputPower} дБ</b><br/><small>${olt.ports} PON порт(ів)</small>"]):::olt\n`;
       m += `  click ${oltId} "javascript:window.focusNode('${olt.id}')" "Показати на карті"\n`;
       
       const connectedCableIds = new Set();
