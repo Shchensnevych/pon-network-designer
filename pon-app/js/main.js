@@ -25,6 +25,7 @@ import {
   downloadTXT,
   showSuggestions,
   showTopology,
+  exportTopologyPng,
   showScenarioCompare,
   openHelp,
   closeHelp,
@@ -95,6 +96,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.downloadTXT = downloadTXT;
   window.showSuggestions = showSuggestions;
   window.showTopology = showTopology;
+  window.exportTopologyPng = exportTopologyPng;
   window.showScenarioCompare = showScenarioCompare;
   window.focusNode = focusNode;
   window.openHelp = openHelp;
@@ -113,8 +115,22 @@ document.addEventListener("DOMContentLoaded", () => {
         type: "application/json",
       }),
     );
-    a.download = "pon_leaflet_project.json";
+    
+    // Read project name from Top Bar if it exists
+    const nameInput = /** @type {HTMLInputElement | null} */ (document.getElementById("project-name-input"));
+    const projectName = nameInput && nameInput.value.trim() !== "" ? nameInput.value.trim() : "Untitled_Project";
+    
+    a.download = `${projectName}.json`;
     a.click();
+    
+    // Quick success message in status bar
+    const statusMsg = document.getElementById("status-msg");
+    if (statusMsg) {
+       statusMsg.innerHTML = `<i class="fa-solid fa-check" style="color: #3fb950;"></i> Збережено: ${projectName}.json`;
+       setTimeout(() => {
+          statusMsg.innerHTML = `<i class="fa-solid fa-check" style="color: #3fb950;"></i> Система готова`;
+       }, 5000);
+    }
   };
 
   window.loadProject = () => {
@@ -129,6 +145,13 @@ document.addEventListener("DOMContentLoaded", () => {
       r.onload = (ev) => {
         try {
           restoreNetwork(String(ev.target?.result || ""));
+          
+          let importedName = file.name;
+          if (importedName.toLowerCase().endsWith(".json")) {
+             importedName = importedName.substring(0, importedName.length - 5);
+          }
+          updateProjectName(importedName);
+          
           updateStats();
           alert("✅ Проєкт завантажено успішно!");
         } catch (err) {
@@ -149,8 +172,12 @@ document.addEventListener("DOMContentLoaded", () => {
     const appEl = /** @type {HTMLElement | null} */ (document.querySelector(".app"));
     if (!appEl) return;
     html2canvas(appEl).then((canvas) => {
+      const nameInput = /** @type {HTMLInputElement | null} */ (document.getElementById("project-name-input"));
+      let pName = nameInput && nameInput.value.trim() !== "" ? nameInput.value.trim() : "Проєкт";
+      pName = pName.replace(/[<>:"/\\|?*]/g, '_');
+      
       const a = document.createElement("a");
-      a.download = "pon_scheme_" + Date.now() + ".png";
+      a.download = `${pName}_map_${Date.now()}.png`;
       a.href = canvas.toDataURL();
       a.click();
     });

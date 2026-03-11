@@ -36,23 +36,37 @@
   </head>
 
   <body>
-    <div class="app">
-      <!-- ══ LEFT ══ -->
+    <div class="app-layout">
+      <!-- ══ TOP BAR ══ -->
+      <header class="top-bar">
+        <div class="top-bar-left">
+          <div class="top-logo">⚡ PON Designer</div>
+        </div>
+        <div class="top-bar-center">
+          <input type="text" id="project-name-input" class="project-name-input" value="Untitled_Project" onchange="updateProjectName(this.value)">
+        </div>
+        <div class="top-bar-right">
+        </div>
+      </header>
+      
+      <div class="app">
+        <!-- ══ LEFT ══ -->
       <div class="left">
-        <div class="left-header">⚡ PON Designer</div>
         <div class="left-body">
 
           <div class="section-label">Режим</div>
-          <button
-            class="tool-btn active"
-            data-tool="select"
-            onclick="selectTool('select')"
-          >
-            <span class="icon">👆</span>Вказівник
-          </button>
-          <button class="tool-btn" data-tool="pan" onclick="selectTool('pan')">
-            <span class="icon">✋</span>Панорамування
-          </button>
+          <div class="btn-grid-2col">
+            <button
+              class="tool-btn active"
+              data-tool="select"
+              onclick="selectTool('select')"
+            >
+              <span class="icon">👆</span>Вказівник
+            </button>
+            <button class="tool-btn" data-tool="pan" onclick="selectTool('pan')">
+              <span class="icon">✋</span>Панорама
+            </button>
+          </div>
 
           <div class="section-label">Компоненти</div>
           <div class="comp-container">
@@ -81,18 +95,20 @@
           <div class="section-label">З'єднання</div>
           <div class="btn-grid-2col">
             <button
-              class="tool-btn"
+              class="tool-btn btn-stacked"
               data-tool="cable"
               onclick="selectTool('cable')"
             >
-              <span class="icon">━</span>Магістраль
+              <div class="line-icon solid-line"></div>
+              <span>Магістраль</span>
             </button>
             <button
-              class="tool-btn"
+              class="tool-btn btn-stacked"
               data-tool="patchcord"
               onclick="selectTool('patchcord')"
             >
-              <span class="icon">╌</span>Патчкорд
+              <div class="line-icon dashed-line"></div>
+              <span>Патчкорд</span>
             </button>
           </div>
 
@@ -241,17 +257,19 @@
             </button>
           </div>
 
-          <button
-            class="clear-btn"
-            onclick="clearNetwork()"
-            style="position: relative"
-          >
-            <i class="fa-solid fa-trash-can" style="color: #f85149"></i>
-            Очистити мережу
-            <span class="info-icon" title="Видалити всі вузли та з'єднання"
-              >?</span
+          <div class="action-group" style="border-color: rgba(248,81,73,0.3); background: rgba(248,81,73,0.05); margin-top: 6px;">
+            <button
+              class="clear-btn"
+              onclick="clearNetwork()"
+              style="position: relative; margin-top: 0;"
             >
-          </button>
+              <i class="fa-solid fa-trash-can" style="color: #f85149"></i>
+              Очистити мережу
+              <span class="info-icon" title="Видалити всі вузли та з'єднання"
+                >?</span
+              >
+            </button>
+          </div>
         </div>
       </div>
 
@@ -272,6 +290,14 @@
             <div class="stat-chip">
               <div class="val" id="s-fob">0</div>
               <div class="lbl">FOB</div>
+            </div>
+            <div class="stat-chip">
+              <div class="val" id="s-mufta">0</div>
+              <div class="lbl">Муфта</div>
+            </div>
+            <div class="stat-chip">
+              <div class="val" id="s-mdu">0</div>
+              <div class="lbl">MDU</div>
             </div>
             <div class="stat-chip">
               <div class="val" id="s-onu">0</div>
@@ -348,6 +374,9 @@
             </button>
             <button class="modal-btn btn-txt" onclick="downloadTXT()">
               ⬇ TXT
+            </button>
+            <button class="modal-btn btn-png" id="btn-export-png" onclick="exportTopologyPng()" style="display: none;">
+              ⬇ PNG
             </button>
             <div
               style="
@@ -546,6 +575,9 @@
               <li>
                 <strong>Смарт-Аналітика:</strong>
                 у властивостях вузлів з'явився блок <span style="background: #21262d; border: 1px solid #30363d; padding: 2px 6px; border-radius: 4px; font-size: 11px; white-space: nowrap; color:#8b949e"><i class="fa-solid fa-tag"></i> РОЗТАШУВАННЯ ПІДПИСІВ</span> для ручного керування виносками абонентів на карті (Arc-layout), а також динамічний аналіз <b>Ємності</b>, який розрізняє вільні жили транзиту та вільні виходи абонентських дільників на основі вашої матриці з'єднань.
+              <li>
+                <strong>Верхнє Меню (Назва Проєкту):</strong>
+                глобальне поле вгорі екрану дозволяє задати ім'я поточної мережі. Усі завантажені вами звіти (CSV/TXT), топології (PNG), карти та резервні копії автоматично переймуть цю назву для ідеального порядку у ваших файлах.
               </li>
             </ol>
           </div>
@@ -1107,7 +1139,22 @@
       </div>
     </div>
 
-    <!-- Main application module -->
-    <script type="module" src="./js/main.js"></script>
-  </body>
+    <!-- ══ STATUS BAR ══ -->
+    <footer class="status-bar">
+      <div class="status-left">
+        <span class="status-item" id="status-msg"><i class="fa-solid fa-check" style="color: #3fb950;"></i> Система готова</span>
+        <span class="status-divider">|</span>
+        <span class="status-item" id="status-stats">OLT: 0 | Муфт: 0 | Ліній: 0 | Абонентів: 0</span>
+      </div>
+      <div class="status-right">
+        <span class="status-item" id="status-coords">Lat: 0.0000, Lng: 0.0000</span>
+        <span class="status-divider">|</span>
+        <span class="status-item" id="status-zoom">Zoom: 16</span>
+      </div>
+    </footer>
+  </div>
+
+  <!-- Main application module -->
+  <script type="module" src="./js/main.js"></script>
+</body>
 </html>

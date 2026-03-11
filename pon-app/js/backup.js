@@ -155,6 +155,14 @@ export function updateProjectName(val) {
   projectName = val || "Мій проєкт";
   saveSettings();
   document.title = "PON Designer - " + projectName;
+  
+  // Sync to settings modal input
+  const pnSettings = /** @type {HTMLInputElement | null} */ (document.getElementById("project-name"));
+  if (pnSettings && pnSettings.value !== projectName) pnSettings.value = projectName;
+  
+  // Sync to main top bar input
+  const pnTop = /** @type {HTMLInputElement | null} */ (document.getElementById("project-name-input"));
+  if (pnTop && pnTop.value !== projectName) pnTop.value = projectName;
 }
 
 /**
@@ -232,6 +240,9 @@ export function loadSettings() {
   }
   const pn = /** @type {HTMLInputElement | null} */ (document.getElementById("project-name"));
   if (pn) pn.value = projectName;
+  
+  const pnTop = /** @type {HTMLInputElement | null} */ (document.getElementById("project-name-input"));
+  if (pnTop) pnTop.value = projectName;
   const at = /** @type {HTMLInputElement | null} */ (document.getElementById("autosave-toggle"));
   if (at) at.checked = autoSaveEnabled;
   const ai = /** @type {HTMLInputElement | null} */ (document.getElementById("autosave-interval"));
@@ -288,6 +299,13 @@ export async function restoreBackup(id) {
 
     restoreNetwork(backup.data);
     updateStats();
+    
+    let loadedName = backup.projectName || "Мій проєкт";
+    if (loadedName.endsWith(" (Auto)")) {
+        loadedName = loadedName.replace(" (Auto)", "");
+    }
+    updateProjectName(loadedName);
+    
     closeSettings();
     alert("✅ Бекап успішно відновлено!");
   } catch (e) {

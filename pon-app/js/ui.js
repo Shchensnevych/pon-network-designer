@@ -263,6 +263,9 @@ function buildReportData() {
 }
 
 export function openReport() {
+  const btnPng = document.getElementById("btn-export-png");
+  if (btnPng) btnPng.style.display = "none";
+  
   const rows = buildReportData();
   const oltCount = nodes.filter((n) => n.type === "OLT").length;
   const fobCount = nodes.filter((n) => n.type === "FOB").length;
@@ -406,6 +409,14 @@ export function closeModal(e) {
   }
 }
 
+function getProjectFileName(suffix) {
+  const input = /** @type {HTMLInputElement | null} */ (document.getElementById("project-name-input"));
+  let name = input && input.value.trim() !== "" ? input.value.trim() : "Проєкт";
+  // Remove invalid filename characters
+  name = name.replace(/[<>:"/\\|?*]/g, '_');
+  return `${name}_${suffix}`;
+}
+
 export function downloadCSV() {
   const rows = buildReportData();
   const hdr =
@@ -502,7 +513,7 @@ export function downloadCSV() {
   });
   const a = document.createElement("a");
   a.href = URL.createObjectURL(blob);
-  a.download = "pon-report.csv";
+  a.download = getProjectFileName("report.csv");
   a.click();
 }
 
@@ -628,7 +639,7 @@ export function downloadTXT() {
 
   const a = document.createElement("a");
   a.href = URL.createObjectURL(new Blob([t]));
-  a.download = "pon-report.txt";
+  a.download = getProjectFileName("report.txt");
   a.click();
 }
 
@@ -816,6 +827,9 @@ export async function showTopology() {
   `;
 
   document.getElementById("modal-overlay")?.classList.add("open");
+
+  const btnPng = document.getElementById("btn-export-png");
+  if (btnPng) btnPng.style.display = "";
 
   const olts = nodes.filter((n) => n.type === "OLT");
   if (olts.length === 0) {
@@ -1882,4 +1896,87 @@ export function updateValidationBadge() {
     badge.textContent = count > 0 ? String(count) : "";
     badge.className = count > 0 ? "badge badge-red" : "badge badge-green";
   }
+}
+
+export function exportTopologyPng() {
+  // @ts-ignore
+  if (typeof html2canvas === "undefined") {
+    alert("Помилка: Бібліотека html2canvas не завантажена!");
+    return;
+  }
+  
+  const container = document.getElementById("mermaid-container");
+  if (!container) return;
+  const svg = container.querySelector("svg");
+  if (!svg) {
+    alert("Графік топології ще формується або порожній.");
+    return;
+  }
+
+  const btn = document.getElementById("btn-export-png");
+  if (btn) {
+    btn.textContent = "⏳...";
+    btn.style.pointerEvents = "none";
+  }
+
+  // Determine actual SVG dimensions from viewBox or bounding box
+  let w = 800; let h = 600;
+  const vb = svg.getAttribute("viewBox");
+  if (vb) {
+      const parts = vb.split(" ");
+      w = parseFloat(parts[2]);
+      h = parseFloat(parts[3]);
+  } else {
+      const rect = svg.getBoundingClientRect();
+      w = rect.width;
+      h = rect.height;
+  }
+
+  // To capture SVG with htmlLabels (foreignObject) accurately via html2canvas,
+  // we must render it on-screen. We temporarily put it in a huge absolute container.
+  const tempCon = document.createElement("div");
+  // Important: Must be in DOM but we move it off-screen to avoid jarring the user
+  tempCon.style.position = "absolute";
+  tempCon.style.left = "-9999px";
+  tempCon.style.top = "0";
+  tempCon.style.width = w + "px";
+  tempCon.style.height = h + "px";
+  tempCon.style.background = "#0d1117"; // the exact dark background color of the UI
+
+  // Clone SVG so we don't mess up the view
+  const svgClone = /** @type {HTMLElement} */ (svg.cloneNode(true));
+  svgClone.style.transform = ""; // strip D3 zoom transform
+  
+  // Force strict pixel dimensions on the clone so html2canvas sizes it properly
+  svgClone.setAttribute("width", String(w));
+  svgClone.setAttribute("height", String(h));
+  svgClone.style.width = w + "px";
+  svgClone.style.height = h + "px";
+  svgClone.style.maxWidth = "none";
+
+  tempCon.appendChild(svgClone);
+  document.body.appendChild(tempCon);
+
+  // @ts-ignore
+  html2canvas(tempCon, {
+      backgroundColor: "#0d1117",
+      scale: 2 // render at 2x resolution for sharpness
+  }).then(canvas => {
+      document.body.removeChild(tempCon);
+      if (btn) {
+          btn.innerHTML = "⬇ PNG";
+          btn.style.pointerEvents = "auto";
+      }
+      const a = document.createElement("a");
+      a.download = getProjectFileName(`topology_${Date.now()}.png`);
+      a.href = canvas.toDataURL("image/png");
+      a.click();
+  }).catch(err => {
+      if (document.body.contains(tempCon)) document.body.removeChild(tempCon);
+      if (btn) {
+          btn.innerHTML = "⬇ PNG";
+          btn.style.pointerEvents = "auto";
+      }
+      alert("Помилка генерації PNG: " + err);
+  });
 }

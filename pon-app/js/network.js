@@ -116,6 +116,9 @@ export function initNetwork() {
     })
     .addTo(map);
 
+  const z = document.getElementById("status-zoom");
+  if (z) z.textContent = `Zoom: ${map.getZoom()}`;
+
   // Адаптивне відображення tooltip'ів: при малому zoom показувати тільки при hover
   map.on("zoomend", () => {
     updateTooltipsVisibility();
@@ -167,6 +170,18 @@ export function initNetwork() {
   // Map click → add node / clear selection
   map.on("click", (e) => {
     onMapClick(e);
+  });
+
+  // Map mousemove → update status bar coordinates
+  map.on("mousemove", (e) => {
+    const coords = document.getElementById("status-coords");
+    if (coords) coords.textContent = `Lat: ${e.latlng.lat.toFixed(5)}, Lng: ${e.latlng.lng.toFixed(5)}`;
+  });
+
+  // Zoom changes
+  map.on("zoomend", () => {
+    const z = document.getElementById("status-zoom");
+    if (z) z.textContent = `Zoom: ${map.getZoom()}`;
   });
 
   // Contextmenu → close custom ctx menu if open
@@ -2451,17 +2466,40 @@ export function finishOLT(oid, fid, port) {
 }
 
 export function updateStats() {
-  document.getElementById("s-olt").textContent = String(nodes.filter((n) => n.type === "OLT").length);
-  document.getElementById("s-fob").textContent = String(nodes.filter((n) => n.type === "FOB").length);
+  const oltCount = nodes.filter((n) => n.type === "OLT").length;
+  const fobCount = nodes.filter((n) => n.type === "FOB" && n.subtype !== "MUFTA").length;
+  const closureCount = nodes.filter((n) => n.type === "FOB" && n.subtype === "MUFTA").length;
+  
+  const elOlt = document.getElementById("s-olt");
+  if (elOlt) elOlt.textContent = String(oltCount);
+  
+  const elFob = document.getElementById("s-fob");
+  if (elFob) elFob.textContent = String(fobCount);
+  
+  const mduCount = nodes.filter((n) => n.type === "MDU").length;
+  const elMdu = document.getElementById("s-mdu");
+  if (elMdu) elMdu.textContent = String(mduCount);
+
+  const elMufta = document.getElementById("s-mufta");
+  if (elMufta) elMufta.textContent = String(closureCount);
   
   let onuCnt = nodes.filter((n) => n.type === "ONU").length;
   nodes.filter((n) => n.type === "MDU").forEach(mdu => {
      const pen = typeof mdu.penetrationRate === "number" ? mdu.penetrationRate : 100;
      onuCnt += Math.ceil(((mdu.floors || 0) * (mdu.entrances || 0) * (mdu.flatsPerFloor || 0)) * (pen / 100));
   });
-  document.getElementById("s-onu").textContent = String(onuCnt);
+  
+  const elOnu = document.getElementById("s-onu");
+  if (elOnu) elOnu.textContent = String(onuCnt);
 
-  document.getElementById("s-conn").textContent = String(conns.length);
+  const elConn = document.getElementById("s-conn");
+  if (elConn) elConn.textContent = String(conns.length);
+
+  // Update new global Status Bar
+  const statsEl = document.getElementById("status-stats");
+  if (statsEl) {
+    statsEl.textContent = `OLT: ${oltCount} | FOB: ${fobCount} | Муфт: ${closureCount} | Ліній: ${conns.length} | Абонентів: ${onuCnt}`;
+  }
   updateCableColors();
   refreshSignalAnim();
   // Lazy import to avoid circular dependency with ui.js
