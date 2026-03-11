@@ -106,6 +106,7 @@ declare global {
     exportToJSON: Function;
     loadProject: Function;
     exportToPNG: Function;
+    exportTopologyPng: Function;
     clearNetwork: Function;
     openSettings: Function;
     closeSettings: Function;
