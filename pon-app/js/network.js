@@ -253,10 +253,11 @@ export function initNetwork() {
         <div class="leaflet-legend">
           <div class="legend-title" onclick="this.parentElement.classList.toggle('collapsed')">📋 Легенда ▾</div>
           <div class="legend-body">
-            <div><span style="display:inline-block;width:12px;height:12px;background:#58a6ff;border-radius:2px;margin-right:6px;vertical-align:middle"></span>OLT</div>
-            <div><span style="display:inline-block;width:12px;height:12px;background:#ff6b6b;border-radius:50%;margin-right:6px;vertical-align:middle"></span>FOB</div>
-            <div><span style="display:inline-block;width:10px;height:10px;background:#4ade80;border-radius:2px;margin-right:6px;vertical-align:middle"></span>ONU</div>
-            <div><span style="display:inline-block;width:14px;height:14px;background:#a371f7;border-radius:3px;margin-right:6px;vertical-align:middle"></span>Багатоповерхівка (MDU)</div>
+            <div><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(250,250,250,0.95);border:2px solid #58a6ff;font-size:11px;margin-right:6px;vertical-align:middle">🗄️</span>OLT (Головна станція)</div>
+            <div><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(250,250,250,0.95);border:2px solid #3fb950;font-size:11px;margin-right:6px;vertical-align:middle">📦</span>FOB (Розподільча коробка)</div>
+            <div><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(250,250,250,0.95);border:2px solid #e3b341;font-size:11px;margin-right:6px;vertical-align:middle">🛢️</span>Муфта (Splice Closure)</div>
+            <div><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(250,250,250,0.95);border:2px solid #ff7b72;font-size:10px;margin-right:6px;vertical-align:middle">🏠</span>ONU (Абонентський термінал)</div>
+            <div><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(250,250,250,0.95);border:2px solid #a371f7;font-size:12px;margin-right:6px;vertical-align:middle">🏢</span>MDU (Багатоповерхівка)</div>
             <hr style="border-color:#30363d;margin:4px 0">
             <div style="font-size:10px;color:#8b949e;margin-bottom:2px">Сигнал (підсвітка + текст):</div>
             <div><span style="display:inline-block;width:20px;height:3px;background:#3fb950;margin-right:6px;vertical-align:middle"></span>OK (≥ ${ONU_MIN} дБ)</div>
@@ -1055,7 +1056,8 @@ function buildNodeLabelContent(n) {
       L2 += `<br><span class="lbl-dim">${portInfo.join("<br>")}</span>`;
   } else if (n.type === "FOB") {
     const fobIcon = (n.subtype === "MUFTA") ? "🛢️" : "📦";
-    L1 = `<span class="lbl-name lbl-fob">${fobIcon} ${n.name}</span>`;
+    const lblClass = (n.subtype === "MUFTA") ? "lbl-mufta" : "lbl-fob";
+    L1 = `<span class="lbl-name ${lblClass}">${fobIcon} ${n.name}</span>`;
 
     if (n.inputConn) {
       const si = sigIn(n);
@@ -1104,7 +1106,7 @@ function buildNodeLabelContent(n) {
     }
   } else if (n.type === "MDU") {
     let archTxt = n.architecture === "FTTB" ? "FTTB" : "FTTH";
-    L1 = `<span class="lbl-name lbl-onu">🏢 ${n.name} (${archTxt})</span>`;
+    L1 = `<span class="lbl-name lbl-mdu">🏢 ${n.name} (${archTxt})</span>`;
     const s = sigAtONU(n);
     const conn = conns.find((x) => x.to === n && (x.type === "patchcord" || x.type === "cable"));
     
@@ -1668,7 +1670,8 @@ function buildTooltip(n) {
     return t;
   } else if (n.type === "FOB") {
     const fobIcon = (n.subtype === "MUFTA") ? "🛢️" : "📦";
-    let t = `<strong style='color:#c084fc'>${fobIcon} ${n.name}</strong><br>`;
+    const tColor = (n.subtype === "MUFTA") ? "#e3b341" : "#3fb950";
+    let t = `<strong style='color:${tColor}'>${fobIcon} ${n.name}</strong><br>`;
     if (n.inputConn) {
       const si = sigIn(n);
       if (si !== null) {
@@ -1703,7 +1706,7 @@ function buildTooltip(n) {
   } else if (n.type === "ONU") {
     const s = sigAtONU(n);
     const conn = conns.find((c) => c.to === n && c.type === "patchcord");
-    let t = `<strong style='color:#4ade80'>🏠 ${n.name}</strong><br>`;
+    let t = `<strong style='color:#ff7b72'>🏠 ${n.name}</strong><br>`;
     if (s !== null) {
       t += `📶 Сигнал: <span style='color:${sigClass(s) === "ok" ? "#3fb950" : sigClass(s) === "warn" ? "#d29922" : "#f85149"}'>${s.toFixed(2)} дБ</span><br>`;
       const fromIcon = (conn?.from?.type === "FOB" && conn.from.subtype === "MUFTA") ? "🛢️" : "📦";
@@ -1825,8 +1828,11 @@ function showProps(n) {
     return;
   }
 
-  const fobIcon = (n.type === "FOB" && /** @type {any} */(n).subtype === "MUFTA") ? "🛢️" : "📦";
-  let h = `<div class="node-card"><h3>${n.type === "OLT" ? "🗄️" : n.type === "FOB" ? fobIcon : "🏠"} ${n.name}</h3>`;
+  const isMufta = n.type === "FOB" && /** @type {any} */(n).subtype === "MUFTA";
+  const pIcon = n.type === "OLT" ? "🗄️" : (n.type === "MDU" ? "🏢" : (isMufta ? "🛢️" : (n.type === "FOB" ? "📦" : "🏠")));
+  const pColor = n.type === "OLT" ? "#58a6ff" : (n.type === "MDU" ? "#a371f7" : (isMufta ? "#e3b341" : (n.type === "FOB" ? "#3fb950" : "#ff7b72")));
+  
+  let h = `<div class="node-card"><h3 style="color:${pColor}">${pIcon} ${n.name}</h3>`;
 
   // Rename
   h += `<div style="display:flex;gap:5px;margin-bottom:10px"><input id="ren" value="${n.name}" style="flex:1" onchange="updNode('${n.id}', 'name', this.value)"></div>`;

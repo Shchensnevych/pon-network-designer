@@ -89,38 +89,41 @@ export function setFiberLoss(value) {
   }
 }
 
-// Leaflet icons for OLT / FOB / ONU
+// Leaflet icons for OLT / FOB / ONU — unified with sidebar emojis
+// Dark circle + unique neon accent border per unit type (pure CSS, no filters for perf)
+const baseIcon = 'display:flex;align-items:center;justify-content:center;border-radius:50%;background:rgba(250,250,250,0.95);';
+
 export const iconOLT = L.divIcon({
-  html: '<div style="background:#58a6ff;width:16px;height:16px;border:2px solid #fff;border-radius:2px;box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>',
+  html: `<div style="${baseIcon}width:28px;height:28px;border:2px solid #58a6ff;font-size:16px">🗄️</div>`,
   className: "icon-olt",
-  iconSize: [16, 16],
-  iconAnchor: [8, 8],
+  iconSize: [32, 32],
+  iconAnchor: [16, 16],
 });
 
 export const iconFOB = L.divIcon({
-  html: '<div style="background:#ff6b6b;width:14px;height:14px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>',
+  html: `<div style="${baseIcon}width:26px;height:26px;border:2px solid #3fb950;font-size:15px">📦</div>`,
   className: "icon-fob",
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
 });
 
 export const iconMUFTA = L.divIcon({
-  html: '<div style="background:#8b949e;width:14px;height:14px;border:2px solid #fff;border-radius:50%;box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>',
+  html: `<div style="${baseIcon}width:26px;height:26px;border:2px solid #e3b341;font-size:15px">🛢️</div>`,
   className: "icon-mufta",
-  iconSize: [14, 14],
-  iconAnchor: [7, 7],
+  iconSize: [30, 30],
+  iconAnchor: [15, 15],
 });
 
 export const iconONU = L.divIcon({
-  html: '<div style="background:#4ade80;width:10px;height:10px;border:1px solid #fff;border-radius:2px;box-shadow:0 0 4px rgba(0,0,0,0.5)"></div>',
+  html: `<div style="${baseIcon}width:22px;height:22px;border:2px solid #ff7b72;font-size:13px">🏠</div>`,
   className: "icon-onu",
-  iconSize: [10, 10],
-  iconAnchor: [5, 5],
+  iconSize: [26, 26],
+  iconAnchor: [13, 13],
 });
 
 export const iconMDU = L.divIcon({
-  html: '<div style="background:#a371f7;width:20px;height:20px;border:2px solid #fff;border-radius:4px;box-shadow:0 0 6px rgba(0,0,0,0.5);display:flex;align-items:center;justify-content:center"><svg viewBox="0 0 24 24" width="12" height="12" fill="white"><path d="M12 2L4 6v14a2 2 0 002 2h12a2 2 0 002-2V6l-8-4zM8 18H6v-2h2v2zm0-4H6v-2h2v2zm0-4H6V8h2v2zm4 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V8h2v2zm4 8h-2v-2h2v2zm0-4h-2v-2h2v2zm0-4h-2V8h2v2z"/></svg></div>',
+  html: `<div style="${baseIcon}width:30px;height:30px;border:2px solid #a371f7;font-size:18px">🏢</div>`,
   className: "icon-mdu",
-  iconSize: [20, 20],
-  iconAnchor: [10, 10],
+  iconSize: [34, 34],
+  iconAnchor: [17, 17],
 });
