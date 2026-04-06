@@ -1805,7 +1805,7 @@ path.signal-anim-overlay {
   color: #c9d1d9;
   padding: 0 8px;
   font-size: 12px;
-  width: 140px;
+  width: 180px;
   outline: none;
 }
 .search-container input::placeholder {

@@ -316,8 +316,8 @@ export function initNetwork() {
 
           <div class="search-indicator-labeled" style="position: relative;">
             <div class="tool-column">
-              <div class="search-container" title="Пошук (Місто, вулиця...)">
-                <input type="text" id="loc-search-input" placeholder="Шукати..." autocomplete="off" oninput="handleSearchInput(event)" onkeypress="if(event.key === 'Enter') searchLocation()">
+              <div class="search-container" title="Пошук (Місто, вулиця або координати)">
+                <input type="text" id="loc-search-input" placeholder="Адреса або координати..." autocomplete="off" oninput="handleSearchInput(event)" onkeypress="if(event.key === 'Enter') searchLocation()">
                 <button onclick="searchLocation()" title="Знайти">
                   <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
                     <circle cx="11" cy="11" r="8"></circle>
@@ -2387,7 +2387,30 @@ function searchLocation() {
   const originalColor = input.style.color;
   input.style.color = "#58a6ff"; // Blue while searching
 
-  // Nominatim OpenStreetMap URL
+  // Check if query is coordinates
+  const coordParts = query.split(/[\s,]+/).map(Number);
+  if (coordParts.length >= 2 && !isNaN(coordParts[0]) && !isNaN(coordParts[1]) &&
+      coordParts[0] >= -90 && coordParts[0] <= 90 && coordParts[1] >= -180 && coordParts[1] <= 180) {
+    
+    // Fly map to new coordinates immediately
+    map.flyTo([coordParts[0], coordParts[1]], 17, { animate: true, duration: 1.5 });
+    input.style.color = "#3fb950"; // Green success
+    input.value = "";
+    
+    // Update status bar for consistency
+    const statusMsg = document.getElementById("status-msg");
+    if (statusMsg) {
+      statusMsg.innerHTML = `<i class="fa-solid fa-location-dot" style="color:#58a6ff"></i> ${coordParts[0].toFixed(4)}, ${coordParts[1].toFixed(4)}`;
+      setTimeout(() => {
+        statusMsg.innerHTML = `<i class="fa-solid fa-check" style="color: #3fb950;"></i> Система готова`;
+      }, 5000);
+    }
+    
+    setTimeout(() => { input.style.color = originalColor; input.blur(); }, 2000);
+    return;
+  }
+
+  // Fallback to Nominatim OpenStreetMap URL if not coordinates
   const url = `https://nominatim.openstreetmap.org/search?format=json&q=${encodeURIComponent(query)}&limit=1`;
 
   fetch(url)
