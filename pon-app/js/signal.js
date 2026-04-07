@@ -224,7 +224,7 @@ export function fobPortStatus(n) {
           lines.push(`<span style="color:#ff6b6b">${spName} X: <span style="color:${xClr}">${xConns.length ? "зайнята" + xName : "вільна"}</span></span>`);
           lines.push(`<span style="color:#ff6b6b">${spName} Y: <span style="color:${yClr}">${yConns.length ? "зайнята" + yName : "вільна"}</span></span>`);
           
-          rich.push(`🔀 ${spName}: <span style="color:${xClr}">X = ${xConns.length ? "зайн." : "вільн."}</span>${xName} | <span style="color:${yClr}">Y = ${yConns.length ? "зайн." : "вільн."}</span>${yName}`);
+          rich.push(`🔀 ${spName}:<br>&nbsp;&nbsp;<span style="color:${xClr}">X = ${xConns.length ? "зайн." : "вільн."}</span>${xName}<br>&nbsp;&nbsp;<span style="color:${yClr}">Y = ${yConns.length ? "зайн." : "вільн."}</span>${yName}`);
       } else if (spType === "PLC") {
           const plcMax = parseInt(spRatio.split("x")[1]) || 2;
           const plcConns = xc.filter(x => x.fromType === "SPLITTER" && x.fromId === spId);
@@ -334,8 +334,14 @@ export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
   let id = targetId;
   let core = targetCore;
   let accumulatedLoss = 0;
+  
+  const visited = new Set(); // Prevent infinite loops in ring topologies
 
   while (fob && fob.type === "FOB") {
+    const stepKey = `${fob.id}|${type}|${id}|${core}`;
+    if (visited.has(stepKey)) return null;
+    visited.add(stepKey);
+
     // If we're tracing from a patchcord, we don't need a core match
     const xc = (fob.crossConnects || []).find(x => {
         if (x.toType !== type || String(x.toId) !== String(id)) return false;
@@ -701,7 +707,13 @@ export function getOltPortForPath(currentFob, targetType, targetId, targetCore) 
   let id = targetId;
   let core = targetCore;
 
+  const visited = new Set();
+
   while (fob && fob.type === "FOB") {
+    const stepKey = `${fob.id}|${type}|${id}|${core}`;
+    if (visited.has(stepKey)) return null;
+    visited.add(stepKey);
+
     const xc = (fob.crossConnects || []).find(
       x => x.toType === type && x.toId === id && 
            (type === "PATCHCORD" || core === undefined || x.toCore === core || x.toBranch === core)

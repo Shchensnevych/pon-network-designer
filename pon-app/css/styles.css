@@ -1757,9 +1757,11 @@ path.signal-path-glow {
   stroke: #00d4ff !important;
   stroke-width: 8 !important;
   stroke-opacity: 0.5 !important;
-  filter: drop-shadow(0 0 6px #00d4ff) drop-shadow(0 0 12px #00d4ff);
+  /* Оптимізація: один drop-shadow замість двох, подвійний сильно вантажить GPU на великих лініях */
+  filter: drop-shadow(0 0 8px #00d4ff);
   animation: pathPulse 1.5s ease-in-out infinite;
   pointer-events: none;
+  will-change: stroke-opacity, filter;
 }
 
 @keyframes pathPulse {
@@ -1782,6 +1784,8 @@ path.signal-path-glow {
 path.signal-anim-overlay {
   pointer-events: none;
   animation: signalFlow 1.2s linear infinite;
+  will-change: stroke-dashoffset;
+  transform: translateZ(0);
 }
 
 @keyframes signalFlow {
@@ -2480,4 +2484,48 @@ select.patch-select {
 /* Hide detailed tooltip info at lower zooms to prevent map clutter */
 .map-zoomed-out .tooltip-details {
   display: none !important;
+}
+
+/* ── RESPONSIVE LAPTOP (max-width: 1440px) ── */
+@media (max-width: 1440px) {
+  /* Зменшуємо візуальний тиск лівої та правої панелей */
+  .app {
+    grid-template-columns: 175px 1fr 230px;
+  }
+  
+  /* Ліва панель: компактніші блоки дій та кнопок */
+  .action-btn { font-size: 10px; padding: 5px 8px; }
+  .action-btn i { width: 14px; }
+  .group-label { font-size: 9px; margin-bottom: 6px; }
+  .section-label { font-size: 9px; padding: 3px 4px 2px; }
+  .tool-btn { font-size: 10px; padding: 5px 8px; }
+  
+  /* Ліва панель: компоненти */
+  .comp-btn { padding: 4px 2px 3px; }
+  .comp-btn .icon { font-size: 14px; }
+  .comp-lbl { font-size: 8px; }
+  
+  /* Права панель: компактна верхня статистика */
+  .stats-row { gap: 4px; margin-bottom: 15px; }
+  .stat-chip { padding: 4px 2px; }
+  .stat-chip .val { font-size: 17px; }
+  .stat-chip .lbl { font-size: 8px; }
+  
+  /* Хедери */
+  .left-header, .right-header { font-size: 10px; padding: 5px 10px; }
+  
+  /* Поле пошуку і масштаб */
+  .project-name-input { width: 180px; font-size: 12px; }
+}
+
+/* ── RESPONSIVE COMPACT (max-width: 1280px) ── */
+@media (max-width: 1280px) {
+  /* Для екранів 720p або 1080p з маштабom 150% */
+  .app {
+    grid-template-columns: 160px 1fr 210px;
+  }
+  .btn-stacked { padding: 4px 2px 3px !important; }
+  .btn-stacked span { font-size: 9px; }
+  .line-icon { width: 22px; margin: 4px 0; }
+  .stat-chip .val { font-size: 15px; }
 }

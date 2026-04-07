@@ -227,7 +227,7 @@ function renderOLTPatchUI(node) {
     return inHtml + outHtml;
 }
 
-function savePatchPanel(nodeId, skipClose = false) {
+function savePatchPanel(nodeId, skipClose = false, skipGlobalRefresh = false) {
     const node = nodes.find(n => n.id === nodeId);
     if (!node) return;
 
@@ -250,9 +250,11 @@ function savePatchPanel(nodeId, skipClose = false) {
 
     node.crossConnects = newCross;
     
-    // Save state globally so Undo works
-    if (typeof window.saveState === "function") window.saveState();
-    if (typeof window.refreshNetworkUI === "function") window.refreshNetworkUI();
+    if (!skipGlobalRefresh) {
+        // Save state globally so Undo works
+        if (typeof window.saveState === "function") window.saveState();
+        if (typeof window.refreshNetworkUI === "function") window.refreshNetworkUI();
+    }
     
     if (!skipClose) {
         closeCrossConnectModal();
@@ -680,7 +682,7 @@ function renderFOBCrossUI(node) {
     return `<div style="display: flex; flex-direction: column; flex: 1;">` + inHtml + bottomWrapperStart + midHtml + outHtml + bottomWrapperEnd + `</div>`;
 }
 
-function saveCrossConnect(nodeId, skipClose = false) {
+function saveCrossConnect(nodeId, skipClose = false, skipGlobalRefresh = false) {
     try {
         const node = nodes.find(n => n.id === nodeId);
         if (!node) return;
@@ -716,13 +718,15 @@ function saveCrossConnect(nodeId, skipClose = false) {
 
         node.crossConnects = newCross;
         
-        // Trigger UI updates
-        if (typeof window.saveState === "function") window.saveState();
-        if (typeof window.refreshNetworkUI === "function") {
-            try { 
-                window.refreshNetworkUI(); 
-            } catch (e) { 
-                console.error("UI refresh error:", e); 
+        if (!skipGlobalRefresh) {
+            // Trigger UI updates
+            if (typeof window.saveState === "function") window.saveState();
+            if (typeof window.refreshNetworkUI === "function") {
+                try { 
+                    window.refreshNetworkUI(); 
+                } catch (e) { 
+                    console.error("UI refresh error:", e); 
+                }
             }
         }
         
@@ -750,11 +754,11 @@ window.updateConnCapacity = function(connId, newCap, nodeId, nodeType) {
     if (!node) return;
     
     if (nodeType === "OLT") {
-        savePatchPanel(nodeId, true);
+        savePatchPanel(nodeId, true, true);
         document.getElementById("cc-modal-body").innerHTML = renderOLTPatchUI(node);
         if (typeof window.checkOltPorts === "function") window.checkOltPorts(null);
     } else {
-        saveCrossConnect(nodeId, true);
+        saveCrossConnect(nodeId, true, true);
         document.getElementById("cc-modal-body").innerHTML = renderFOBCrossUI(node);
         if (typeof window.checkFobPorts === "function") window.checkFobPorts(null);
     }
@@ -819,7 +823,7 @@ window.checkFobPorts = function(selectElement, passedNodeId) {
 
     if (passedNodeId && selEl) {
         // Quietly save cross connects to recalculate optical signals correctly
-        if (typeof window.saveCrossConnect === "function") window.saveCrossConnect(passedNodeId, true);
+        if (typeof window.saveCrossConnect === "function") window.saveCrossConnect(passedNodeId, true, true);
         const node = nodes.find(n => n.id === passedNodeId);
         if (node && typeof window.getFobSourceOptions === "function") {
             const newOptsHtml = window.getFobSourceOptions(node);
