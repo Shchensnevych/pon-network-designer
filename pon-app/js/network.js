@@ -33,7 +33,7 @@ import { nodes, conns, map, setMap } from "./state.js";
 
 // Signal calculations — extracted to signal.js (~320 lines removed)
 import {
-  getChainColor, usedOutputs,
+  getChainColor, usedOutputs, PON_COLORS,
   freeCablePorts, freePatchPorts,
   fobPortStatus, connKm, sigIn, 
   hasOLTPath, sigAtONU, sigONU, sigFBT, sigSplitter,
@@ -259,13 +259,16 @@ export function initNetwork() {
             <div><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(250,250,250,0.95);border:2px solid #ff7b72;font-size:10px;margin-right:6px;vertical-align:middle">🏠</span>ONU (Абонентський термінал)</div>
             <div><span style="display:inline-flex;align-items:center;justify-content:center;width:20px;height:20px;border-radius:50%;background:rgba(250,250,250,0.95);border:2px solid #a371f7;font-size:12px;margin-right:6px;vertical-align:middle">🏢</span>MDU (Багатоповерхівка)</div>
             <hr style="border-color:#30363d;margin:4px 0">
-            <div style="font-size:10px;color:#8b949e;margin-bottom:2px">Сигнал (підсвітка + текст):</div>
-            <div><span style="display:inline-block;width:20px;height:3px;background:#3fb950;margin-right:6px;vertical-align:middle"></span>OK (≥ ${ONU_MIN} дБ)</div>
-            <div><span style="display:inline-block;width:20px;height:3px;background:#d29922;margin-right:6px;vertical-align:middle"></span>Межа (${ONU_MIN}..${ONU_MIN - 3} дБ)</div>
-            <div><span style="display:inline-block;width:20px;height:3px;background:#f85149;margin-right:6px;vertical-align:middle"></span>Слабкий (< ${ONU_MIN - 3} дБ)</div>
-            <div><span style="display:inline-block;width:20px;height:3px;background:#6b7280;margin-right:6px;vertical-align:middle"></span>Немає сигналу</div>
+            <div style="font-size:10px;color:#c9d1d9;margin-bottom:2px">Рівень сигналу (в підписах обладнання):</div>
+            <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#3fb950;margin-right:6px;vertical-align:middle"></span>OK (≥ ${ONU_MIN} дБ)</div>
+            <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#d29922;margin-right:6px;vertical-align:middle"></span>Межа (${ONU_MIN}..${ONU_MIN - 3} дБ)</div>
+            <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#f85149;margin-right:6px;vertical-align:middle"></span>Слабкий (< ${ONU_MIN - 3} дБ)</div>
+            <div><span style="display:inline-block;width:10px;height:10px;border-radius:50%;background:#6b7280;margin-right:6px;vertical-align:middle"></span>Немає сигналу</div>
             <hr style="border-color:#30363d;margin:4px 0">
-            <div>━━ Магістраль &nbsp; ╌╌ Патчкорд</div>
+            <div style="font-size:10px;color:#c9d1d9;margin-bottom:2px">Лінії на карті:</div>
+            <div>━━ Магістраль</div>
+            <div>╌╌ Патчкорд</div>
+            <div style="font-size:9px;color:#35d522;margin-top:2px">Колір лінії — маршрут, не сигнал</div>
           </div>
         </div>
         <div class="leaflet-toolbar-group">
@@ -729,6 +732,18 @@ export function restoreNetwork(json) {
   // Refresh all tooltip labels after connections are fully restored
   updateTooltipsVisibility();
   _restoring = false;
+
+  // Force Leaflet to fully rebuild tile grid after heavy DOM restore.
+  // A simple invalidateSize is NOT enough — we replicate what the user
+  // does manually (zoom in/out) to flush the tile cache completely.
+  setTimeout(() => {
+    map.invalidateSize({ animate: false });
+    const z = map.getZoom();
+    map.setZoom(z + 0.01, { animate: false });
+    requestAnimationFrame(() => {
+      map.setZoom(z, { animate: false });
+    });
+  }, 300);
 }
 
 export function clearNetwork() {
@@ -1661,7 +1676,7 @@ function buildTooltip(n) {
             const cable = conns.find(cf => cf.id === x.toId);
             return cable ? cable.to?.name : "";
         }))].filter(Boolean).join(", ");
-        const color = ["#ff4444", "#3fb950", "#58a6ff", "#f0883e"][i % 4];
+        const color = PON_COLORS[i % PON_COLORS.length];
         let subs = cntSubsPort(n, i);
         let subsStr = subs > 0 ? ` (Аб: ${subs})` : "";
         t += `PON ${i + 1} ➔ ${targetNodes}: <span style='color:${color}'>${activeCores.length} жил(и)${subsStr}</span><br>`;

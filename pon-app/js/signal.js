@@ -9,6 +9,9 @@ const L = window["L"];
 import { FBT_LOSSES, PLC_LOSSES, MECH, ONU_MIN, FIBER_DB_KM } from "./config.js";
 import { nodes, conns, map } from "./state.js";
 
+// Trunk cable palette — max contrast, avoids signal-indicator hues (green/yellow/red)
+export const PON_COLORS = ["#58a6ff", "#f778ba", "#56d4dd", "#b07efc", "#79c0ff", "#ff9bce", "#3dd6c8", "#d2a8ff"];
+
 // ═══════════════════════════════════════════════
 //  CHAIN COLOR
 // ═══════════════════════════════════════════════
@@ -27,10 +30,10 @@ export function getChainColor(fob) {
       // Find what PON port is patched to the first active core of this cable
       const firstXc = (c.from.crossConnects || []).find(xc => xc.toType === "CABLE" && xc.toId === c.id);
       if (firstXc) {
-        // Return solid PON color: [Red, Green, Blue, Orange]
-        return ["#ff4444", "#3fb950", "#58a6ff", "#f0883e"][Number(firstXc.fromId) % 4];
+        if (c.customColor) return c.customColor;
+        return PON_COLORS[Number(firstXc.fromId) % PON_COLORS.length];
       }
-      return c.color || "#8b949e";
+      return "#8b949e";
     }
     node = c.from;
   }
@@ -969,8 +972,7 @@ export function updateCableColors() {
       if (c.from && c.from.type === "OLT") {
         const firstXc = (c.from.crossConnects || []).find(xc => xc.toType === "CABLE" && xc.toId === c.id);
         if (firstXc) {
-          const PON_COLORS = ["#ff4444", "#3fb950", "#58a6ff", "#f0883e"];
-          newColor = PON_COLORS[Number(firstXc.fromId) % 4];
+          newColor = c.customColor ? c.customColor : PON_COLORS[Number(firstXc.fromId) % PON_COLORS.length];
         } else {
           newColor = "#8b949e";
         }

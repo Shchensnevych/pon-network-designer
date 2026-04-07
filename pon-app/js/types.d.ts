@@ -142,6 +142,7 @@ declare global {
     checkFobPorts: Function;
     checkMDUPorts: Function;
     updateConnCapacity: Function;
+    updateConnColor: Function;
     setTooltipMode: Function;
     updateTooltipConfig: Function;
     renderSplitterProgressBar: Function;
@@ -282,6 +283,7 @@ declare global {
     to: PONNode;
     capacity?: number;
     color: string;
+    customColor?: string;
     polyline: _L.Polyline;
     /** OLT port index (0-based) */
     fromPort?: number;
@@ -328,7 +330,9 @@ declare global {
     type: "cable" | "patchcord";
     from: string;
     to: string;
-    color: string;
+    color?: string;
+    customColor?: string;
+    capacity?: number;
     fromPort?: number;
     branch?: string;
     pts: [number, number][] | null;

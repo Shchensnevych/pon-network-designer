@@ -184,10 +184,40 @@ function renderOLTPatchUI(node) {
     } else {
         outCables.forEach(c => {
             const numCores = c.capacity || 1;
+            const PON_COLORS = ["#58a6ff", "#f778ba", "#56d4dd", "#b07efc", "#79c0ff", "#ff9bce", "#3dd6c8", "#d2a8ff"];
+            const firstXc = (node.crossConnects || []).find(xc => xc.toType === "CABLE" && xc.toId === c.id);
+            const isConnected = !!firstXc;
+            
+            let activeColor = "#8b949e";
+            if (isConnected) {
+                activeColor = c.customColor || PON_COLORS[Number(firstXc.fromId) % PON_COLORS.length];
+            }
+            const disabledAttr = isConnected ? "" : "disabled";
+            const cursorStyle = isConnected ? "cursor:pointer" : "cursor:not-allowed; opacity:0.5";
+
             outHtml += `<div style="background:#21262d; padding:10px; border-radius:4px; border:1px solid #30363d;">
-                <div style="font-weight:bold; margin-bottom:8px; display:flex; justify-content:space-between;">
-                    <span>Вузол: ${c.to.name}</span>
-                    <span style="color:#8b949e; font-size:12px;">Жил: <input type="number" min="1" max="144" value="${numCores}" style="width:40px; background:#0d1117; color:#c9d1d9; border:1px solid #30363d;" onchange="window.updateConnCapacity('${c.id}', this.value, '${node.id}', 'OLT');"></span>
+                <div style="font-weight:bold; margin-bottom:12px; padding-bottom:8px; border-bottom:1px dashed #30363d; display:flex; justify-content:space-between; align-items:center;">
+                    <span style="font-size:14px; width:120px; white-space:nowrap; overflow:hidden; text-overflow:ellipsis;" title="${c.to.name}">Вузол: <span style="color:#c9d1d9">${c.to.name}</span></span>
+                    
+                    <div style="display:flex; align-items:center; justify-content:flex-end; gap:10px; flex:1;">
+                        <div style="display:flex; align-items:center; gap:6px; background:#0d1117; padding:2px 8px; border-radius:12px; border:1px solid #30363d;">
+                            <span style="font-size:11px; color:#8b949e; text-transform:uppercase;">Колір магістралі:</span>
+                            <div id="dot-color-${c.id}" style="width:12px; height:12px; border-radius:50%; background:${activeColor}; box-shadow: 0 0 4px ${activeColor};"></div>
+                            
+                            <span style="font-size:11px; color:#8b949e; text-transform:uppercase; margin-left:6px;">Обрати:</span>
+                            <input type="color" id="picker-color-${c.id}" title="${isConnected ? 'Обрати власний колір магістралі' : 'Підключіть порт щоб обрати колір'}" 
+                                   value="${activeColor}" 
+                                   ${disabledAttr}
+                                   data-customcolor="${c.customColor || ''}"
+                                   style="background:none; border:none; width:20px; height:22px; padding:0; margin-left:2px; ${cursorStyle};" 
+                                   onchange="window.updateConnColor('${c.id}', this.value, '${node.id}', 'OLT');">
+                        </div>
+                        
+                        <div style="display:flex; align-items:center; gap:6px;">
+                            <span style="color:#8b949e; font-size:12px;">ЖИЛ:</span>
+                            <input type="number" min="1" max="144" value="${numCores}" style="width:40px; background:#0d1117; color:#c9d1d9; border:1px solid #30363d; border-radius:3px; text-align:center; padding:2px; font-weight:bold;" onchange="window.updateConnCapacity('${c.id}', this.value, '${node.id}', 'OLT');">
+                        </div>
+                    </div>
                 </div>
                 <div style="display:flex; flex-direction:column; gap:4px;">`;
             for(let i=0; i<numCores; i++) {
@@ -741,6 +771,23 @@ function saveCrossConnect(nodeId, skipClose = false, skipGlobalRefresh = false) 
 }
 window.saveCrossConnect = saveCrossConnect;
 
+window.updateConnColor = function(connId, newColor, nodeId, nodeType) {
+    const c = conns.find(x => x.id === connId);
+    if (!c) return;
+    c.color = newColor;
+    c.customColor = newColor;
+    if (c.polyline) c.polyline.setStyle({ color: newColor });
+    
+    const picker = document.getElementById(`picker-color-${connId}`);
+    if (picker) {
+        picker.dataset.customcolor = newColor;
+    }
+    if (typeof window.checkOltPorts === "function") window.checkOltPorts(null);
+
+    window.refreshNetworkUI();
+    window.saveState();
+}
+
 window.updateConnCapacity = function(connId, newCap, nodeId, nodeType) {
     const c = conns.find(x => x.id === connId);
     if (!c) return;
@@ -813,6 +860,45 @@ window.checkOltPorts = function(selectElement) {
                 opt.style.color = "";
             }
         });
+    });
+
+    // 3. Dynamically update cable colors in UI based on current selections
+    const PON_COLORS = ["#58a6ff", "#f778ba", "#56d4dd", "#b07efc", "#79c0ff", "#ff9bce", "#3dd6c8", "#d2a8ff"];
+    const cablesMap = {};
+    allSelects.forEach(sel => {
+        const cableId = sel.dataset.cable;
+        if (!cablesMap[cableId]) cablesMap[cableId] = { isConnected: false, ports: [] };
+        if (sel.value !== "") {
+            cablesMap[cableId].isConnected = true;
+            cablesMap[cableId].ports.push(parseInt(sel.value));
+        }
+    });
+
+    Object.keys(cablesMap).forEach(cableId => {
+        const info = cablesMap[cableId];
+        const dot = document.getElementById(`dot-color-${cableId}`);
+        const picker = /** @type {HTMLInputElement} */ (document.getElementById(`picker-color-${cableId}`));
+        
+        if (dot && picker) {
+            let activeColor = "#8b949e";
+            if (info.isConnected) {
+                const firstPort = info.ports[0]; // first valid port
+                const customColor = picker.dataset.customcolor;
+                activeColor = customColor || PON_COLORS[firstPort % PON_COLORS.length];
+                picker.disabled = false;
+                picker.style.cursor = "pointer";
+                picker.style.opacity = "1";
+                picker.title = "Обрати власний колір магістралі";
+            } else {
+                picker.disabled = true;
+                picker.style.cursor = "not-allowed";
+                picker.style.opacity = "0.5";
+                picker.title = "Підключіть порт щоб обрати колір";
+            }
+            dot.style.background = activeColor;
+            dot.style.boxShadow = `0 0 4px ${activeColor}`;
+            picker.value = activeColor;
+        }
     });
 };
 

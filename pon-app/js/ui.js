@@ -53,6 +53,30 @@ function buildEconomicData() {
         add("Активне обладнання", getBaseName(n.name, "OLT"), 1, "шт.", price);
       }
       add("Активне обладнання", "Модуль SFP OLT PON C++", portCount, "шт.", 0);
+      
+      // ODF Calculation
+      const inOutCables = conns.filter(c => (c.from === n || c.to === n) && c.type === "cable");
+      let totalLines = 0;
+      inOutCables.forEach(c => totalLines += (c.capacity || 1));
+      
+      const activeLines = (n.crossConnects && Array.isArray(n.crossConnects)) ? n.crossConnects.length : 0;
+
+      if (totalLines > 0) {
+          let odfModel = "";
+          if (totalLines <= 24) odfModel = "Оптичний крос (ODF) 19\" 1U на 24 порти";
+          else if (totalLines <= 48) odfModel = "Оптичний крос (ODF) 19\" 2U на 48 портів";
+          else if (totalLines <= 96) odfModel = "Оптичний крос (ODF) 19\" 4U на 96 портів";
+          else odfModel = `Оптичний крос (ODF) 19" високої щільності (на ${totalLines} портів)`;
+          
+          add("Пасивне обладнання", odfModel, 1, "шт.", 0);
+          
+          if (activeLines > 0) {
+              add("Монтажні матеріали", "Адаптер оптичний SC/UPC (в ODF)", activeLines, "шт.", 0);
+              add("Монтажні матеріали", "Пігтейл оптичний SC/UPC (в ODF)", activeLines, "шт.", 0);
+              add("Монтажні матеріали", "Гільза термоусаджувальна (КДЗС для ODF)", activeLines, "шт.", 0);
+              add("Монтажні матеріали", "Патчкорд оптичний (з'єднання SFP з ODF)", activeLines, "шт.", 0);
+          }
+      }
     } 
     else if (n.type === "FOB") {
       // Estimate FOB size

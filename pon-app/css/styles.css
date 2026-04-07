@@ -1415,9 +1415,7 @@ tr:last-child td {
   border-bottom: none;
 }
 
-tr:hover td {
-  background: #1c2128;
-}
+/* tr:hover td removed — caused sub-pixel jitter in report modal */
 
 .td-ok {
   color: #3fb950;
