@@ -58,6 +58,12 @@ declare global {
     options?: Record<string, unknown>
   ): Promise<HTMLCanvasElement>;
 
+  // ─── mermaid global ───
+  const mermaid: {
+    render(id: string, text: string): Promise<{ svg: string; bindFunctions?: (element: Element) => void }>;
+    initialize(config: Record<string, unknown>): void;
+  };
+
   // ─── Window augmentation for onclick handlers ───
   interface Window {
     // network.js
@@ -107,6 +113,7 @@ declare global {
     loadProject: Function;
     exportToPNG: Function;
     exportTopologyPng: Function;
+    _lastMermaidMarkup: string;
     clearNetwork: Function;
     openSettings: Function;
     closeSettings: Function;

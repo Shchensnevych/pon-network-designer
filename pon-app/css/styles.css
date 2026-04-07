@@ -117,6 +117,8 @@ body {
   display: grid;
   grid-template-columns: 200px 1fr 260px;
   flex: 1; /* take remaining height under top-bar */
+  min-height: 0; /* critical: prevent grid from overflowing flex parent */
+  overflow: hidden;
 }
 
 #map {

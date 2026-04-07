@@ -73,16 +73,29 @@ function buildEconomicData() {
       
       let estModel = "Муфта оптична";
       if (dropPorts > 0) {
-        estModel = `Бокс PON розподільчий (на ${Math.max(4, Math.ceil(dropPorts/4)*4)} абон., до ${cablePorts} вводів)`;
-        add("Монтажні матеріали", "Адаптер оптичний SC/UPC", dropPorts, "шт.", 0);
-        add("Монтажні матеріали", "Пігтейл оптичний SC/UPC", dropPorts, "шт.", 0);
+        let boxModel = "";
+        if (dropPorts <= 4) boxModel = "Crosver FOB-02-04 (або аналог Fora/RCI)";
+        else if (dropPorts <= 8) boxModel = "Crosver FOB-03-08 (або аналог)";
+        else if (dropPorts <= 12) boxModel = "Crosver FOB-05-12 / FOB-03-12";
+        else if (dropPorts <= 16) boxModel = "Crosver FOB-04-16 (або аналог)";
+        else boxModel = "Crosver FOB-05-24 (на 24 абоненти)";
+        
+        estModel = `Бокс PON розподільчий: ${boxModel}`;
+        add("Монтажні матеріали", "Адаптер оптичний SC/UPC (підключення сплітера у боксі)", dropPorts, "шт.", 0);
+        add("Монтажні матеріали", "Пігтейл оптичний SC/UPC (зварка з drop-кабелем)", dropPorts, "шт.", 0);
         totalSplices += dropPorts;
       } else {
-        estModel = `Муфта оптична (до ${cablePorts} вводів, ${Math.max(12, Math.ceil(totalSplices/12)*12)} зварок)`;
+        let mufModel = "";
+        if (totalSplices <= 12) mufModel = "FOSC-M / Mini (до 12-24 зварок)";
+        else if (totalSplices <= 24) mufModel = "FOSC-S/M (до 24-48 зварок)";
+        else if (totalSplices <= 48) mufModel = "FOSC-400 (до 48-64 зварок)";
+        else mufModel = "FOSC-400/96 (магістральна)";
+
+        estModel = `Крос-муфта оптична: ${mufModel}`;
       }
 
       if (totalSplices > 0) {
-         add("Монтажні матеріали", "Гільза термосаджувальна (КДЗС)", totalSplices, "шт.", 0);
+         add("Монтажні матеріали", "Гільза термоусаджувальна (КДЗС)", totalSplices, "шт.", 0);
       }
 
       if (price === 0) {
@@ -155,17 +168,243 @@ function buildEconomicData() {
       const cores = c.capacity || 1;
       const meters = connKm(c) * 1000;
       add("Кабелі магістральні", `Кабель оптичний ${cores}F`, meters, "м", 0);
+      add("Монтажні матеріали", "Затискач натяжний магістральний (кріплення кабелю на опорі)", 2, "шт.", 0);
     } else if (c.type === "patchcord") {
       const meters = connKm(c) * 1000;
       add("Кабелі абонентські", "Drop-кабель (вуличний)", meters, "м", 0);
       add("Монтажні матеріали", "Конектор швидкої фіксації (Fast Connector)", 2, "шт.", 0);
-      add("Монтажні матеріали", "Затискач натяжний (Н3 / анкерний)", 2, "шт.", 0);
+      add("Монтажні матеріали", "Затискач натяжний Н3 (на опорі)", 1, "шт.", 0);
+      add("Монтажні матеріали", "Затискач анкерний (на стороні абонента)", 1, "шт.", 0);
     }
   });
 
   return items;
 }
 
+
+/**
+ * Trace the full signal chain from OLT to a specific FOB, returning step-by-step details.
+ * @param {FOBNode} targetFob - The FOB to trace signal to
+ * @returns {{ oltName: string, oltPort: number, oltPower: number, steps: Array<{label: string, loss: number, signal: number}>, totalLoss: number, finalSignal: number|null, chainText: string } | null}
+ */
+function traceSignalChain(targetFob) {
+  // Find the primary input cable of the FOB
+  const inCables = conns.filter(c => c.to === targetFob && c.type === "cable");
+  if (inCables.length === 0) return null;
+
+  // We trace through the first active cross-connect path
+  // Walk backward from the FOB through the cross-connect chain
+  const steps = [];
+  let fob = targetFob;
+  let totalLoss = 0;
+
+  // Collect chain segments by walking backward
+  const segments = [];
+
+  // Find which cable core feeds into the splitter chain of this FOB
+  const xcs = fob.crossConnects || [];
+  // Find a splitter that has outputs (meaning it's the "last" in chain for subscribers)
+  const splitters = fob.splitters || [];
+  
+  // Strategy: find the first splitter that has subscriber outputs, then trace backward from its input
+  let startSplitterId = null;
+  let startSplitterType = null;
+  
+  // Find PLC first (it's typically the subscriber-facing splitter)
+  const plcSp = splitters.find(s => s.type === "PLC");
+  const fbtSp = splitters.find(s => s.type === "FBT");
+  
+  if (plcSp) {
+    startSplitterId = plcSp.id;
+    startSplitterType = plcSp;
+  } else if (fbtSp) {
+    startSplitterId = fbtSp.id;
+    startSplitterType = fbtSp;
+  } else if (fob.plcType) {
+    startSplitterId = "legacy_plc";
+    startSplitterType = { type: "PLC", ratio: fob.plcType };
+  } else if (fob.fbtType) {
+    startSplitterId = "legacy_fbt";
+    startSplitterType = { type: "FBT", ratio: fob.fbtType };
+  }
+  
+  if (!startSplitterId) {
+    // No splitter — transit-only FOB, trace cable path
+    // Just find what feeds this FOB
+    const inCable = inCables[0];
+    if (!inCable) return null;
+    
+    const cableKm = connKm(inCable);
+    const cableLoss = cableKm * FIBER_DB_KM;
+    totalLoss += cableLoss + MECH;
+    
+    segments.push({ label: `${inCable.from.name} → кабель ${(cableKm * 1000).toFixed(0)}м`, loss: cableLoss, mechLoss: MECH });
+    
+    // Try to find OLT
+    let srcNode = inCable.from;
+    while (srcNode && srcNode.type === "FOB") {
+      const prevCable = conns.find(c => c.to === srcNode && c.type === "cable");
+      if (!prevCable) break;
+      const km = connKm(prevCable);
+      const loss = km * FIBER_DB_KM;
+      totalLoss += loss + MECH;
+      segments.unshift({ label: `${prevCable.from.name} → кабель ${(km * 1000).toFixed(0)}м`, loss: loss, mechLoss: MECH });
+      srcNode = prevCable.from;
+    }
+    
+    if (srcNode && srcNode.type === "OLT") {
+      const oltPower = srcNode.outputPower || 3;
+      const finalSignal = oltPower - totalLoss;
+      
+      let chainParts = [`${srcNode.name} (+${oltPower}дБ)`];
+      segments.forEach(seg => {
+        chainParts.push(`${seg.label} (-${seg.loss.toFixed(2)}дБ, мех: -${seg.mechLoss}дБ)`);
+      });
+      chainParts.push(`→ ${targetFob.name} (транзит)`);
+      
+      return {
+        oltName: srcNode.name, oltPort: -1, oltPower: oltPower,
+        steps: [], totalLoss: totalLoss, finalSignal: finalSignal,
+        chainText: chainParts.join(" → ")
+      };
+    }
+    return null;
+  }
+  
+  // Trace from the splitter backward using cross-connects
+  let traceType = "SPLITTER";
+  let traceId = startSplitterId;
+  let traceCore = undefined;
+  let currentFob = targetFob;
+  
+  // Add the final splitter step
+  if (startSplitterType.type === "FBT") {
+    const fbtLoss = FBT_LOSSES[startSplitterType.ratio];
+    const worstLoss = fbtLoss ? Math.max(fbtLoss.x, fbtLoss.y) : 0;
+    segments.push({ label: `[FBT ${startSplitterType.ratio}]`, loss: worstLoss, mechLoss: MECH });
+    totalLoss += worstLoss + MECH;
+  } else if (startSplitterType.type === "PLC") {
+    const plcLoss = PLC_LOSSES[startSplitterType.ratio] || 0;
+    segments.push({ label: `[PLC ${startSplitterType.ratio}]`, loss: plcLoss, mechLoss: MECH });
+    totalLoss += plcLoss + MECH;
+  }
+  
+  // Now trace backward through cross-connects
+  let safetyCounter = 0;
+  while (currentFob && currentFob.type === "FOB" && safetyCounter < 20) {
+    safetyCounter++;
+    const xcList = currentFob.crossConnects || [];
+    const xc = xcList.find(x => {
+      if (x.toType !== traceType || String(x.toId) !== String(traceId)) return false;
+      if (traceType === "PATCHCORD" || traceCore === undefined) return true;
+      return x.toCore === traceCore || x.toBranch === String(traceCore) || String(x.toCore) === String(traceCore);
+    });
+    if (!xc) break;
+    
+    if (xc.fromType === "CABLE") {
+      const inCable = conns.find(c => c.id === xc.fromId);
+      if (!inCable) break;
+      
+      const cableKm = connKm(inCable);
+      const cableLoss = cableKm * FIBER_DB_KM;
+      totalLoss += cableLoss + MECH;
+      segments.unshift({ label: `кабель ${(cableKm * 1000).toFixed(0)}м (жила ${(xc.fromCore ?? 0) + 1})`, loss: cableLoss, mechLoss: MECH });
+      
+      if (inCable.from.type === "OLT") {
+        const olt = inCable.from;
+        const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === inCable.id && x.toCore === xc.fromCore);
+        const oltPort = oltXc ? parseInt(String(oltXc.fromId)) : -1;
+        const oltPower = olt.outputPower || 3;
+        const finalSignal = oltPower - totalLoss;
+        
+        // Build chain text
+        let chainParts = [`${olt.name} Порт ${oltPort + 1} (+${oltPower}дБ)`];
+        segments.forEach(seg => {
+          chainParts.push(`${seg.label} (-${seg.loss.toFixed(2)}дБ)`);
+        });
+        
+        // Build step-by-step for the table
+        const detailedSteps = segments.map((seg, i) => {
+          const prevSig = i === 0 ? oltPower : (oltPower - segments.slice(0, i).reduce((a, s) => a + s.loss + s.mechLoss, 0));
+          return { label: seg.label, loss: seg.loss + seg.mechLoss, signal: prevSig - seg.loss - seg.mechLoss };
+        });
+        
+        return {
+          oltName: olt.name, oltPort: oltPort, oltPower: oltPower,
+          steps: detailedSteps, totalLoss: totalLoss, finalSignal: finalSignal,
+          chainText: chainParts.join(" → ")
+        };
+      } else if (inCable.from.type === "FOB") {
+        // Check if this upstream FOB has a splitter feeding this cable
+        const upFob = inCable.from;
+        const upXcs = upFob.crossConnects || [];
+        const feedXc = upXcs.find(x => x.toType === "CABLE" && x.toId === inCable.id && x.toCore === xc.fromCore);
+        
+        if (feedXc && feedXc.fromType === "SPLITTER") {
+          // Upstream FOB has a splitter feeding this cable
+          const upSplitters = upFob.splitters || [];
+          const upSp = upSplitters.find(s => s.id === feedXc.fromId) ||
+                       (feedXc.fromId === "legacy_fbt" ? { type: "FBT", ratio: upFob.fbtType } :
+                        feedXc.fromId === "legacy_plc" ? { type: "PLC", ratio: upFob.plcType } : null);
+          
+          if (upSp) {
+            if (upSp.type === "FBT") {
+              const branch = feedXc.fromBranch || "Y";
+              const fbtLoss = FBT_LOSSES[upSp.ratio];
+              const loss = branch === "X" ? (fbtLoss?.x || 0) : (fbtLoss?.y || 0);
+              segments.unshift({ label: `${upFob.name} [FBT ${upSp.ratio} ${branch}]`, loss: loss, mechLoss: MECH });
+              totalLoss += loss + MECH;
+            } else if (upSp.type === "PLC") {
+              const loss = PLC_LOSSES[upSp.ratio] || 0;
+              segments.unshift({ label: `${upFob.name} [PLC ${upSp.ratio}]`, loss: loss, mechLoss: MECH });
+              totalLoss += loss + MECH;
+            }
+            // Continue tracing from this splitter's input
+            currentFob = upFob;
+            traceType = "SPLITTER";
+            traceId = String(feedXc.fromId);
+            traceCore = undefined;
+            continue;
+          }
+        }
+        
+        // Simple transit (cable-to-cable)
+        currentFob = upFob;
+        traceType = "CABLE";
+        traceId = inCable.id;
+        traceCore = xc.fromCore;
+        continue;
+      }
+      break;
+      
+    } else if (xc.fromType === "SPLITTER") {
+      const sp = (currentFob.splitters || []).find(s => s.id === xc.fromId) ||
+                 (xc.fromId === "legacy_fbt" ? { type: "FBT", ratio: currentFob.fbtType } :
+                  xc.fromId === "legacy_plc" ? { type: "PLC", ratio: currentFob.plcType } : null);
+      
+      if (sp) {
+        if (sp.type === "FBT") {
+          const branch = xc.fromBranch || "Y";
+          const fbtLoss = FBT_LOSSES[sp.ratio];
+          const loss = branch === "X" ? (fbtLoss?.x || 0) : (fbtLoss?.y || 0);
+          segments.unshift({ label: `[FBT ${sp.ratio} ${branch}]`, loss: loss, mechLoss: MECH });
+          totalLoss += loss + MECH;
+        } else if (sp.type === "PLC") {
+          const loss = PLC_LOSSES[sp.ratio] || 0;
+          segments.unshift({ label: `[PLC ${sp.ratio}]`, loss: loss, mechLoss: MECH });
+          totalLoss += loss + MECH;
+        }
+      }
+      traceType = "SPLITTER";
+      traceId = String(xc.fromId);
+      traceCore = undefined;
+      continue;
+    }
+    break;
+  }
+  
+  return null;
+}
 
 function buildReportData() {
   const rows = [];
@@ -232,6 +471,9 @@ function buildReportData() {
       const origins = Array.from(new Set(inConns.map(c => c.from.name || c.from.type))).join(", ");
       const branches = Array.from(new Set(inConns.map(c => c.branch || "—"))).join(", ");
 
+      // Trace signal chain for FOBs
+      const chain = n.type === "FOB" ? traceSignalChain(n) : null;
+
       rows.push({
         name: n.name,
         type: n.type,
@@ -242,13 +484,16 @@ function buildReportData() {
         mechLoss: MECH,
         signalIn: si < 0 ? si.toFixed(2) : "—",
         fbt: fbts,
-        xLoss: "—",
-        yLoss: "—",
+        fbtLoss: chain ? chain.steps.filter(s => s.label.includes("FBT")).reduce((a, s) => a + s.loss, 0) : null,
         plc: plcs,
+        plcLoss: chain ? chain.steps.filter(s => s.label.includes("PLC")).reduce((a, s) => a + s.loss, 0) : null,
         plcBranch: plcBranch,
-        plcLoss: "—",
+        totalLoss: chain ? chain.totalLoss : null,
         signalONU: so !== null ? so.toFixed(2) : "—",
         onuCnt: connectedONU,
+        oltSource: chain ? `${chain.oltName}, Порт ${chain.oltPort + 1}` : "—",
+        oltPower: chain ? chain.oltPower : null,
+        chainText: chain ? chain.chainText : null,
         status:
           so !== null
             ? so >= ONU_MIN
@@ -292,17 +537,19 @@ export function openReport() {
 
     <div class="report-section">
       <h3>Бюджет оптичних втрат по FOB</h3>
-      <table>
-        <thead><tr>
-          <th>FOB</th><th>Від</th><th>Гілка</th><th>Відст., м</th>
-          <th>Затух. волокна, дБ</th><th>Мех., дБ</th><th>Сигнал IN, дБ</th>
-          <th>FBT</th><th>PLC</th><th>Гілка PLC</th><th>Сигнал ONU, дБ</th>
+      <div style="overflow-x: auto; padding-bottom: 10px;">
+        <table style="min-width: 1400px; margin-bottom: 0;">
+          <thead><tr>
+          <th>Вузол</th><th>Тип</th><th>Від</th><th>OLT (Порт)</th><th>Потужн., дБ</th>
+          <th>Відст., м</th><th>Затух. волокна, дБ</th><th>Мех., дБ</th><th>Сигнал IN, дБ</th>
+          <th>FBT</th><th>Втрати FBT, дБ</th><th>PLC</th><th>Втрати PLC, дБ</th>
+          <th>Σ Втрат, дБ</th><th>Сигнал ONU, дБ</th>
           <th>ONU</th><th>Статус</th>
         </tr></thead><tbody>`;
 
   rows.forEach((r) => {
     if (r.status === "NOT_CONNECTED") {
-      html += `<tr><td class="td-name">${r.name}</td><td colspan="11" style="color:#f85149">⚠️ Не підключений</td></tr>`;
+      html += `<tr><td class="td-name">${r.name}</td><td colspan="16" style="color:#f85149">⚠️ Не підключений</td></tr>`;
       return;
     }
     const sClass =
@@ -321,20 +568,35 @@ export function openReport() {
       }[r.status] || "";
     html += `<tr>
       <td class="td-name">${r.name}</td>
-      <td>${r.from}</td><td>${r.branch}</td><td>${r.dist}</td>
-      <td>${r.cableLoss}</td><td>${r.mechLoss}</td>
+      <td>${r.type}</td>
+      <td>${r.from}</td>
+      <td style="font-size:11px">${r.oltSource || "—"}</td>
+      <td>${r.oltPower !== null ? "+" + r.oltPower : "—"}</td>
+      <td>${r.dist}</td>
+      <td>${r.cableLoss}</td>
+      <td>${r.mechLoss}</td>
       <td><strong>${r.signalIn}</strong></td>
-      <td>${r.fbt}</td><td>${r.plc}</td><td>${r.plcBranch}</td>
+      <td>${r.fbt}</td>
+      <td>${r.fbtLoss !== null && r.fbtLoss > 0 ? r.fbtLoss.toFixed(2) : "—"}</td>
+      <td>${r.plc}</td>
+      <td>${r.plcLoss !== null && r.plcLoss > 0 ? r.plcLoss.toFixed(2) : "—"}</td>
+      <td>${r.totalLoss !== null ? r.totalLoss.toFixed(2) : "—"}</td>
       <td class="${sClass}"><strong>${r.signalONU}</strong></td>
       <td>${r.onuCnt}</td>
       <td class="${sClass}"><strong>${sIcon}</strong></td>
     </tr>`;
+    // Signal chain expandable sub-row
+    if (r.chainText) {
+      html += `<tr class="chain-row"><td></td><td colspan="16" style="background:#161b22;padding:6px 10px;font-size:11px;color:#8b949e;border-left:3px solid #30363d;">
+        🔗 <span style="color:#58a6ff">Ланцюг:</span> ${r.chainText}
+      </td></tr>`;
+    }
   });
-  html += `</tbody></table></div>`;
+  html += `</tbody></table></div></div>`;
 
   const olts = nodes.filter((n) => n.type === "OLT");
   if (olts.length) {
-    html += `<div class="report-section"><h3>Завантаження портів OLT</h3><table>
+    html += `<div class="report-section"><h3>Завантаження портів OLT</h3><div style="overflow-x: auto; padding-bottom: 10px;"><table style="min-width: 600px; margin-bottom: 0;">
       <thead><tr><th>OLT</th><th>Порт</th><th>Потужність, дБ</th><th>Абонентів</th><th>Статус</th></tr></thead><tbody>`;
     olts.forEach((olt) => {
       for (let i = 0; i < olt.ports; i++) {
@@ -347,18 +609,19 @@ export function openReport() {
         }
       }
     });
-    html += `</tbody></table></div>`;
+    html += `</tbody></table></div></div>`;
   }
 
   const econData = buildEconomicData();
   if (econData.length > 0) {
     html += `<div class="report-section"><h3>💰 Економічна частина (BOM)</h3>`;
     html += `<div class="info-pill" style="margin-bottom:12px">
-      💡 Вкажіть ціни в Excel для формування кошторису. Обладнання згруповано за категоріями, типами та жилками.
+      💡 Вкажіть ціни в Excel для формування кошторису. Для позицій у <strong>метрах (м)</strong> вказуйте ціну <strong>за 1 метр</strong>. Формула: Сума = Кількість × Ціна за од.
     </div>`;
 
-    html += `<table style="width:100%;margin-bottom:12px">
-      <thead><tr><th>Категорія</th><th>Назва / Номенклатура</th><th>К-ть</th><th>Од.виміру</th><th>Ціна (₴)</th><th>Сума (₴)</th></tr></thead><tbody>`;
+    html += `<div style="overflow-x: auto; padding-bottom: 10px;">
+      <table style="width:100%; min-width:800px; margin-bottom:0;">
+      <thead><tr><th>Категорія</th><th>Назва / Номенклатура</th><th>К-ть</th><th>Од.виміру</th><th>Ціна за од. (₴)</th><th>Сума (₴)</th></tr></thead><tbody>`;
 
     // Group rows by category in the HTML view
     let currentCat = "";
@@ -392,7 +655,7 @@ export function openReport() {
       </tr>`;
     });
 
-    html += `</tbody></table></div>`;
+    html += `</tbody></table></div></div>`;
   }
 
   document.getElementById("modal-body").innerHTML = html;
@@ -420,7 +683,7 @@ function getProjectFileName(suffix) {
 export function downloadCSV() {
   const rows = buildReportData();
   const hdr =
-    "Вузол;Тип;Від;Гілка;Відстань м;Затух. волокна дБ;Мех. дБ;Сигнал IN дБ;FBT;PLC;Гілка PLC;Гірший сигнал OUT дБ;Абонентів;Статус\n";
+    "Вузол;Тип;Від;OLT (Порт);Потужн. дБ;Відстань м;Затух. волокна дБ;Мех. дБ;Сигнал IN дБ;FBT;Втрати FBT дБ;PLC;Втрати PLC дБ;Σ Втрат дБ;Сигнал ONU дБ;Абонентів;Статус;Ланцюг сигналу\n";
 
   function csvEscapeCell(v) {
     const s = String(v ?? "");
@@ -458,19 +721,22 @@ export function downloadCSV() {
   const body = rows
     .map((r) =>
       r.status === "NOT_CONNECTED"
-        ? `${safeCell(r.name)};${safeCell(r.type)};${safeCell("НЕ ПІДКЛЮЧЕНИЙ")};;;;;;;;;;;`
+        ? `${safeCell(r.name)};${safeCell(r.type)};${safeCell("НЕ ПІДКЛЮЧЕНИЙ")};;;;;;;;;;;;;;;`
         : [
             safeCell(r.name),
             safeCell(r.type),
             safeCell(r.from),
-            safeCell(r.branch),
+            safeCell(r.oltSource || "—"),
+            safeCell(r.oltPower !== null ? "+" + r.oltPower : "—"),
             safeCell(r.dist),
             safeCell(r.cableLoss),
             safeCell(r.mechLoss),
             safeCell(r.signalIn), 
             safeCell(r.fbt),
+            safeCell(r.fbtLoss !== null && r.fbtLoss > 0 ? r.fbtLoss.toFixed(2) : "—"),
             safeCell(r.plc),
-            safeCell(r.plcBranch),
+            safeCell(r.plcLoss !== null && r.plcLoss > 0 ? r.plcLoss.toFixed(2) : "—"),
+            safeCell(r.totalLoss !== null ? r.totalLoss.toFixed(2) : "—"),
             safeCell(r.signalONU), 
             safeCell(r.onuCnt),
             safeCell(
@@ -479,8 +745,9 @@ export function downloadCSV() {
                 warn: "Межа",
                 err: "СЛАБКИЙ",
                 info: "—",
-              }[r.status],
+              }[r.status] || r.status,
             ),
+            safeCell(r.chainText || "—")
           ].join(";"),
     )
     .join("\n");
@@ -500,10 +767,15 @@ export function downloadCSV() {
   let economicSection = "\n\n💰 Економічна частина (BOM для кошторису)\n";
   economicSection += "Категорія;Номенклатура;Кількість;Од. виміру;Ціна за од. (₴);Сума (₴)\n";
 
+  // Обчислюємо точний номер рядка Excel (1-based) для першого елементу BOM
+  const preCsvLines = hdr + (body ? body : "") + economicSection;
+  let excelRow = preCsvLines.split('\n').length;
+
   econData.forEach((row) => {
-    const total = row.count * row.price;
     const countLabel = row.unit === "м" ? Math.ceil(row.count) : row.count;
-    economicSection += `${safeCell(row.category)};${safeCell(row.name)};${safeCell(countLabel)};${safeCell(row.unit)};${safeCell(row.price > 0 ? row.price.toFixed(2) : "")};${safeCell(total > 0 ? total.toFixed(2) : "")}\n`;
+    const formulaCell = `=C${excelRow}*E${excelRow}`;
+    economicSection += `${safeCell(row.category)};${safeCell(row.name)};${safeCell(countLabel)};${safeCell(row.unit)};${row.price > 0 ? safeCell(row.price.toFixed(2)) : ""};${formulaCell}\n`;
+    excelRow++;
   });
 
   economicSection += "\n💡 Вкажіть ціни в Excel для формування кошторису.\n";
@@ -524,15 +796,18 @@ export function downloadTXT() {
     "Вузол",
     "Тип",
     "Від",
-    "Гілка",
+    "OLT (Порт)",
+    "Потужн. дБ",
     "Відстань м",
     "Затух. волокна дБ",
     "Мех. дБ",
     "Сигнал IN дБ",
     "FBT",
+    "Втрати FBT дБ",
     "PLC",
-    "Гілка PLC",
-    "Гірший сигнал OUT дБ",
+    "Втрати PLC дБ",
+    "Σ Втрат дБ",
+    "Сигнал ONU дБ",
     "Абонентів",
     "Статус",
   ];
@@ -544,31 +819,24 @@ export function downloadTXT() {
         r.name,
         r.type,
         "НЕ ПІДКЛЮЧЕНИЙ",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
-        "",
+        "", "", "", "", "", "", "", "", "", "", "", "", "", "",
       ]);
     } else {
       table.push([
         r.name,
         r.type,
         r.from,
-        r.branch,
+        r.oltSource || "—",
+        r.oltPower !== null ? "+" + r.oltPower : "—",
         r.dist,
         r.cableLoss,
         r.mechLoss,
         r.signalIn,
         r.fbt,
+        r.fbtLoss !== null && r.fbtLoss > 0 ? r.fbtLoss.toFixed(2) : "—",
         r.plc,
-        r.plcBranch,
+        r.plcLoss !== null && r.plcLoss > 0 ? r.plcLoss.toFixed(2) : "—",
+        r.totalLoss !== null ? r.totalLoss.toFixed(2) : "—",
         r.signalONU,
         String(r.onuCnt),
         {
@@ -576,7 +844,7 @@ export function downloadTXT() {
           warn: "Межа",
           err: "СЛАБКИЙ",
           info: "—",
-        }[r.status],
+        }[r.status] || r.status,
       ]);
     }
   });
@@ -1422,6 +1690,7 @@ function getSpIcon(type, ratio) {
       // Render
       const container = document.getElementById("mermaid-container");
       // @ts-ignore
+      window._lastMermaidMarkup = m;
       const { svg } = await mermaid.render('mermaid-svg-chart', m);
       container.innerHTML = svg;
       
@@ -1898,85 +2167,143 @@ export function updateValidationBadge() {
   }
 }
 
-export function exportTopologyPng() {
-  // @ts-ignore
-  if (typeof html2canvas === "undefined") {
-    alert("Помилка: Бібліотека html2canvas не завантажена!");
-    return;
-  }
-  
-  const container = document.getElementById("mermaid-container");
-  if (!container) return;
-  const svg = container.querySelector("svg");
-  if (!svg) {
+export async function exportTopologyPng() {
+  if (!window._lastMermaidMarkup) {
     alert("Графік топології ще формується або порожній.");
     return;
   }
 
   const btn = document.getElementById("btn-export-png");
   if (btn) {
-    btn.textContent = "⏳...";
+    btn.innerHTML = "⏳...";
     btn.style.pointerEvents = "none";
   }
 
-  // Determine actual SVG dimensions from viewBox or bounding box
-  let w = 800; let h = 600;
-  const vb = svg.getAttribute("viewBox");
-  if (vb) {
-      const parts = vb.split(" ");
-      w = parseFloat(parts[2]);
-      h = parseFloat(parts[3]);
-  } else {
-      const rect = svg.getBoundingClientRect();
-      w = rect.width;
-      h = rect.height;
-  }
+  try {
+    // Generate a perfectly fresh, un-zoomed, pristine SVG from the saved markup
+    // @ts-ignore
+    const { svg } = await mermaid.render('mermaid-svg-export-' + Date.now(), window._lastMermaidMarkup);
+    
+    // Convert to a temporary DOM node to extract the exact Native dimensions
+    const tempDiv = document.createElement("div");
+    tempDiv.innerHTML = svg;
+    const svgClone = /** @type {SVGSVGElement} */ (tempDiv.querySelector("svg"));
+    
+    let w = 800, h = 600;
+    const vb = svgClone.getAttribute("viewBox");
+    if (vb) {
+      const parts = vb.split(/[\s,]+/);
+      w = parseFloat(parts[2]) || 800;
+      h = parseFloat(parts[3]) || 600;
+      
+      const pad = 60;
+      const vx = parseFloat(parts[0]) || 0;
+      const vy = parseFloat(parts[1]) || 0;
+      w += pad * 2;
+      h += pad * 2;
+      svgClone.setAttribute("viewBox", `${vx - pad} ${vy - pad} ${w} ${h}`);
+    }
 
-  // To capture SVG with htmlLabels (foreignObject) accurately via html2canvas,
-  // we must render it on-screen. We temporarily put it in a huge absolute container.
-  const tempCon = document.createElement("div");
-  // Important: Must be in DOM but we move it off-screen to avoid jarring the user
-  tempCon.style.position = "absolute";
-  tempCon.style.left = "-9999px";
-  tempCon.style.top = "0";
-  tempCon.style.width = w + "px";
-  tempCon.style.height = h + "px";
-  tempCon.style.background = "#0d1117"; // the exact dark background color of the UI
+    svgClone.setAttribute("width", String(w));
+    svgClone.setAttribute("height", String(h));
 
-  // Clone SVG so we don't mess up the view
-  const svgClone = /** @type {HTMLElement} */ (svg.cloneNode(true));
-  svgClone.style.transform = ""; // strip D3 zoom transform
-  
-  // Force strict pixel dimensions on the clone so html2canvas sizes it properly
-  svgClone.setAttribute("width", String(w));
-  svgClone.setAttribute("height", String(h));
-  svgClone.style.width = w + "px";
-  svgClone.style.height = h + "px";
-  svgClone.style.maxWidth = "none";
+    // Force default styles
+    const styleEl = document.createElement("style");
+    styleEl.textContent = `
+      svg { background-color: #0d1117; }
+      * { font-family: system-ui, -apple-system, sans-serif !important; }
+    `;
+    svgClone.insertBefore(styleEl, svgClone.firstChild);
 
-  tempCon.appendChild(svgClone);
-  document.body.appendChild(tempCon);
+    // Render Natively
+    const svgData = new XMLSerializer().serializeToString(svgClone);
+    const src = "data:image/svg+xml;charset=utf-8," + encodeURIComponent(svgData);
 
-  // @ts-ignore
-  html2canvas(tempCon, {
-      backgroundColor: "#0d1117",
-      scale: 2 // render at 2x resolution for sharpness
-  }).then(canvas => {
-      document.body.removeChild(tempCon);
-      if (btn) {
-          btn.innerHTML = "⬇ PNG";
-          btn.style.pointerEvents = "auto";
-      }
+    const img = new Image();
+    img.onload = () => {
+      let renderScale = 3;
+      const totalPixels = w * h;
+      if (totalPixels > 10000000) renderScale = 1; 
+      else if (totalPixels > 4000000) renderScale = 1.5;
+      else if (totalPixels > 2000000) renderScale = 2;
+
+      const canvas = document.createElement("canvas");
+      canvas.width = w * renderScale;
+      canvas.height = h * renderScale;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      
+      ctx.fillStyle = "#0d1117";
+      ctx.fillRect(0, 0, canvas.width, canvas.height);
+      ctx.drawImage(img, 0, 0, canvas.width, canvas.height);
+      
       const a = document.createElement("a");
       a.download = getProjectFileName(`topology_${Date.now()}.png`);
       a.href = canvas.toDataURL("image/png");
       a.click();
-  }).catch(err => {
-      if (document.body.contains(tempCon)) document.body.removeChild(tempCon);
-      if (btn) {
-          btn.innerHTML = "⬇ PNG";
-          btn.style.pointerEvents = "auto";
+      
+      if (btn) { btn.innerHTML = "⬇ PNG"; btn.style.pointerEvents = "auto"; }
+    };
+
+    img.onerror = () => {
+      if (typeof html2canvas === "undefined") {
+        alert("Помилка генерації карти: браузер відхилив прямий рендеринг.");
+        if (btn) { btn.innerHTML = "⬇ PNG"; btn.style.pointerEvents = "auto"; }
+        return;
       }
-      alert("Помилка генерації PNG: " + err);
-  });
+      
+      // Fallback
+      const tempCon = document.createElement("div");
+      tempCon.style.position = "absolute";
+      tempCon.style.left = "0px";
+      tempCon.style.top = "0px";
+      tempCon.style.zIndex = "-9999";
+      tempCon.style.pointerEvents = "none";
+      tempCon.style.width = w + "px";
+      tempCon.style.height = h + "px";
+      tempCon.style.background = "#0d1117";
+      
+      svgClone.style.display = "block";
+      tempCon.appendChild(svgClone);
+      document.body.appendChild(tempCon);
+      
+      let renderScale = 3;
+      if (w * h > 10000000) renderScale = 1; 
+      else if (w * h > 4000000) renderScale = 1.5;
+      else if (w * h > 2000000) renderScale = 2;
+
+      // @ts-ignore
+      html2canvas(tempCon, {
+          backgroundColor: "#0d1117",
+          scale: renderScale,
+          useCORS: true,
+          logging: false,
+          width: w,
+          height: h,
+          windowWidth: w,
+          windowHeight: h,
+          x: 0,
+          y: 0,
+          scrollX: 0,
+          scrollY: 0
+      }).then(canvas => {
+          document.body.removeChild(tempCon);
+          const a = document.createElement("a");
+          a.download = getProjectFileName(`topology_${Date.now()}.png`);
+          a.href = canvas.toDataURL("image/png");
+          a.click();
+          if (btn) { btn.innerHTML = "⬇ PNG"; btn.style.pointerEvents = "auto"; }
+      }).catch(err => {
+          if (document.body.contains(tempCon)) document.body.removeChild(tempCon);
+          alert("Помилка генерації PNG: " + err);
+          if (btn) { btn.innerHTML = "⬇ PNG"; btn.style.pointerEvents = "auto"; }
+      });
+    };
+
+    img.src = src;
+
+  } catch (err) {
+    alert("Помилка рендеру: " + err);
+    if (btn) { btn.innerHTML = "⬇ PNG"; btn.style.pointerEvents = "auto"; }
+  }
 }

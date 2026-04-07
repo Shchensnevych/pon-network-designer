@@ -1928,10 +1928,12 @@ function showProps(n) {
     // --- NEW: Manual Tooltip Config ---
     const tCfg = n._tooltipConfig || { direction: "AUTO", distance: 250 };
     
-    h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:10px; margin-top:10px;">`;
-    h += `<div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; gap:6px; text-transform:uppercase;"><i class="fa-solid fa-tag" style="font-size:11px;"></i> РОЗТАШУВАННЯ ПІДПИСІВ</div>`;
+    h += `<details style="background:#21262d; border:1px solid #30363d; border-radius:6px; margin-top:10px;">`;
+    h += `<summary style="padding:10px; cursor:pointer; color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; display:flex; align-items:center; gap:6px; text-transform:uppercase; outline:none; user-select:none;">
+            <i class="fa-solid fa-tag" style="font-size:11px;"></i> РОЗТАШУВАННЯ ПІДПИСІВ
+          </summary>`;
     
-    h += `<div style="display:flex; gap:12px; align-items:center;">
+    h += `<div style="padding:0 10px 10px 10px; display:flex; gap:12px; align-items:center;">
             <div style="display:grid; grid-template-columns:repeat(3, 20px); gap:2px; background:#0d1117; padding:4px; border-radius:4px; border:1px solid #30363d; flex-shrink:0;">`;
     
     const dirs = [
@@ -1981,15 +1983,18 @@ function showProps(n) {
             </div>
           </div>`;
 
-    h += `</div>`;
+    h += `</details>`;
 
     
     // Connected nodes block
     const connectedNodes = conns.filter(c => c.from === n).map(c => c.to);
     if (connectedNodes.length > 0) {
         h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:10px; margin-top:10px;">`;
-        h += `<div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; gap:6px; text-transform:uppercase;"><i class="fa-solid fa-network-wired" style="font-size:11px;"></i> Підключені вузли</div>`;
-        h += `<div style="display:flex; flex-direction:column; gap:6px;">`;
+        h += `<div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; text-transform:uppercase;">
+                <span style="display:flex; align-items:center; gap:6px;"><i class="fa-solid fa-network-wired" style="font-size:11px;"></i> Підключені вузли</span>
+                <span style="background:#0d1117; padding:2px 6px; border-radius:10px; font-size:9px;">${connectedNodes.length}</span>
+              </div>`;
+        h += `<div class="mini-scroll" style="display:flex; flex-direction:column; gap:4px; max-height:220px; overflow-y:auto; padding-right:4px;">`;
         
         connectedNodes.forEach(toNode => {
             let toSig = null;
@@ -2017,8 +2022,8 @@ function showProps(n) {
             }
             
             const toSigStr = toSig !== null ? `${toSig.toFixed(2)} дБ` : `---`;
-            h += `<div style="display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #30363d; padding:6px 10px; border-radius:4px;">
-                <div style="display:flex; align-items:center; gap:8px;">
+            h += `<div style="display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #30363d; padding:4px 6px; border-radius:4px;">
+                <div style="display:flex; align-items:center; gap:6px;">
                     <div style="width:8px; height:8px; border-radius:50%; background:${dotColor};"></div>
                     <span style="color:#c9d1d9; font-size:12px; font-weight:bold;">${toNode.name}</span>
                     <span style="color:#8b949e; font-size:12px;">·</span>
