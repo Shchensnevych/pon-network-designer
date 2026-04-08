@@ -33,11 +33,22 @@ function buildEconomicData() {
     }
   };
 
-  // Helper: extract base name
-  function getBaseName(n, type) {
-    if (n === type || new RegExp(`^${type}-\\d+$`).test(n)) return `${type} (модель не вказана)`;
-    const match = n.match(/^([a-zA-Zа-яА-ЯіІїЇєЄ0-9_]+-\d+-\d+)/);
-    return match ? match[1] : n;
+  function isDefaultName(name, type) {
+    if (name === type || new RegExp(`^${type}-\\d+$`).test(name)) return true;
+    if (type === "FOB" && (name === "Муфта" || new RegExp(`^Муфта-\\d+$`).test(name))) return true;
+    return false;
+  }
+
+  // Helper: extract base name for grouping (strips trailing # or simple -ID)
+  function getGroupingName(n, defaultType, estModel) {
+    if (isDefaultName(n, defaultType)) return estModel;
+    // Attempt to strip a trailing " #1" or " - 1", but be careful not to strip "FOB-04-16"
+    // Usually, users name it accurately. Let's return the name as is, 
+    // or strip purely isolated trailing ID like " (1)" or " #1"
+    const cleaned = n.replace(/\s*[#-]\s*\d+$/, "").replace(/\s*\(\d+\)$/, "");
+    // Fallback: if they just wrote "ZTE", it returns "ZTE".
+    // Append the estModel as a hint so that accessories logic stays clear, or just use custom name
+    return `${cleaned} (Кастомний: замінює ${estModel.split(":")[0]})`;
   }
 
   // 1. Nodes
@@ -47,12 +58,9 @@ function buildEconomicData() {
     if (n.type === "OLT") {
       const portCount = n.ports || 4;
       let estModel = `OLT (на ${portCount} портів)`;
-      if (price === 0) {
-        add("Активне обладнання", estModel, 1, "шт.", price);
-      } else {
-        add("Активне обладнання", getBaseName(n.name, "OLT"), 1, "шт.", price);
-      }
-      add("Активне обладнання", "Модуль SFP OLT PON C++", portCount, "шт.", 0);
+      let finalName = isDefaultName(n.name, "OLT") ? estModel : n.name;
+      add("Активне обладнання", finalName, 1, "шт.", price);
+      add("Активне обладнання", "Модуль SFP OLT PON C++ (лазерний трансівер)", portCount, "шт.", 0);
       
       // ODF Calculation
       const inOutCables = conns.filter(c => (c.from === n || c.to === n) && c.type === "cable");
@@ -71,10 +79,10 @@ function buildEconomicData() {
           add("Пасивне обладнання", odfModel, 1, "шт.", 0);
           
           if (activeLines > 0) {
-              add("Монтажні матеріали", "Адаптер оптичний SC/UPC (в ODF)", activeLines, "шт.", 0);
-              add("Монтажні матеріали", "Пігтейл оптичний SC/UPC (в ODF)", activeLines, "шт.", 0);
-              add("Монтажні матеріали", "Гільза термоусаджувальна (КДЗС для ODF)", activeLines, "шт.", 0);
-              add("Монтажні матеріали", "Патчкорд оптичний (з'єднання SFP з ODF)", activeLines, "шт.", 0);
+              add("Монтажні матеріали", "Адаптер оптичний SC/UPC (прохідний з'єднувач в ODF)", activeLines, "шт.", 0);
+              add("Монтажні матеріали", "Пігтейл оптичний SC/UPC (кінцевик для розварки магістралі в ODF)", activeLines, "шт.", 0);
+              add("Монтажні матеріали", "Гільза термоусаджувальна КДЗС (зварювання пігтейлів в оптичному кросі ODF)", activeLines, "шт.", 0);
+              add("Монтажні матеріали", "Патчкорд оптичний (шнур для комутації порту OLT з екраном ODF)", activeLines, "шт.", 0);
           }
       }
     } 
@@ -94,9 +102,14 @@ function buildEconomicData() {
 
       const cablePorts = inOutCables.length;
       const dropPorts = dropPatchcords.length;
+
+      let typeCategory = "Муфта оптична з'єднувальна (транзитна)";
+      let estModel = "FOSC-M / Mini (до 12-24 зварок)";
+      let kdazDesc = "Гільза термоусаджувальна КДЗС (захист магістральних зварок в оптичній муфті)";
+      let trunkSplices = 0;
       
-      let estModel = "Муфта оптична";
       if (dropPorts > 0) {
+        typeCategory = "Бокс PON розподільчий (FOB)";
         let boxModel = "";
         if (dropPorts <= 4) boxModel = "Crosver FOB-02-04 (або аналог Fora/RCI)";
         else if (dropPorts <= 8) boxModel = "Crosver FOB-03-08 (або аналог)";
@@ -104,44 +117,56 @@ function buildEconomicData() {
         else if (dropPorts <= 16) boxModel = "Crosver FOB-04-16 (або аналог)";
         else boxModel = "Crosver FOB-05-24 (на 24 абоненти)";
         
-        estModel = `Бокс PON розподільчий: ${boxModel}`;
-        add("Монтажні матеріали", "Адаптер оптичний SC/UPC (підключення сплітера у боксі)", dropPorts, "шт.", 0);
-        add("Монтажні матеріали", "Пігтейл оптичний SC/UPC (зварка з drop-кабелем)", dropPorts, "шт.", 0);
-        totalSplices += dropPorts;
+        estModel = `${typeCategory}: ${boxModel}`;
+        kdazDesc = "Гільза термоусаджувальна КДЗС (захист магістральних зварок та сплітерів в абонентському боксі FOB)";
+        
+        add("Монтажні матеріали", "Адаптер оптичний SC/UPC (встановлюється у розподільчий бокс)", dropPorts, "шт.", 0);
+        add("Монтажні матеріали", "Пігтейл оптичний SC/UPC (для виводу порту сплітера на адаптер)", dropPorts, "шт.", 0);
+        add("Монтажні матеріали", "Гільза термоусаджувальна КДЗС (зварювання абонентських пігтейлів у боксі FOB)", dropPorts, "шт.", 0);
+        
+        trunkSplices = totalSplices;
+      } else if (splCount > 0) {
+        typeCategory = "Крос-муфта оптична (розподільча)";
+        let mufModel = "FOSC-S/M (до 24-48 зварок)";
+        if (totalSplices > 24) mufModel = "FOSC-400 (до 48-64 зварок)";
+        estModel = `${typeCategory}: ${mufModel}`;
+        kdazDesc = "Гільза термоусаджувальна КДЗС (захист магістральних зварок та сплітерів в оптичній крос-муфті)";
+        trunkSplices = totalSplices;
       } else {
-        let mufModel = "";
-        if (totalSplices <= 12) mufModel = "FOSC-M / Mini (до 12-24 зварок)";
-        else if (totalSplices <= 24) mufModel = "FOSC-S/M (до 24-48 зварок)";
-        else if (totalSplices <= 48) mufModel = "FOSC-400 (до 48-64 зварок)";
-        else mufModel = "FOSC-400/96 (магістральна)";
-
-        estModel = `Крос-муфта оптична: ${mufModel}`;
+        typeCategory = "Муфта оптична з'єднувальна (транзитна)";
+        let mufModel = "FOSC-M / Mini (до 12-24 зварок)";
+        if (totalSplices > 24) mufModel = "FOSC-400 (до 48-64 зварок)";
+        estModel = `${typeCategory}: ${mufModel}`;
+        kdazDesc = "Гільза термоусаджувальна КДЗС (захист транзитних зварок в транзитній оптичній муфті)";
+        trunkSplices = totalSplices;
       }
 
-      if (totalSplices > 0) {
-         add("Монтажні матеріали", "Гільза термоусаджувальна (КДЗС)", totalSplices, "шт.", 0);
+      if (trunkSplices > 0) {
+         add("Монтажні матеріали", kdazDesc, trunkSplices, "шт.", 0);
       }
 
-      if (price === 0) {
-        add("Пасивне обладнання", estModel, 1, "шт.", price);
-      } else {
-        add("Пасивне обладнання", getBaseName(n.name, "Крос/Муфта"), 1, "шт.", price);
-      }
+      let finalName = getGroupingName(n.name, "FOB", estModel);
+      add("Пасивне обладнання", finalName, 1, "шт.", price);
       
       // 2. Splitters (from FOBs)
-      splitters.forEach(sp => add("Сплітери оптичні", `Сплітер ${sp.type} ${sp.ratio}`, 1, "шт.", 0));
+      splitters.forEach(sp => {
+        const hint = sp.type === "FBT" ? "(несиметричний дільник)" : "(симетричний планарний дільник)";
+        add("Сплітери оптичні", `Сплітер ${sp.type} ${sp.ratio} ${hint}`, 1, "шт.", 0);
+      });
       if (legacyFbt && !splitters.some(s => s.type === "FBT")) {
-        add("Сплітери оптичні", `Сплітер FBT ${legacyFbt}`, 1, "шт.", 0);
+        add("Сплітери оптичні", `Сплітер FBT ${legacyFbt} (несиметричний дільник)`, 1, "шт.", 0);
       }
       if (legacyPlc && !splitters.some(s => s.type === "PLC")) {
-        add("Сплітери оптичні", `Сплітер PLC ${legacyPlc}`, 1, "шт.", 0);
+        add("Сплітери оптичні", `Сплітер PLC ${legacyPlc} (симетричний планарний дільник)`, 1, "шт.", 0);
       }
     }
     else if (n.type === "ONU") {
-      add("Абонентське обладнання", getBaseName(n.name, "ONU"), 1, "шт.", price);
+      let finalName = isDefaultName(n.name, "ONU") ? "Абонентський термінал ONU (перетворювач оптики в Ethernet)" : n.name;
+      add("Абонентське обладнання", finalName, 1, "шт.", price);
     }
     else if (n.type === "MDU") {
-      add("Пасивне обладнання", getBaseName(n.name, "MDU"), 1, "шт.", price);
+      let finalName = isDefaultName(n.name, "MDU") ? "Багатоквартирний будинок MDU" : n.name;
+      add("Пасивне обладнання", finalName, 1, "шт.", price);
       
       const floors = n.floors || 5;
       const entrances = n.entrances || 1;
@@ -169,13 +194,19 @@ function buildEconomicData() {
         }
         
         const riserMeters = entrances * (floors * 3 + 10);
-        add("Кабелі магістральні", "Кабель оптичний Riser (вертикальний)", riserMeters, "м", 0);
+        add("Кабелі магістральні", "Кабель оптичний Riser (внутрішньобудинковий, для вертикальної розводки під'їздів)", riserMeters, "м", 0);
         
         const dropMeters = activeSubs * 15;
-        add("Кабелі абонентські", "Кабель абонентський (Inner Drop) FTTH", dropMeters, "м", 0);
+        add("Кабелі абонентські", "Кабель абонентський Inner Drop (розводка від поверхового боксу до квартири)", dropMeters, "м", 0);
         
-        add("Монтажні матеріали", "Конектор швидкої фіксації (Fast Connector)", activeSubs * 2, "шт.", 0);
-        add("Абонентське обладнання", "ONU (FTTH)", activeSubs, "шт.", 0);
+        const mainSplices = entrances * 4;
+        add("Монтажні матеріали", "Гільза термоусаджувальна КДЗС (зварювання магістралі у головному боксі MDU)", mainSplices, "шт.", 0);
+        
+        const floorSplices = floorBoxes * 2;
+        add("Монтажні матеріали", "Гільза термоусаджувальна КДЗС (зварювання відводів у поверхових боксах)", floorSplices, "шт.", 0);
+        
+        add("Монтажні матеріали", "Конектор швидкої фіксації Fast Connector (окінцювання Inner Drop кабелю у квартирі)", activeSubs * 2, "шт.", 0);
+        add("Абонентське обладнання", "Абонентський термінал ONU (перетворювач оптики в Ethernet)", activeSubs, "шт.", 0);
       } else {
         // FTTB: Switch, UTP cable
         add("Активне обладнання", "Комутатор доступу (FTTB Switch)", entrances, "шт.", 0);
@@ -195,10 +226,10 @@ function buildEconomicData() {
       add("Монтажні матеріали", "Затискач натяжний магістральний (кріплення кабелю на опорі)", 2, "шт.", 0);
     } else if (c.type === "patchcord") {
       const meters = connKm(c) * 1000;
-      add("Кабелі абонентські", "Drop-кабель (вуличний)", meters, "м", 0);
-      add("Монтажні матеріали", "Конектор швидкої фіксації (Fast Connector)", 2, "шт.", 0);
-      add("Монтажні матеріали", "Затискач натяжний Н3 (на опорі)", 1, "шт.", 0);
-      add("Монтажні матеріали", "Затискач анкерний (на стороні абонента)", 1, "шт.", 0);
+      add("Кабелі абонентські", "Drop-кабель (армований кабель 'останньої милі' від муфти до абонента)", meters, "м", 0);
+      add("Монтажні матеріали", "Конектор швидкої фіксації Fast Connector (окінцювання країв drop-кабелю)", 2, "шт.", 0);
+      add("Монтажні матеріали", "Затискач натяжний Н3/AC (кріплення drop-кабелю на опорі/стовпі)", 1, "шт.", 0);
+      add("Монтажні матеріали", "Затискач анкерний (кріплення drop-кабелю на фасаді абонента)", 1, "шт.", 0);
     }
   });
 
@@ -497,6 +528,29 @@ function buildReportData() {
 
       // Trace signal chain for FOBs
       const chain = n.type === "FOB" ? traceSignalChain(n) : null;
+      let chainText = chain ? chain.chainText : null;
+      
+      if (chainText && n.type === "FOB") {
+          const drops = conns.filter(x => x.from === n && x.type === "patchcord");
+          if (drops.length > 0) {
+              let worstDrop = drops[0];
+              // @ts-ignore
+              let minSig = typeof trueSigAtONU === "function" ? trueSigAtONU(worstDrop.to) : so;
+              for (const d of drops) {
+                  // @ts-ignore
+                  const s = typeof trueSigAtONU === "function" ? trueSigAtONU(d.to) : so;
+                  if (s !== null && (minSig === null || s < minSig)) { 
+                      minSig = s; 
+                      worstDrop = d; 
+                  }
+              }
+              if (worstDrop && minSig !== null) {
+                  const dropM = connKm(worstDrop) * 1000;
+                  const dropLoss = (dropM / 1000) * FIBER_DB_KM;
+                  chainText += ` → Drop-кабель ${dropM.toFixed(0)}м (-${dropLoss.toFixed(2)}дБ) → ONU (${minSig.toFixed(2)}дБ)`;
+              }
+          }
+      }
 
       rows.push({
         name: n.name,
@@ -506,7 +560,7 @@ function buildReportData() {
         dist: totalDm.toFixed(1),
         cableLoss: cLoss.toFixed(3),
         mechLoss: MECH,
-        signalIn: si < 0 ? si.toFixed(2) : "—",
+        signalIn: si !== null ? si.toFixed(2) : "—",
         fbt: fbts,
         fbtLoss: chain ? chain.steps.filter(s => s.label.includes("FBT")).reduce((a, s) => a + s.loss, 0) : null,
         plc: plcs,
@@ -517,7 +571,7 @@ function buildReportData() {
         onuCnt: connectedONU,
         oltSource: chain ? `${chain.oltName}, Порт ${chain.oltPort + 1}` : "—",
         oltPower: chain ? chain.oltPower : null,
-        chainText: chain ? chain.chainText : null,
+        chainText: chainText,
         status:
           so !== null
             ? so >= ONU_MIN
@@ -1193,6 +1247,38 @@ export async function showTopology() {
                if (fromNid && toNid) {
                    const edgeLbl = x.fromBranch ? x.fromBranch : `${(x.fromCore||0)+1}`;
                    m += `    ${fromNid} -- "${edgeLbl}" --> ${toNid}\n`;
+               }
+           }
+       });
+
+       // Draw unconnected reserves for splitters
+       splitters.forEach(sp => {
+           const spNid = spNodes[sp.id];
+           if (sp.type === "FBT") {
+               ["X", "Y"].forEach(branch => {
+                   const isConnected = xc.some(x => x.fromType === "SPLITTER" && x.fromId === sp.id && x.fromBranch === branch);
+                   if (!isConnected) {
+                       const resId = `${spNid}_res_${branch}`;
+                       m += `    ${resId}("Резерв"):::reserve\n`;
+                       m += `    ${spNid} -. "${branch}" .-> ${resId}\n`;
+                       m += `    style ${resId} fill:#161b22,stroke:#30363d,color:#8b949e,stroke-dasharray: 4 4\n`;
+                   }
+               });
+           } else if (sp.type === "PLC") {
+               const portsStr = sp.ratio.split("x")[1];
+               const numPorts = parseInt(portsStr);
+               let freeCount = 0;
+               if (!isNaN(numPorts)) {
+                   for (let c = 0; c < numPorts; c++) {
+                       const isConnected = xc.some(x => x.fromType === "SPLITTER" && x.fromId === sp.id && x.fromCore === c);
+                       if (!isConnected) freeCount++;
+                   }
+                   if (freeCount > 0) {
+                       const resId = `${spNid}_res`;
+                       m += `    ${resId}("${freeCount} вільних"):::reserve\n`;
+                       m += `    ${spNid} -.-> ${resId}\n`;
+                       m += `    style ${resId} fill:#161b22,stroke:#30363d,color:#8b949e,stroke-width:1px\n`;
+                   }
                }
            }
        });

@@ -308,10 +308,16 @@ export function initNetwork() {
               </button>
               <span class="tool-label">Шари</span>
             </div>
-            <div id="layer-menu" class="dropdown-content" style="bottom: 100%; left: 0; margin-bottom: 5px;">
-              <button onclick="setLayer('osm')" id="btn-layer-osm">✓ 🗺️ Карта</button>
-              <button onclick="setLayer('sat')" id="btn-layer-sat">🛰️ Супутник</button>
-              <button onclick="setLayer('hyb')" id="btn-layer-hyb">🛰️🏷️ Гібрид</button>
+            <div id="layer-menu" class="dropdown-content">
+              <button class="layer-btn selected" onclick="setLayer('osm')" id="btn-layer-osm">
+                <span class="chk"><i class="fa-solid fa-check"></i></span><span class="icn"><i class="fa-solid fa-map fa-fw"></i></span><span class="lbl">Карта</span>
+              </button>
+              <button class="layer-btn" onclick="setLayer('sat')" id="btn-layer-sat">
+                <span class="chk"></span><span class="icn"><i class="fa-solid fa-satellite fa-fw"></i></span><span class="lbl">Супутник</span>
+              </button>
+              <button class="layer-btn" onclick="setLayer('hyb')" id="btn-layer-hyb">
+                <span class="chk"></span><span class="icn"><i class="fa-solid fa-layer-group fa-fw"></i></span><span class="lbl">Гібрид</span>
+              </button>
             </div>
           </div>
 
@@ -400,25 +406,38 @@ export function setLayer(type) {
   if (satellite && map.hasLayer(satellite)) map.removeLayer(satellite);
   if (hybrid && map.hasLayer(hybrid)) map.removeLayer(hybrid);
 
-  // Reset icons
+  // Reset selection
   const btnOsm = document.getElementById("btn-layer-osm");
   const btnSat = document.getElementById("btn-layer-sat");
   const btnHyb = document.getElementById("btn-layer-hyb");
-  if (btnOsm) btnOsm.innerHTML = "🗺️ Карта";
-  if (btnSat) btnSat.innerHTML = "🛰️ Супутник";
-  if (btnHyb) btnHyb.innerHTML = "🛰️🏷️ Гібрид";
+  
+  // Helper to update checkmark visualization via class and symbol
+  const updateBtn = (btn, isSelected) => {
+    if (!btn) return;
+    if (isSelected) {
+      btn.classList.add("selected");
+      btn.querySelector(".chk").innerHTML = '<i class="fa-solid fa-check"></i>';
+    } else {
+      btn.classList.remove("selected");
+      btn.querySelector(".chk").innerHTML = '';
+    }
+  };
+
+  updateBtn(btnOsm, false);
+  updateBtn(btnSat, false);
+  updateBtn(btnHyb, false);
 
   if (type === "osm" && streets) {
     streets.addTo(map);
-    if (btnOsm) btnOsm.innerHTML = "✓ 🗺️ Карта";
+    updateBtn(btnOsm, true);
   }
   if (type === "sat" && satellite) {
     satellite.addTo(map);
-    if (btnSat) btnSat.innerHTML = "✓ 🛰️ Супутник";
+    updateBtn(btnSat, true);
   }
   if (type === "hyb" && hybrid) {
     hybrid.addTo(map);
-    if (btnHyb) btnHyb.innerHTML = "✓ 🛰️🏷️ Гібрид";
+    updateBtn(btnHyb, true);
   }
 
   const menu = document.getElementById("layer-menu");
@@ -935,9 +954,26 @@ function updateConnLabel(c) {
       ? L.latLng((flat[mid - 1].lat + flat[mid].lat) / 2, (flat[mid - 1].lng + flat[mid].lng) / 2)
       : flat[mid];
   const dist = connKm(c) * 1000;
-  let contentHtml = `<div style="text-align:center; font-weight:bold; font-size:11px; line-height:1.1;">${dist.toFixed(0)} м</div>`;
+  
+  let totalDistStr = "";
+  if (c.type === "cable") {
+      let totalLength = dist;
+      let currNode = c.from;
+      while (currNode && currNode.type === "FOB") {
+          const upCable = conns.find(pc => pc.to === currNode && pc.type === "cable");
+          if (!upCable) break;
+          totalLength += connKm(upCable) * 1000;
+          currNode = upCable.from;
+      }
+      if (currNode && currNode.type === "OLT") {
+          totalDistStr = `<div style="text-align:center; font-size:10px; color:#a5d6ff; line-height:1.1; margin-top:1px; font-family: monospace;" title="Загальна довжина від OLT">→ Σ ${totalLength.toFixed(0)} м ←</div>`;
+      }
+  }
+
+  let contentHtml = `<div style="text-align:center; font-weight:bold; font-size:11px; line-height:1.1; color:#fff; font-family: monospace;" title="Довжина цієї ділянки">← ${dist.toFixed(0)} м →</div>`;
+  contentHtml += totalDistStr;
   if (c.capacity) {
-      contentHtml += `<div style="text-align:center; font-size:9px; color:#58a6ff; line-height:1; margin-bottom:1px;">${c.capacity} жил</div>`;
+      contentHtml += `<div style="text-align:center; font-size:9px; color:#58a6ff; line-height:1; margin-bottom:1px; margin-top:2px;">${c.capacity} жил</div>`;
   }
 
   let signalsHtml = "";
@@ -2163,7 +2199,7 @@ function updNode(id, prop, val) {
   n[prop] = val;
   if (prop === "name") updateNodeLabel(n);
   if (prop === "outputPower") nodes.forEach((x) => updateNodeLabel(x)); // Ensure label changes if node properties change
-  if (prop === "architecture") showProps(n); // Refresh panel to show/hide MDU topology button
+  if (["architecture", "floors", "entrances", "flatsPerFloor"].includes(prop)) showProps(n); // Refresh panel for MDU geometry changes
   updateNodeLabel(n);
   saveState(); // This saveState is already present, no need to duplicate
   updateStats();

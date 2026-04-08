@@ -115,7 +115,7 @@ body {
 
 .app {
   display: grid;
-  grid-template-columns: 200px 1fr 260px;
+  grid-template-columns: 200px 1fr 230px;
   flex: 1; /* take remaining height under top-bar */
   min-height: 0; /* critical: prevent grid from overflowing flex parent */
   overflow: hidden;
@@ -1714,7 +1714,7 @@ tr:last-child td {
   border-radius: 6px;
   color: #c9d1d9;
   cursor: pointer;
-  width: 50px;
+  width: 40px;
   height: 36px;
   padding: 0;
   transition: all 0.2s;
@@ -1877,6 +1877,7 @@ path.signal-anim-overlay {
   color: #c9d1d9;
   line-height: 1.8;
   backdrop-filter: blur(8px);
+  white-space: nowrap;
 }
 
 /* Bottom-left controls compact dark theme */
@@ -2149,37 +2150,66 @@ path.leaflet-interactive:hover {
 .dropdown-content {
   display: none;
   position: absolute;
-  bottom: 35px;
-  /* Above toolbar */
+  bottom: 60px; /* Above toolbar */
   left: 0;
-  background-color: #161b22;
-  min-width: 120px;
-  box-shadow: 0 4px 12px rgba(0, 0, 0, 0.5);
+  background: rgba(13, 17, 23, 0.95);
+  backdrop-filter: blur(12px);
+  min-width: 150px;
+  box-shadow: 0 8px 24px rgba(0, 0, 0, 0.8), 0 0 1px rgba(255,255,255,0.1);
   z-index: 2000;
   border: 1px solid #30363d;
-  border-radius: 6px;
-  overflow: hidden;
+  border-radius: 8px;
+  padding: 6px;
 }
 
-.dropdown-content button {
+.dropdown-content.show {
+  display: flex !important;
+  flex-direction: column;
+}
+
+.dropdown-content .layer-btn {
   width: 100%;
-  text-align: left;
   border: none;
-  border-radius: 0;
+  border-radius: 4px;
   padding: 8px 12px;
-  font-size: 13px;
-  height: auto;
-  display: block;
-  justify-content: flex-start;
+  font-size: 12px;
+  font-weight: 500;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  color: #c9d1d9;
+  background: transparent;
+  transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
 }
 
-.dropdown-content button:hover {
-  background: #30363d;
+.dropdown-content .layer-btn:hover {
+  background: rgba(88, 166, 255, 0.15);
+  color: #fff;
 }
 
-.show {
-  display: block;
+.dropdown-content .layer-btn.selected {
+  color: #58a6ff;
+  background: rgba(88, 166, 255, 0.05);
 }
+
+.dropdown-content .layer-btn .chk {
+  width: 16px;
+  font-weight: 800;
+  color: #58a6ff;
+  display: inline-block;
+  text-align: center;
+}
+
+.dropdown-content .layer-btn .icn {
+  font-size: 14px;
+}
+
+.dropdown-content .layer-btn .lbl {
+  flex: 1;
+  text-align: left;
+}
+
+/* ── SEARCH CONTAINER IN TOOLBAR ── */
 
 /* ── BACKUP LIST / TABS (from second <style> block) ── */
 .tab-btn {
