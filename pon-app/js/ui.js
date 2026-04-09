@@ -586,6 +586,9 @@ function buildReportData() {
 }
 
 export function openReport() {
+  const h2 = document.getElementById("modal-overlay")?.querySelector("h2");
+  if (h2) h2.textContent = "📋 Звіт по PON мережі";
+
   const btnPng = document.getElementById("btn-export-png");
   if (btnPng) btnPng.style.display = "none";
   
