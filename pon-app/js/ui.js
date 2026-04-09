@@ -1539,7 +1539,7 @@ export async function showTopology() {
             const oSigStr = onuSig !== null ? `⚡ ${onuSig.toFixed(1)} дБ` : "No Sig";
             
             m += `  ${gId}(["${lines.join("<br/>")}<br/><b style='color:${sColor};'>${oSigStr}</b>"]):::subs\n`;
-            m += `  ${srcNodeId} -.-> ${gId}\n`;
+            m += `  ${srcNodeId} -..-> ${gId}\n`;
         });
     }
 }
