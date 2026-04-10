@@ -1904,11 +1904,11 @@ function showProps(n) {
     h += window.getOltStatsHtml(n);
     h += `</div>`;
 
-    h += `<button class="btn" style="margin-top:15px;width:100%;background:#1f6feb;color:#ffffff;border:1px solid #388bfd;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#388bfd';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#1f6feb';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openPatchPanel('${n.id}')">🎛️ Оптичний крос (ODF)</button>`;
+    h += `<button class="btn" style="margin-top:15px;width:100%;background:#1f6feb;color:#ffffff;border:1px solid #388bfd;padding:6px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#388bfd';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#1f6feb';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openPatchPanel('${n.id}')">🎛️ Оптичний крос (ODF)</button>`;
   } else if (n.type === "FOB") {
     // "⚙️ Дільники" section moved to Cross-Connect Splice Cassette modal for better UX
 
-    h += `<button class="btn" style="margin-top:15px;width:100%;background:#8957e5;color:#ffffff;border:1px solid #a371f7;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#a371f7';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#8957e5';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openCrossConnect('${n.id}')">🪛 Касета (Зварювання)</button>`;
+    h += `<button class="btn" style="margin-top:15px;width:100%;background:#8957e5;color:#ffffff;border:1px solid #a371f7;padding:6px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#a371f7';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#8957e5';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openCrossConnect('${n.id}')">🪛 Касета (Зварювання)</button>`;
 
     // --- Calculate Capacity Stats ---
     let totalSpOuts = 0;
@@ -1946,7 +1946,7 @@ function showProps(n) {
       if (n.inputConn.branch) fromInfo += ` (гілка ${n.inputConn.branch})`;
       else if (n.inputConn.from.type === "FOB" && n.inputConn.from.plcType) fromInfo += ` (через PLC)`;
       
-      h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:10px; margin-top:10px;">`;
+      h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:6px; margin-top:10px;">`;
       h += `<div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; gap:6px; text-transform:uppercase;"><i class="fa-solid fa-wave-square" style="font-size:11px;"></i> СИГНАЛ</div>`;
       
       let sigStr = s !== null ? `${s.toFixed(2)} дБ` : `---`;
@@ -1970,7 +1970,7 @@ function showProps(n) {
       h += `</div>`;
     } else {
       h += `<div class="warn-pill" style="margin-top:10px; display:flex; align-items:center; justify-content:center; gap:6px;"><i class="fa-solid fa-triangle-exclamation"></i> Не підключено</div>`;
-      h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:10px; margin-top:10px;">
+      h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:6px; margin-top:10px;">
               <div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:0px; display:flex; align-items:center; gap:6px; text-transform:uppercase;"><i class="fa-solid fa-wave-square" style="font-size:11px;"></i> СИГНАЛ</div>
               ${capacityText}
             </div>`;
@@ -1980,8 +1980,8 @@ function showProps(n) {
     const tCfg = n._tooltipConfig || { direction: "AUTO", distance: 250 };
     
     h += `<details style="background:#21262d; border:1px solid #30363d; border-radius:6px; margin-top:10px;">`;
-    h += `<summary style="padding:10px; cursor:pointer; color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; display:flex; align-items:center; gap:6px; text-transform:uppercase; outline:none; user-select:none;">
-            <i class="fa-solid fa-tag" style="font-size:11px;"></i> РОЗТАШУВАННЯ ПІДПИСІВ
+    h += `<summary style="padding:6px; cursor:pointer; color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; display:flex; align-items:center; gap:6px; text-transform:uppercase; outline:none; user-select:none;">
+            <i class="fa-solid fa-tag" style="font-size:11px;"></i> ЗМІЩЕННЯ ПІДПИСІВ
           </summary>`;
     
     h += `<div style="padding:0 10px 10px 10px; display:flex; gap:12px; align-items:center;">
@@ -2040,7 +2040,7 @@ function showProps(n) {
     // Connected nodes block
     const connectedNodes = conns.filter(c => c.from === n).map(c => c.to);
     if (connectedNodes.length > 0) {
-        h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:10px; margin-top:10px;">`;
+        h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:6px; margin-top:10px;">`;
         h += `<div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; text-transform:uppercase;">
                 <span style="display:flex; align-items:center; gap:6px;"><i class="fa-solid fa-network-wired" style="font-size:11px;"></i> Підключені вузли</span>
                 <span style="background:#0d1117; padding:2px 6px; border-radius:10px; font-size:9px;">${connectedNodes.length}</span>
@@ -2074,9 +2074,9 @@ function showProps(n) {
             
             const toSigStr = toSig !== null ? `${toSig.toFixed(2)} дБ` : `---`;
             h += `<div style="display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #30363d; padding:4px 6px; border-radius:4px;">
-                <div style="display:flex; align-items:center; gap:6px;">
-                    <div style="width:8px; height:8px; border-radius:50%; background:${dotColor};"></div>
-                    <span style="color:#c9d1d9; font-size:12px; font-weight:bold;">${toNode.name}</span>
+                <div style="display:flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden;">
+                    <div style="width:8px; height:8px; border-radius:50%; background:${dotColor}; flex-shrink:0;"></div>
+                    <span style="color:#c9d1d9; font-size:12px; font-weight:bold; overflow:hidden; text-overflow:ellipsis;">${toNode.name}</span>
                     <span style="color:#8b949e; font-size:12px;">·</span>
                     <span style="color:#8b949e; font-size:12px;">${toSigStr}</span>
                 </div>
@@ -2172,7 +2172,7 @@ function showProps(n) {
         }
         h += `</div>`;
     } else {
-       h += `<button class="btn" style="margin-top:10px;width:100%;background:#238636;color:#ffffff;border:1px solid #2ea043;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#2ea043';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#238636';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openMDUInternalTopology && window.openMDUInternalTopology('${n.id}')">⚙️ Схема під'їзду (FTTH)</button>`;
+       h += `<button class="btn" style="margin-top:10px;width:100%;background:#238636;color:#ffffff;border:1px solid #2ea043;padding:6px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#2ea043';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#238636';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openMDUInternalTopology && window.openMDUInternalTopology('${n.id}')">⚙️ Схема під'їзду (FTTH)</button>`;
     }
 
     const s = sigAtONU(n);
@@ -2183,7 +2183,7 @@ function showProps(n) {
     }
   }
 
-  h += `<button class="btn" style="margin-top:15px;width:100%;background:#da3633;color:#ffffff;border:1px solid #f85149;padding:10px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#f85149';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#da3633';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="deleteNodeById('${n.id}')">🗑️ Видалити</button></div>`;
+  h += `<button class="btn" style="margin-top:15px;width:100%;background:#da3633;color:#ffffff;border:1px solid #f85149;padding:6px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#f85149';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#da3633';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="deleteNodeById('${n.id}')">🗑️ Видалити</button></div>`;
   p.innerHTML = h;
 }
 

@@ -115,7 +115,7 @@ body {
 
 .app {
   display: grid;
-  grid-template-columns: 200px 1fr 230px;
+  grid-template-columns: 250px 1fr 250px;
   flex: 1; /* take remaining height under top-bar */
   min-height: 0; /* critical: prevent grid from overflowing flex parent */
   overflow: hidden;
@@ -562,7 +562,7 @@ input[type="file"] {
   background: #0d1117;
   border: 1px solid #30363d;
   border-radius: 6px;
-  padding: 10px;
+  padding: 6px;
   margin-bottom: 6px;
 }
 
