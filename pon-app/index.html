@@ -113,21 +113,28 @@
           </div>
 
           <div class="section-label">Підписи (Тултипи)</div>
-          <div class="btn-grid-2col">
-            <button
-              class="tool-btn active"
-              id="btn-tt-smart"
-              onclick="setTooltipMode('AUTO')"
-            >
-              <span class="icon">✨</span>Смарт
-            </button>
-            <button
-              class="tool-btn"
-              id="btn-tt-hide"
-              onclick="setTooltipMode('HIDDEN')"
-            >
-              <span class="icon">👁️‍🗨️</span>Приховані
-            </button>
+          <div class="toggle-switch-group">
+            <label class="toggle-switch-col" title="Тултипи магістральних кабелів">
+              <span class="toggle-switch-lbl active-lbl" id="lbl-tt-cables">〰️ Лінії</span>
+              <div class="toggle-switch">
+                <input type="checkbox" id="tt-cables" checked onchange="window.toggleTooltip('cables')">
+                <span class="toggle-slider"></span>
+              </div>
+            </label>
+            <label class="toggle-switch-col" title="Тултипи муфт, кросів та OLT">
+              <span class="toggle-switch-lbl active-lbl" id="lbl-tt-coreNodes">📦 Вузли</span>
+              <div class="toggle-switch">
+                <input type="checkbox" id="tt-coreNodes" checked onchange="window.toggleTooltip('coreNodes')">
+                <span class="toggle-slider"></span>
+              </div>
+            </label>
+            <label class="toggle-switch-col" title="Тултипи абонентів (ONU, MDU)">
+              <span class="toggle-switch-lbl active-lbl" id="lbl-tt-subsNodes">🏠 Абонент</span>
+              <div class="toggle-switch">
+                <input type="checkbox" id="tt-subsNodes" checked onchange="window.toggleTooltip('subsNodes')">
+                <span class="toggle-slider"></span>
+              </div>
+            </label>
           </div>
 
           <div class="section-label">Дії</div>

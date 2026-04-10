@@ -143,7 +143,7 @@ declare global {
     checkMDUPorts: Function;
     updateConnCapacity: Function;
     updateConnColor: Function;
-    setTooltipMode: Function;
+    toggleTooltip: Function;
     updateTooltipConfig: Function;
     renderSplitterProgressBar: Function;
     switchMDUTab: Function;

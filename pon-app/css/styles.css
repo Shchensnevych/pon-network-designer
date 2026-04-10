@@ -2546,6 +2546,85 @@ select.patch-select {
   .project-name-input { width: 180px; font-size: 12px; }
 }
 
+/* ── CUSTOM TOGGLE SWITCHES (Smart Tooltips) ── */
+.toggle-switch-group {
+  display: flex;
+  justify-content: space-between;
+  background: #0d1117;
+  border: 1px solid #30363d;
+  border-radius: 6px;
+  padding: 6px 8px;
+}
+
+.toggle-switch-col {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 5px;
+  cursor: pointer;
+}
+
+.toggle-switch-lbl {
+  font-size: 10px;
+  color: #8b949e;
+  font-weight: 500;
+  transition: 0.2s color;
+}
+
+.toggle-switch-col:hover .toggle-switch-lbl {
+  color: #c9d1d9;
+}
+
+.toggle-switch-lbl.active-lbl {
+  color: #58a6ff;
+}
+
+.toggle-switch {
+  position: relative;
+  display: inline-block;
+  width: 34px;
+  height: 18px;
+}
+
+.toggle-switch input {
+  opacity: 0;
+  width: 0;
+  height: 0;
+}
+
+.toggle-slider {
+  position: absolute;
+  cursor: pointer;
+  top: 0; left: 0; right: 0; bottom: 0;
+  background-color: #21262d;
+  border: 1px solid #30363d;
+  transition: .3s;
+  border-radius: 18px;
+}
+
+.toggle-slider:before {
+  position: absolute;
+  content: "";
+  height: 12px;
+  width: 12px;
+  left: 2px;
+  bottom: 2px;
+  background-color: #8b949e;
+  transition: .3s;
+  border-radius: 50%;
+}
+
+input:checked + .toggle-slider {
+  background-color: #1f6feb;
+  border-color: #1f6feb;
+}
+
+input:checked + .toggle-slider:before {
+  transform: translateX(16px);
+  background-color: #fff;
+}
+
 /* ── RESPONSIVE COMPACT (max-width: 1280px) ── */
 @media (max-width: 1280px) {
   /* Для екранів 720p або 1080p з маштабom 150% */

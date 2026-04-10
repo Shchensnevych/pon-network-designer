@@ -945,6 +945,8 @@ function updateConnLabel(c) {
     c._distTooltip = null;
   }
   if (c.type !== "cable") return;
+  if (!tooltipConfig.cables) return; // Support toggling cable tooltips
+  
   const pts = c.polyline.getLatLngs();
   const flat = pts.length > 0 && typeof pts[0].lat === "number" ? pts : pts[0] || [];
   if (flat.length < 2) return;
@@ -1263,12 +1265,25 @@ function updateNodeLabel(n) {
   });
 }
 
-export let tooltipMode = 'AUTO';
-export function setTooltipMode(mode) {
-  tooltipMode = mode;
-  document.getElementById("btn-tt-smart")?.classList.toggle("active", mode === "AUTO");
-  document.getElementById("btn-tt-hide")?.classList.toggle("active", mode === "HIDDEN");
+export let tooltipConfig = {
+  cables: true,
+  coreNodes: true,
+  subsNodes: true
+};
+
+export function toggleTooltip(category) {
+  tooltipConfig[category] = !tooltipConfig[category];
+  const lbl = document.getElementById("lbl-tt-" + category);
+  if (lbl) {
+      lbl.classList.toggle("active-lbl", tooltipConfig[category]);
+  }
   updateTooltipsVisibility();
+  
+  if (category === "cables") {
+      conns.forEach(c => {
+          if (c.type === "cable") updateConnLabel(c);
+      });
+  }
 }
 
 // Адаптивне відображення tooltip'ів
@@ -1279,13 +1294,13 @@ function updateNodeTooltip(node, content) {
   const zoom = map.getZoom();
   const minZoomForPermanent = 16;
   
-  if (tooltipMode === "HIDDEN") {
-    const tt = node.marker.getTooltip();
-    if (tt) node.marker.unbindTooltip();
-    return;
-  }
-  
+  // OLT / FOB / SPLITTER (Core nodes)
   if (node.type === "OLT" || node.type === "FOB") {
+    if (!tooltipConfig.coreNodes) {
+        const tt = node.marker.getTooltip();
+        if (tt) node.marker.unbindTooltip();
+        return;
+    }
     const tt = node.marker.getTooltip();
     if (tt && tt.options.permanent === true && node.marker.isTooltipOpen()) {
       node.marker.setTooltipContent(content);
@@ -1299,6 +1314,11 @@ function updateNodeTooltip(node, content) {
       });
     }
   } else if (node.type === "ONU" || node.type === "MDU") {
+    if (!tooltipConfig.subsNodes) {
+        const tt = node.marker.getTooltip();
+        if (tt) node.marker.unbindTooltip();
+        return;
+    }
     const shouldBePermanent = zoom >= minZoomForPermanent;
     const tt = node.marker.getTooltip();
     const isCurrentlyPermanent = tt ? (tt.options.permanent === true) : null;
@@ -1400,7 +1420,8 @@ function updateTooltipsVisibility() {
     }
   }
 
-  if (zoom < 16 || tooltipMode === "HIDDEN") {
+  // Hide leader lines if zoomed out OR if subs tooltips are manually hidden
+  if (zoom < 16 || !tooltipConfig.subsNodes) {
     clearONULeaderLines();
   }
 
@@ -1449,7 +1470,7 @@ function layoutONUTooltips() {
   onuLeaderLines = [];
 
   const zoom = map.getZoom();
-  if (zoom < 16 || tooltipMode === "HIDDEN") return;
+  if (zoom < 16 || !tooltipConfig.subsNodes) return;
 
   const onus = nodes.filter((n) => n.type === "ONU" || n.type === "MDU");
   if (onus.length === 0) return;

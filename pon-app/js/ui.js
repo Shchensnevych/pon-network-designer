@@ -1497,7 +1497,7 @@ export async function showTopology() {
         const groups = {};
         
         patchcords.forEach(pc => {
-            const pcXc = (fob.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === pc.id);
+            const pcXc = (fob.crossConnects || []).find(x => x.toType === "PATCHCORD" && x.toId === pc.id);
             let srcNodeId = fId;
             if (pcXc) {
                 if (pcXc.fromType === "SPLITTER" && spNodes[pcXc.fromId]) srcNodeId = spNodes[pcXc.fromId];
