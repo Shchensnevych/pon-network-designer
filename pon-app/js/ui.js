@@ -1781,6 +1781,7 @@ function getSpIcon(type, ratio) {
         startOnLoad: false, 
         theme: 'base', 
         securityLevel: 'loose',
+        maxTextSize: 5000000,
         themeVariables: {
           primaryColor: '#161b22',
           primaryTextColor: '#c9d1d9',
