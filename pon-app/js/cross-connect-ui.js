@@ -298,10 +298,11 @@ function savePatchPanel(nodeId, skipClose = false, skipGlobalRefresh = false) {
 
 export function openCrossConnect(nodeId) {
     const node = nodes.find(n => n.id === nodeId);
-    if (!node || node.type !== "FOB") return;
+    if (!node || (node.type !== "FOB" && node.type !== "MDU")) return;
 
     const modal = createModalContainer();
-    document.getElementById("cc-modal-title").innerText = `🪛 Касета (Зварювання): ${node.name}`;
+    const titlePrefix = node.type === "MDU" ? "🪛 Транзитний крос MDU" : "🪛 Касета (Зварювання)";
+    document.getElementById("cc-modal-title").innerText = `${titlePrefix}: ${node.name}`;
     document.getElementById("cc-modal-title").style.color = "#c084fc";
     
     const body = document.getElementById("cc-modal-body");
@@ -321,7 +322,7 @@ function getIncomingCorePath(targetFob, cableId, coreIndex) {
     let currentCableId = cableId;
     let currentCore = coreIndex;
 
-    while (currentFob && currentFob.type === "FOB") {
+    while (currentFob && (currentFob.type === "FOB" || currentFob.type === "MDU")) {
         const inCable = conns.find(c => c.id === currentCableId);
         if (!inCable) break;
         
@@ -333,7 +334,7 @@ function getIncomingCorePath(targetFob, cableId, coreIndex) {
         }
         
         const prevFob = inCable.from;
-        if (prevFob.type !== "FOB") break;
+        if (prevFob.type !== "FOB" && prevFob.type !== "MDU") break;
         
         const xc = (prevFob.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === currentCableId && x.toCore === currentCore);
         
@@ -341,10 +342,10 @@ function getIncomingCorePath(targetFob, cableId, coreIndex) {
             if (xc.fromType === "SPLITTER") {
                 // It comes from a splitter in the previous FOB
                 let spName = xc.fromId;
-                const sp = (prevFob.splitters || []).find(s => s.id === xc.fromId);
+                const sp = (/** @type {any} */ (prevFob).splitters || []).find(s => s.id === xc.fromId);
                 if (sp) spName = `${sp.type} ${sp.ratio}`;
-                else if (xc.fromId === "legacy_fbt") spName = `FBT ${prevFob.fbtType}`;
-                else if (xc.fromId === "legacy_plc") spName = `PLC ${prevFob.plcType}`;
+                else if (xc.fromId === "legacy_fbt") spName = `FBT ${/** @type {any} */ (prevFob).fbtType}`;
+                else if (xc.fromId === "legacy_plc") spName = `PLC ${/** @type {any} */ (prevFob).plcType}`;
                 
                 const branchLbl = xc.fromBranch ? `(Гілка ${xc.fromBranch})` : `(Вихід ${parseInt(String(xc.fromCore||0))+1})`;
                 return `від ${prevFob.name} 👉 ${spName} ${branchLbl}`;
@@ -382,8 +383,8 @@ window.getFobSourceOptions = function(node) {
             if (c.from.type === "OLT") {
                 const oltXc = (c.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
                 if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
-            } else if (c.from.type === "FOB") {
-                const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
+            } else if (c.from.type === "FOB" || c.from.type === "MDU") {
+                const upstream = traceOpticalPath(/** @type {any} */ (c.from), "CABLE", c.id, i);
                 if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
             }
             if (s !== null) sigStr = ` ⚡${s.toFixed(1)}дБ`;
@@ -397,8 +398,8 @@ window.getFobSourceOptions = function(node) {
     inPatchcords.forEach(c => {
         let sigStr = "";
         let s = null;
-        if (c.from.type === "FOB") {
-            const upstream = traceOpticalPath(c.from, "PATCHCORD", c.id, 0);
+        if (c.from.type === "FOB" || c.from.type === "MDU") {
+            const upstream = traceOpticalPath(/** @type {any} */ (c.from), "PATCHCORD", c.id, 0);
             if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
         }
         if (s !== null) sigStr = ` ⚡${s.toFixed(1)}дБ`;
@@ -524,8 +525,8 @@ function renderFOBCrossUI(node) {
             if (c.from.type === "OLT") {
                 const oltXc = (c.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
                 if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
-            } else if (c.from.type === "FOB") {
-                const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
+            } else if (c.from.type === "FOB" || c.from.type === "MDU") {
+                const upstream = traceOpticalPath(/** @type {any} */ (c.from), "CABLE", c.id, i);
                 if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
             }
             if (s !== null) {
@@ -704,7 +705,39 @@ function renderFOBCrossUI(node) {
         }
         outHtml += `</div>`;
     });
-    if(outConns.length===0) outHtml += `<div style="text-align:center;color:#8b949e;font-size:12px">Немає підключених виходів</div>`;
+    if(outConns.length===0 && node.type !== "MDU") outHtml += `<div style="text-align:center;color:#8b949e;font-size:12px">Немає підключених виходів</div>`;
+    
+    // --- LOCAL UPLINK for MDU (FTTB) ---
+    if (node.type === "MDU") {
+        const localXc = (node.crossConnects || []).find(xc => xc.toType === "LOCAL");
+        let selVal = "";
+        if (localXc) selVal = localXc.fromType+"|"+localXc.fromId+"|"+(localXc.fromCore !== undefined ? localXc.fromCore : (localXc.fromBranch || ""));
+        
+        let sOpt = sourceOptions;
+        if (selVal) {
+            sOpt = sOpt.replace(`value="${selVal}"`, `value="${selVal}" selected`);
+        } else {
+            sOpt = sOpt.replace(`<option value="">`, `<option value="" selected>`);
+        }
+        
+        outHtml += `<div style="background:#1a2332; padding:8px; border-radius:4px; border:1px solid #1f6feb; margin-bottom:8px; margin-top:8px;">
+            <div style="font-weight:bold; color:#58a6ff; margin-bottom:6px; font-size:12px; display:flex; align-items:center; gap:6px;">
+                <span style="font-size:16px;">🏠</span> Локальний uplink (цей будинок)
+            </div>
+            <div style="font-size:10px; color:#8b949e; margin-bottom:6px;">Оберіть джерело сигналу для FTTB обладнання цього MDU</div>
+            <div style="display:flex; align-items:center; gap:8px;">
+                <div style="font-size:11px; width:65px; display:flex; align-items:center;">
+                    <div style="width:8px;height:8px;border-radius:50%;background:#58a6ff;margin-right:6px;box-shadow:0 0 3px #58a6ff;"></div> Uplink
+                </div>
+                <select class="fob-cross" data-totype="LOCAL" data-toid="self" data-targetname="Локальний uplink" style="flex:1; min-width:0; width:100%; max-width:100%; text-overflow:ellipsis; overflow:hidden; white-space:nowrap; background:#0d1117; color:#c9d1d9; border:1px solid #1f6feb; font-size:11px;" onchange="window.checkFobPorts(this, '${node.id}')">
+                    ${sOpt}
+                </select>
+            </div>
+        </div>`;
+        
+        if(outConns.length===0) outHtml += `<div style="text-align:center;color:#8b949e;font-size:12px; margin-top:8px;">Немає підключених транзитних виходів</div>`;
+    }
+    
     outHtml += `</div>`;
     
     let bottomWrapperEnd = `</div>`;

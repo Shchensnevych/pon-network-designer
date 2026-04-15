@@ -225,8 +225,8 @@ function renderMDUUI(node) {
                     if (c.from.type === "OLT") {
                         const oltXc = (c.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
                         if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
-                    } else if (c.from.type === "FOB") {
-                        const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
+                    } else if (c.from.type === "FOB" || c.from.type === "MDU") {
+                        const upstream = traceOpticalPath(/** @type {any} */ (c.from), "CABLE", c.id, i);
                         if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
                     }
                     if(s !== null) sigStr = ` ⚡${s.toFixed(1)}дБ`;
@@ -258,8 +258,8 @@ function renderMDUUI(node) {
         } else if (c.type === "patchcord") {
             let sigStr = "";
             let coreSigHtml = "";
-            if (c.from.type === "FOB") {
-                const upstream = traceOpticalPath(c.from, "PATCHCORD", c.id, 0);
+            if (c.from.type === "FOB" || c.from.type === "MDU") {
+                const upstream = traceOpticalPath(/** @type {any} */ (c.from), "PATCHCORD", c.id, 0);
                 if (upstream !== null) {
                     let s = upstream - (connKm(c) * FIBER_DB_KM);
                     const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";

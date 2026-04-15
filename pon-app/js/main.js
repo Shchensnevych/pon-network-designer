@@ -2,6 +2,7 @@
 // Entry point for modular PON Designer.
 // Wires up map/network/UI/backup logic and exposes the expected global API.
 
+import { nodes } from "./state.js";
 import {
   initNetwork,
   selectTool,
@@ -72,6 +73,7 @@ document.addEventListener("DOMContentLoaded", () => {
 
   // Expose functions used by HTML (onclick / onchange) via window
   // Tools & basic network actions
+  /** @type {any} */ (window).nodes = nodes;
   window.selectTool = selectTool;
   window.fitNetwork = fitNetwork;
   window.undo = undo;

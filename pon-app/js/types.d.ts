@@ -192,7 +192,7 @@ declare global {
     fromCore?: number;       // Specific core inside a cable, or branch of a PLC
     fromBranch?: string;     // String branch (e.g. "X" or "Y" for FBT)
     
-    toType: "CABLE" | "SPLITTER" | "UNIT" | "PATCHCORD";
+    toType: "CABLE" | "SPLITTER" | "UNIT" | "PATCHCORD" | "LOCAL";
     toId: string; // Cable ID, Splitter ID
     toCore?: number;
     toBranch?: string;
@@ -243,6 +243,14 @@ declare global {
     // FTTH Internal Architecture
     architecture?: "FTTH" | "FTTB";
     
+    // Transit splice cassette (same as FOB when MDU acts as transit node)
+    splitters?: SplitterModule[];
+    
+    // Legacy splitter compat (for cross-connect tracing through MDU chain)
+    fbtType?: string;
+    plcType?: string;
+    plcBranch?: string;
+    
     // The primary distribution box (e.g. attic)
     mainBox?: {
       splitters: SplitterModule[];
@@ -261,6 +269,7 @@ declare global {
     flats?: {
       flat: number;
       crossConnect?: CrossConnection;
+      connect?: boolean;
     }[];
     
     // Subscriber Penetration / Activation (0-100%)
@@ -349,6 +358,17 @@ declare global {
   interface FOBPortStatusResult {
     lines: string[];
     rich: string;
+  }
+}
+
+declare global {
+  interface Window {
+    showProps: (n: any) => void;
+    checkFobPorts: (e: any) => void;
+    checkMDUPorts: (e: any, id?: string) => void;
+    addMDUSplitter: (id: string, loc: string, ent?: number) => void;
+    removeMDUSplitter: (id: string, loc: string, spId: string, fl?: number, ent?: number) => void;
+    switchMDUTab: (ent: number) => void;
   }
 }
 

@@ -24,7 +24,7 @@ export const PON_COLORS = ["#58a6ff", "#f778ba", "#56d4dd", "#b07efc", "#79c0ff"
 export function getChainColor(fob) {
   /** @type {PONNode} */
   let node = fob;
-  while (node && node.type === "FOB" && node.inputConn) {
+  while (node && (node.type === "FOB" || node.type === "MDU") && node.inputConn) {
     const c = node.inputConn;
     if (c.from.type === "OLT") {
       // Find what PON port is patched to the first active core of this cable
@@ -340,7 +340,7 @@ export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
   
   const visited = new Set(); // Prevent infinite loops in ring topologies
 
-  while (fob && fob.type === "FOB") {
+  while (fob && (fob.type === "FOB" || fob.type === "MDU")) {
     const stepKey = `${fob.id}|${type}|${id}|${core}`;
     if (visited.has(stepKey)) return null;
     visited.add(stepKey);
@@ -348,7 +348,7 @@ export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
     // If we're tracing from a patchcord, we don't need a core match
     const xc = (fob.crossConnects || []).find(x => {
         if (x.toType !== type || String(x.toId) !== String(id)) return false;
-        if (type === "PATCHCORD" || core === undefined) return true;
+        if (type === "PATCHCORD" || type === "LOCAL" || core === undefined) return true;
         return x.toCore === core || x.toBranch === String(core) || String(x.toCore) === String(core);
     });
     if (!xc) return null; // Path physically broken
@@ -365,8 +365,8 @@ export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
         const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === inCable.id && x.toCore === xc.fromCore);
         if (!oltXc) return null;
         return olt.outputPower - accumulatedLoss;
-      } else if (inCable.from.type === "FOB") {
-        fob = inCable.from;
+      } else if (inCable.from.type === "FOB" || inCable.from.type === "MDU") {
+        fob = /** @type {any} */ (inCable.from);
         type = "CABLE";
         id = inCable.id;
         core = xc.fromCore;
@@ -423,8 +423,8 @@ export function sigIn(fob) {
                 const s = olt.outputPower - (connKm(c) * FIBER_DB_KM);
                 if (s > maxSig) maxSig = s;
             }
-        } else if (c.from.type === "FOB") {
-             const s = traceOpticalPath(c.from, "CABLE", c.id, i);
+        } else if (c.from.type === "FOB" || c.from.type === "MDU") {
+             const s = traceOpticalPath(/** @type {any} */ (c.from), "CABLE", c.id, i);
              if (s !== null) {
                  const arrivingSignal = s - (connKm(c) * FIBER_DB_KM);
                  if (arrivingSignal > maxSig) maxSig = arrivingSignal;
@@ -470,8 +470,8 @@ export function calculateMDUSignal(mdu) {
           if (c.from.type === "OLT") {
               const oltXc = (c.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
               if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
-          } else if (c.from.type === "FOB") {
-              const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
+          } else if (c.from.type === "FOB" || c.from.type === "MDU") {
+              const upstream = traceOpticalPath(/** @type {any} */ (c.from), "CABLE", c.id, i);
               if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
           }
            if (s !== null) inSignals[`CABLE|${c.id}|${i}`] = s;
@@ -479,8 +479,8 @@ export function calculateMDUSignal(mdu) {
   });
 
   inPatches.forEach(c => {
-      if (c.from.type === "FOB") {
-          const s = traceOpticalPath(c.from, "PATCHCORD", c.id, 0);
+      if (c.from.type === "FOB" || c.from.type === "MDU") {
+          const s = traceOpticalPath(/** @type {any} */ (c.from), "PATCHCORD", c.id, 0);
           if (s !== null) inSignals[`PATCHCORD|${c.id}|0`] = s - (connKm(c) * FIBER_DB_KM);
       }
   });
@@ -488,10 +488,21 @@ export function calculateMDUSignal(mdu) {
   if (Object.keys(inSignals).length === 0) return null;
 
   if (mdu.architecture === "FTTB") {
+    // Check for LOCAL uplink via cross-connect (e.g., splitter output → this MDU)
+    const localXc = (mdu.crossConnects || []).find(xc => xc.toType === "LOCAL");
+    if (localXc) {
+        // Trace signal through the LOCAL cross-connect
+        const localSig = traceOpticalPath(/** @type {any} */ (mdu), "LOCAL", "self", 0);
+        return localSig !== null ? localSig : null;
+    }
+    
+    // Fallback: use uplink fibers (non-transited)
     let best = -Infinity;
     Object.keys(inSignals).forEach(key => {
         // If uplinks is defined, filter by it. If undefined, assume all are connected.
         if (!mdu.uplinks || mdu.uplinks.includes(key)) {
+            // Skip fibers that are transited via cross-connect to output cables
+            if (isTransitFiber(mdu, key)) return;
             if (inSignals[key] > best) best = inSignals[key];
         }
     });
@@ -602,9 +613,9 @@ export function sigAtONU(onu) {
   if (onu.type === "MDU") return calculateMDUSignal(onu);
   
   const c = conns.find((x) => x.to === onu && x.type === "patchcord");
-  if (!c || c.from.type !== "FOB") return null;
+  if (!c || (c.from.type !== "FOB" && c.from.type !== "MDU")) return null;
   
-  const s = traceOpticalPath(c.from, "PATCHCORD", c.id, 0);
+  const s = traceOpticalPath(/** @type {any} */ (c.from), "PATCHCORD", c.id, 0);
   if (s === null) return null;
   return s;
 }
@@ -712,14 +723,14 @@ export function getOltPortForPath(currentFob, targetType, targetId, targetCore) 
 
   const visited = new Set();
 
-  while (fob && fob.type === "FOB") {
+  while (fob && (fob.type === "FOB" || fob.type === "MDU")) {
     const stepKey = `${fob.id}|${type}|${id}|${core}`;
     if (visited.has(stepKey)) return null;
     visited.add(stepKey);
 
     const xc = (fob.crossConnects || []).find(
-      x => x.toType === type && x.toId === id && 
-           (type === "PATCHCORD" || core === undefined || x.toCore === core || x.toBranch === core)
+      x => x.toType === type && String(x.toId) === String(id) && 
+           (type === "PATCHCORD" || type === "LOCAL" || core === undefined || x.toCore === core || x.toBranch === core)
     );
     if (!xc) return null;
 
@@ -732,8 +743,8 @@ export function getOltPortForPath(currentFob, targetType, targetId, targetCore) 
         const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === inCable.id && x.toCore === xc.fromCore);
         if (!oltXc) return null;
         return { olt, port: parseInt(String(oltXc.fromId)) };
-      } else if (inCable.from.type === "FOB") {
-        fob = inCable.from;
+      } else if (inCable.from.type === "FOB" || inCable.from.type === "MDU") {
+        fob = /** @type {any} */ (inCable.from);
         type = "CABLE";
         id = String(inCable.id);
         core = xc.fromCore;
@@ -767,8 +778,8 @@ export function getMDUFlatOltPort(mdu, flatNum) {
               const oltXc = (inConn.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === inConn.id && x.toCore === currentXc.fromCore);
               if (oltXc) return { olt: inConn.from, port: parseInt(String(oltXc.fromId)) };
               return null;
-          } else if (inConn.from.type === "FOB") {
-              return getOltPortForPath(inConn.from, currentXc.fromType, currentXc.fromId, currentXc.fromCore);
+          } else if (inConn.from.type === "FOB" || inConn.from.type === "MDU") {
+              return getOltPortForPath(/** @type {any} */ (inConn.from), currentXc.fromType, currentXc.fromId, currentXc.fromCore);
           }
           return null;
       } else if (currentXc.fromType === "SPLITTER") {
@@ -791,6 +802,27 @@ export function getMDUFlatOltPort(mdu, flatNum) {
 }
 
 /**
+ * Check if a fiber (identified by its uplink key) is routed via cross-connect
+ * to an outgoing cable (transit). Such fibers should not count as this MDU's uplink.
+ * @param {MDUNode} mdu
+ * @param {string} fiberKey - e.g. "CABLE|c123|2"
+ * @returns {boolean}
+ */
+function isTransitFiber(mdu, fiberKey) {
+    const xcs = mdu.crossConnects || [];
+    if (xcs.length === 0) return false;
+    const parts = fiberKey.split("|");
+    if (parts.length < 3) return false;
+    const fType = parts[0]; // "CABLE" or "PATCHCORD"
+    const fId = parts[1];
+    const fCore = parseInt(parts[2]);
+    // Check if any cross-connect uses this fiber as input (fromType/fromId/fromCore) and routes it to an output cable
+    return xcs.some(xc => 
+        xc.fromType === fType && xc.fromId === fId && xc.fromCore === fCore && xc.toType === "CABLE"
+    );
+}
+
+/**
  * Count ONUs on a specific OLT port.
  * @param {OLTNode} olt
  * @param {number} port
@@ -801,14 +833,22 @@ export function cntONUport(olt, port) {
   for (const onu of nodes) {
       if (onu.type === "ONU") {
           const patch = conns.find(x => x.to === onu && x.type === "patchcord");
-          if (patch && patch.from && patch.from.type === "FOB") {
-              const origin = getOltPortForPath(patch.from, "PATCHCORD", patch.id, 0);
+          if (patch && patch.from && (patch.from.type === "FOB" || patch.from.type === "MDU")) {
+              const origin = getOltPortForPath(/** @type {any} */ (patch.from), "PATCHCORD", patch.id, 0);
               if (origin && origin.olt === olt && origin.port === port) {
                   count += 1;
               }
           }
       } else if (onu.type === "MDU") {
           if (onu.architecture === "FTTB") {
+              // Check for LOCAL uplink via cross-connect first
+              const localXc = (onu.crossConnects || []).find(xc => xc.toType === "LOCAL");
+              if (localXc) {
+                  const origin = getOltPortForPath(/** @type {any} */ (onu), "LOCAL", "self", 0);
+                  if (origin && origin.olt === olt && origin.port === port) {
+                      count += 1;
+                  }
+              } else {
               // FTTB: Each active optical uplink from MDU to OLT counts as 1 ONU
               const inConns = conns.filter(x => x.to === onu && (x.type === "patchcord" || x.type === "cable"));
               for (const inc of inConns) {
@@ -816,19 +856,22 @@ export function cntONUport(olt, port) {
                   for (let c=0; c<cores; c++) {
                       const key = `${inc.type.toUpperCase()}|${inc.id}|${inc.type==="patchcord"?0:c}`;
                       if (onu.uplinks && !onu.uplinks.includes(key)) continue;
+                      // Skip fibers that are transited via cross-connect to output cables
+                      if (isTransitFiber(onu, key)) continue;
 
                       let origin = null;
                       if (inc.from.type === "OLT") {
                           const oltXc = (inc.from.crossConnects || []).find(x => x.toType === inc.type.toUpperCase() && x.toId === inc.id && x.toCore === c);
                           if (oltXc) origin = { olt: inc.from, port: parseInt(String(oltXc.fromId)) };
-                      } else if (inc.from.type === "FOB") {
-                          origin = getOltPortForPath(inc.from, inc.type.toUpperCase(), inc.id, c);
+                      } else if (inc.from.type === "FOB" || inc.from.type === "MDU") {
+                          origin = getOltPortForPath(/** @type {any} */ (inc.from), inc.type.toUpperCase(), inc.id, c);
                       }
                       if (origin && origin.olt === olt && origin.port === port) {
                           count += 1;
                       }
                   }
               }
+              } // end else (no localXc)
           } else {
               // FTTH: Count each active flat on this port
               const totalFlats = (onu.floors || 0) * (onu.entrances || 0) * (onu.flatsPerFloor || 0);
@@ -855,14 +898,24 @@ export function cntSubsPort(olt, port) {
   for (const onu of nodes) {
       if (onu.type === "ONU") {
           const patch = conns.find(x => x.to === onu && x.type === "patchcord");
-          if (patch && patch.from && patch.from.type === "FOB") {
-              const origin = getOltPortForPath(patch.from, "PATCHCORD", patch.id, 0);
+          if (patch && patch.from && (patch.from.type === "FOB" || patch.from.type === "MDU")) {
+              const origin = getOltPortForPath(/** @type {any} */ (patch.from), "PATCHCORD", patch.id, 0);
               if (origin && origin.olt === olt && origin.port === port) {
                   subs += 1;
               }
           }
       } else if (onu.type === "MDU") {
           if (onu.architecture === "FTTB") {
+              // Check for LOCAL uplink via cross-connect first
+              const localXc = (onu.crossConnects || []).find(xc => xc.toType === "LOCAL");
+              if (localXc) {
+                  const origin = getOltPortForPath(/** @type {any} */ (onu), "LOCAL", "self", 0);
+                  if (origin && origin.olt === olt && origin.port === port) {
+                      const totalAbon = (onu.floors || 0) * (onu.entrances || 0) * (onu.flatsPerFloor || 0);
+                      const pen = typeof onu.penetrationRate === "number" ? onu.penetrationRate : 50;
+                      subs += Math.ceil(totalAbon * (pen / 100));
+                  }
+              } else {
               // FTTB: Subs are based on penetration rate, distributed proportionally across all active OLT uplinks
               const inConns = conns.filter(x => x.to === onu && (x.type === "patchcord" || x.type === "cable"));
               const activeLinks = [];
@@ -872,13 +925,15 @@ export function cntSubsPort(olt, port) {
                   for (let c=0; c<cores; c++) {
                       const key = `${inc.type.toUpperCase()}|${inc.id}|${inc.type==="patchcord"?0:c}`;
                       if (onu.uplinks && !onu.uplinks.includes(key)) continue;
+                      // Skip fibers that are transited via cross-connect to output cables
+                      if (isTransitFiber(onu, key)) continue;
 
                       let origin = null;
                       if (inc.from.type === "OLT") {
                           const oltXc = (inc.from.crossConnects || []).find(x => x.toType === inc.type.toUpperCase() && x.toId === inc.id && x.toCore === c);
                           if (oltXc) origin = { olt: inc.from, port: parseInt(String(oltXc.fromId)) };
-                      } else if (inc.from.type === "FOB") {
-                          origin = getOltPortForPath(inc.from, inc.type.toUpperCase(), inc.id, c);
+                      } else if (inc.from.type === "FOB" || inc.from.type === "MDU") {
+                          origin = getOltPortForPath(/** @type {any} */ (inc.from), inc.type.toUpperCase(), inc.id, c);
                       }
                       if (origin) {
                           activeLinks.push(origin);
@@ -896,6 +951,7 @@ export function cntSubsPort(olt, port) {
                       subs += Math.round((totalSubs / activeLinks.length) * myLinks);
                   }
               }
+              } // end else (no localXc)
           } else {
               // FTTH: 1 connected flat = 1 subscriber
               const totalFlats = (onu.floors || 0) * (onu.entrances || 0) * (onu.flatsPerFloor || 0);
@@ -955,7 +1011,7 @@ export function updateCableColors() {
     if (!c.polyline) return;
     /** @type {number | null} */
     let sig = null;
-    if (c.type === "cable" && c.to?.type === "FOB" && c.to.inputConn && hasOLTPath(/** @type {any} */ (c.to))) {
+    if (c.type === "cable" && (c.to?.type === "FOB" || c.to?.type === "MDU") && c.to.inputConn && hasOLTPath(/** @type {any} */ (c.to))) {
       sig = sigIn(/** @type {any} */ (c.to));
     } else if (c.type === "patchcord" && (c.to?.type === "ONU" || c.to?.type === "MDU") && c.from && hasOLTPath(/** @type {any} */ (c.from))) {
       sig = sigAtONU(/** @type {any} */ (c.to));
@@ -976,8 +1032,8 @@ export function updateCableColors() {
         } else {
           newColor = "#8b949e";
         }
-      } else if (c.from && c.from.type === "FOB") {
-        newColor = getChainColor(c.from);
+      } else if (c.from && (c.from.type === "FOB" || c.from.type === "MDU")) {
+        newColor = getChainColor(/** @type {any} */ (c.from));
       }
       
       if (c.color !== newColor) {

@@ -14,7 +14,7 @@ import {
   sigAtONU,
   connKm,
 } from "./network.js";
-import { traceOpticalPath, calculateMDUSignal, trueSigAtONU, sigSplitter, getMduSig } from "./signal.js";
+import { traceOpticalPath, calculateMDUSignal, trueSigAtONU, sigSplitter, getMduSig, getOltPortForPath } from "./signal.js";
 import { getSplitterColor } from "./mdu-ui.js";
 
 /**
@@ -166,7 +166,7 @@ function buildEconomicData() {
     }
     else if (n.type === "MDU") {
       let finalName = isDefaultName(n.name, "MDU") ? "Багатоквартирний будинок MDU" : n.name;
-      add("Пасивне обладнання", finalName, 1, "шт.", price);
+      add("Пасивне обладнання", finalName + " (Не розраховується в кошторисі)", 1, "шт.", price);
       
       const floors = n.floors || 5;
       const entrances = n.entrances || 1;
@@ -177,21 +177,23 @@ function buildEconomicData() {
       const activeSubs = Math.ceil(totalFlats * (penRate / 100));
 
       const isFTTH = n.architecture !== "FTTB";
+
+      let mduSplitters = [];
+      if (n.splitters) mduSplitters.push(...n.splitters);
+      if (n.mainBox && n.mainBox.splitters) mduSplitters.push(...n.mainBox.splitters);
+      if (n.floorBoxes) n.floorBoxes.forEach(fb => mduSplitters.push(...(fb.splitters || [])));
+      
+      if (mduSplitters.length > 0) {
+         mduSplitters.forEach(sp => add("Сплітери оптичні", `Сплітер ${sp.type} ${sp.ratio}`, 1, "шт.", 0));
+      } else if (isFTTH) {
+         add("Сплітери оптичні", `Сплітер PLC 1x8 (Вторинний/Поверховий)`, entrances * floors, "шт.", 0);
+      }
+
       if (isFTTH) {
         add("Пасивне обладнання", "Бокс оптичний головний (MDU Горище/Цоколь)", entrances, "шт.", 0);
         
         const floorBoxes = entrances * floors;
         add("Пасивне обладнання", "Бокс поверховий розподільчий (FTTH MDU)", floorBoxes, "шт.", 0);
-        
-        let mduSplitters = [];
-        if (n.mainBox && n.mainBox.splitters) mduSplitters.push(...n.mainBox.splitters);
-        if (n.floorBoxes) n.floorBoxes.forEach(fb => mduSplitters.push(...(fb.splitters || [])));
-        
-        if (mduSplitters.length > 0) {
-           mduSplitters.forEach(sp => add("Сплітери оптичні", `Сплітер ${sp.type} ${sp.ratio}`, 1, "шт.", 0));
-        } else {
-           add("Сплітери оптичні", `Сплітер PLC 1x8 (Вторинний/Поверховий)`, floorBoxes, "шт.", 0);
-        }
         
         const riserMeters = entrances * (floors * 3 + 10);
         add("Кабелі магістральні", "Кабель оптичний Riser (внутрішньобудинковий, для вертикальної розводки під'їздів)", riserMeters, "м", 0);
@@ -208,11 +210,17 @@ function buildEconomicData() {
         add("Монтажні матеріали", "Конектор швидкої фіксації Fast Connector (окінцювання Inner Drop кабелю у квартирі)", activeSubs * 2, "шт.", 0);
         add("Абонентське обладнання", "Абонентський термінал ONU (перетворювач оптики в Ethernet)", activeSubs, "шт.", 0);
       } else {
-        // FTTB: Switch, UTP cable
-        add("Активне обладнання", "Комутатор доступу (FTTB Switch)", entrances, "шт.", 0);
+        // FTTB: Dynamic Switch calculation per entrance
+        const subsPerEntrance = Math.ceil(activeSubs / entrances);
+        let switchPorts = 8;
+        if (subsPerEntrance > 24) switchPorts = 48;
+        else if (subsPerEntrance > 16) switchPorts = 24;
+        else if (subsPerEntrance > 8) switchPorts = 16;
+        
+        add("Активне обладнання", `Комутатор доступу керований L2 (FTTB Switch на ${switchPorts} портів)`, entrances, "шт.", 0);
         
         const utpMeters = activeSubs * 20;
-        add("Кабелі абонентські", "Кабель UTP мідний (FTTB)", utpMeters, "м", 0);
+        add("Кабелі абонентські", "Кабель UTP мідний (FTTB 'вита пара')", utpMeters, "м", 0);
       }
     }
   });
@@ -238,8 +246,8 @@ function buildEconomicData() {
 
 
 /**
- * Trace the full signal chain from OLT to a specific FOB, returning step-by-step details.
- * @param {FOBNode} targetFob - The FOB to trace signal to
+ * Trace the full signal chain from OLT to a specific FOB or MDU, returning step-by-step details.
+ * @param {FOBNode | MDUNode} targetFob - The FOB or MDU to trace signal to
  * @returns {{ oltName: string, oltPort: number, oltPower: number, steps: Array<{label: string, loss: number, signal: number}>, totalLoss: number, finalSignal: number|null, chainText: string } | null}
  */
 function traceSignalChain(targetFob) {
@@ -297,7 +305,7 @@ function traceSignalChain(targetFob) {
     
     // Try to find OLT
     let srcNode = inCable.from;
-    while (srcNode && srcNode.type === "FOB") {
+    while (srcNode && (srcNode.type === "FOB" || srcNode.type === "MDU")) {
       const prevCable = conns.find(c => c.to === srcNode && c.type === "cable");
       if (!prevCable) break;
       const km = connKm(prevCable);
@@ -346,7 +354,7 @@ function traceSignalChain(targetFob) {
   
   // Now trace backward through cross-connects
   let safetyCounter = 0;
-  while (currentFob && currentFob.type === "FOB" && safetyCounter < 20) {
+  while (currentFob && (currentFob.type === "FOB" || currentFob.type === "MDU") && safetyCounter < 20) {
     safetyCounter++;
     const xcList = currentFob.crossConnects || [];
     const xc = xcList.find(x => {
@@ -389,7 +397,7 @@ function traceSignalChain(targetFob) {
           steps: detailedSteps, totalLoss: totalLoss, finalSignal: finalSignal,
           chainText: chainParts.join(" → ")
         };
-      } else if (inCable.from.type === "FOB") {
+      } else if (inCable.from.type === "FOB" || inCable.from.type === "MDU") {
         // Check if this upstream FOB has a splitter feeding this cable
         const upFob = inCable.from;
         const upXcs = upFob.crossConnects || [];
@@ -479,8 +487,8 @@ function buildReportData() {
       
       let so = null;
       if (n.type === "MDU") {
-          const mduSig = /** @type {any} */ (typeof calculateMDUSignal === "function" ? calculateMDUSignal(n) : { worstSignal: null });
-          so = mduSig.worstSignal !== null ? mduSig.worstSignal : null;
+          const mduSig = typeof calculateMDUSignal === "function" ? calculateMDUSignal(n) : null;
+          so = (typeof mduSig === "number" && !isNaN(mduSig)) ? mduSig : null;
       } else {
           // FOB
           const drops = conns.filter(x => x.from === n && x.type === "patchcord");
@@ -494,16 +502,22 @@ function buildReportData() {
 
       let fbts = "—"; let plcs = "—"; let plcBranch = "—";
       if (n.type === "MDU") {
-          let sps = [];
+          let sps = [...(n.splitters || [])];
           if (n.mainBox && n.mainBox.splitters) sps.push(...n.mainBox.splitters);
           if (n.floorBoxes) n.floorBoxes.forEach(fb => sps.push(...(fb.splitters || [])));
           if (sps.length > 0) {
-              const fCount = sps.filter(s => s.type === "FBT").length;
-              const pCount = sps.filter(s => s.type === "PLC").length;
-              if(fCount) fbts = `FBT (${fCount} шт)`;
-              if(pCount) plcs = `PLC (${pCount} шт)`;
+              const pCounts = {};
+              const fCounts = {};
+              sps.forEach(s => {
+                  if (s.type === "PLC") pCounts[s.ratio] = (pCounts[s.ratio] || 0) + 1;
+                  if (s.type === "FBT") fCounts[s.ratio] = (fCounts[s.ratio] || 0) + 1;
+              });
+              const fArr = Object.entries(fCounts).map(([ratio, count]) => count > 1 ? `${ratio} (${count}шт)` : ratio);
+              const pArr = Object.entries(pCounts).map(([ratio, count]) => count > 1 ? `${ratio} (${count}шт)` : ratio);
+              if (fArr.length) fbts = fArr.join(", ");
+              if (pArr.length) plcs = pArr.join(", ");
           } else if (n.architecture !== "FTTB") {
-              plcs = `PLC 1x8 (Авто)`;
+              plcs = `1x8 (Авто)`;
           }
       } else {
           const splitters = n.splitters || [];
@@ -514,10 +528,15 @@ function buildReportData() {
 
       let connectedONU = 0;
       if (n.type === "MDU") {
-         const firstFlat = 1;
-         const lastFlat = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 4);
-         if (n.flats) {
-            connectedONU = n.flats.filter(f => f.flat >= firstFlat && f.flat <= lastFlat && f.crossConnect).length;
+         if (n.architecture === "FTTB") {
+            const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 100;
+            connectedONU = Math.ceil((n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0) * (pen / 100));
+         } else {
+            const firstFlat = 1;
+            const lastFlat = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 4);
+            if (n.flats) {
+               connectedONU = n.flats.filter(f => f.flat >= firstFlat && f.flat <= lastFlat && f.crossConnect).length;
+            }
          }
       } else {
          connectedONU = conns.filter((x) => x.from === n && x.type === "patchcord").reduce((acc, c) => acc + (c.to.type === "MDU" ? Math.ceil((c.to.floors || 0) * (c.to.entrances || 0) * (c.to.flatsPerFloor || 0) * ((typeof c.to.penetrationRate === 'number' ? c.to.penetrationRate : 100) / 100)) : 1), 0);
@@ -526,30 +545,36 @@ function buildReportData() {
       const origins = Array.from(new Set(inConns.map(c => c.from.name || c.from.type))).join(", ");
       const branches = Array.from(new Set(inConns.map(c => c.branch || "—"))).join(", ");
 
-      // Trace signal chain for FOBs
-      const chain = n.type === "FOB" ? traceSignalChain(n) : null;
+      // Trace signal chain for FOBs and MDUs
+      const chain = (n.type === "FOB" || n.type === "MDU") ? traceSignalChain(n) : null;
       let chainText = chain ? chain.chainText : null;
       
-      if (chainText && n.type === "FOB") {
-          const drops = conns.filter(x => x.from === n && x.type === "patchcord");
-          if (drops.length > 0) {
-              let worstDrop = drops[0];
-              // @ts-ignore
-              let minSig = typeof trueSigAtONU === "function" ? trueSigAtONU(worstDrop.to) : so;
-              for (const d of drops) {
-                  // @ts-ignore
-                  const s = typeof trueSigAtONU === "function" ? trueSigAtONU(d.to) : so;
-                  if (s !== null && (minSig === null || s < minSig)) { 
-                      minSig = s; 
-                      worstDrop = d; 
-                  }
-              }
-              if (worstDrop && minSig !== null) {
-                  const dropM = connKm(worstDrop) * 1000;
-                  const dropLoss = (dropM / 1000) * FIBER_DB_KM;
-                  chainText += ` → Drop-кабель ${dropM.toFixed(0)}м (-${dropLoss.toFixed(2)}дБ) → ONU (${minSig.toFixed(2)}дБ)`;
-              }
-          }
+      if (chainText) {
+        if (n.type === "FOB") {
+            const drops = conns.filter(x => x.from === n && x.type === "patchcord");
+            if (drops.length > 0) {
+                let worstDrop = drops[0];
+                // @ts-ignore
+                let minSig = typeof trueSigAtONU === "function" ? trueSigAtONU(worstDrop.to) : so;
+                for (const d of drops) {
+                    // @ts-ignore
+                    const s = typeof trueSigAtONU === "function" ? trueSigAtONU(d.to) : so;
+                    if (s !== null && (minSig === null || s < minSig)) { 
+                        minSig = s; 
+                        worstDrop = d; 
+                    }
+                }
+                if (worstDrop && minSig !== null) {
+                    const dropM = connKm(worstDrop) * 1000;
+                    const dropLoss = (dropM / 1000) * FIBER_DB_KM;
+                    chainText += ` → Drop-кабель ${dropM.toFixed(0)}м (-${dropLoss.toFixed(2)}дБ) → ONU (${minSig.toFixed(2)}дБ)`;
+                }
+            }
+        } else if (n.type === "MDU") {
+            if (typeof so === "number") {
+                chainText += ` → Лінії MDU → Абонент (${so.toFixed(2)}дБ)`;
+            }
+        }
       }
 
       rows.push({
@@ -567,7 +592,7 @@ function buildReportData() {
         plcLoss: chain ? chain.steps.filter(s => s.label.includes("PLC")).reduce((a, s) => a + s.loss, 0) : null,
         plcBranch: plcBranch,
         totalLoss: chain ? chain.totalLoss : null,
-        signalONU: so !== null ? so.toFixed(2) : "—",
+        signalONU: typeof so === "number" ? so.toFixed(2) : "—",
         onuCnt: connectedONU,
         oltSource: chain ? `${chain.oltName}, Порт ${chain.oltPort + 1}` : "—",
         oltPower: chain ? chain.oltPower : null,
@@ -995,24 +1020,26 @@ export function downloadTXT() {
 export function showSuggestions() {
   const issues = [];
 
+  // 1. Не підключені магістральні вузли
   nodes
-    .filter((n) => n.type === "FOB")
-    .forEach((fob) => {
-      const inCables = conns.filter(c => c.to === fob && c.type === "cable");
+    .filter((n) => n.type === "FOB" || n.type === "MDU")
+    .forEach((node) => {
+      const inCables = conns.filter(c => c.to === node && c.type === "cable");
       if (inCables.length === 0) {
         issues.push({
           icon: "❌",
           type: "err",
-          msg: `${fob.name}: не підключений (немає вхідного кабелю)`,
-          nodeId: fob.id,
+          msg: `${node.name}: не підключений (немає вхідного кабелю)`,
+          nodeId: node.id,
         });
       }
     });
 
+  // 2. Не підключені кінцеві ONU
   nodes
-    .filter((n) => n.type === "ONU" || n.type === "MDU")
+    .filter((n) => n.type === "ONU")
     .forEach((onu) => {
-      const hasConn = conns.some((c) => c.to === onu && (c.type === "patchcord" || (onu.type === "MDU" && c.type === "cable")));
+      const hasConn = conns.some((c) => c.to === onu && c.type === "patchcord");
       if (!hasConn)
         issues.push({
           icon: "❌",
@@ -1022,9 +1049,10 @@ export function showSuggestions() {
         });
     });
 
+  // 3. Сигнали муфт
   nodes
     .filter((n) => n.type === "FOB")
-    .forEach((/** @type {FOBNode} */ fob) => {
+    .forEach((fob) => {
       const inCables = conns.filter(c => c.to === fob && c.type === "cable");
       const hasSplitters = (fob.splitters && fob.splitters.length > 0) || fob.fbtType || fob.plcType;
       if (inCables.length > 0 && hasSplitters) {
@@ -1045,6 +1073,70 @@ export function showSuggestions() {
             nodeId: fob.id,
           });
         }
+      }
+    });
+
+  // 4. Сигнали MDU
+  nodes
+    .filter((n) => n.type === "MDU")
+    .forEach((mdu) => {
+      const inCables = conns.filter(c => c.to === mdu && c.type === "cable");
+      if (inCables.length === 0) return; // Помилка вже є у пункті 1
+      
+      if (mdu.architecture === "FTTB") {
+          const localXcs = (mdu.crossConnects || []).filter(x => x.toType === "LOCAL");
+          if (localXcs.length === 0) {
+              issues.push({
+                  icon: "⚠️", type: "warn", msg: `${mdu.name}: активний свіч не підключений локально!`, nodeId: mdu.id,
+              });
+          } else {
+              const sig = traceOpticalPath(/** @type {any} */ (mdu), "LOCAL", "self", 0);
+              if (sig === null || sig < ONU_MIN - 3) {
+                  issues.push({
+                      icon: "❌", type: "err", msg: `${mdu.name}: критичний сигнал на свічі (${sig !== null ? sig.toFixed(1) : 'немає'} дБ)`, nodeId: mdu.id,
+                  });
+              } else if (sig < ONU_MIN) {
+                  issues.push({
+                      icon: "⚠️", type: "warn", msg: `${mdu.name}: сигнал свіча на межі порогу (${sig.toFixed(1)} дБ)`, nodeId: mdu.id,
+                  });
+              }
+          }
+      } else {
+          // FTTH Flats
+          const flats = mdu.flats || [];
+          let hasCrit = false;
+          let minFlatSig = Infinity;
+          let critCount = 0;
+          let unConnCount = 0;
+          
+          flats.forEach(f => {
+              if (f.crossConnect && f.crossConnect.toType === "UNIT" && f.connect) {
+                  const s = typeof getMduSig === "function" ? getMduSig(mdu, "flat", f.flat) : null;
+                  if (s !== null) {
+                      if (s < minFlatSig) minFlatSig = s;
+                      if (s < ONU_MIN - 3) critCount++;
+                  } else {
+                      unConnCount++;
+                  }
+              }
+          });
+          
+          let hasConnections = flats.some(f => f.connect);
+          
+          if (critCount > 0) {
+               issues.push({
+                  icon: "❌", type: "err", msg: `${mdu.name}: ${critCount} квартир з критичним сигналом (найгірший: ${minFlatSig === Infinity?'N/A':minFlatSig.toFixed(1)} дБ)`, nodeId: mdu.id,
+              });
+          } else if (minFlatSig !== Infinity && minFlatSig < ONU_MIN) {
+               issues.push({
+                  icon: "⚠️", type: "warn", msg: `${mdu.name}: сигнал на квартирах на межі порогу (${minFlatSig.toFixed(1)} дБ)`, nodeId: mdu.id,
+              });
+          }
+          if (unConnCount > 0 && hasConnections) {
+              issues.push({
+                  icon: "⚠️", type: "warn", msg: `${mdu.name}: ${unConnCount} квартир без оптичного лінку`, nodeId: mdu.id,
+              });
+          }
       }
     });
 
@@ -1077,26 +1169,27 @@ export function showSuggestions() {
         });
     });
 
+  // Зациклення
   nodes
-    .filter((n) => n.type === "FOB")
-    .forEach((fob) => {
+    .filter((n) => n.type === "FOB" || n.type === "MDU")
+    .forEach((node) => {
       const visited = new Set();
-      let cur = fob;
-      while (cur && cur.type === "FOB") {
+      let cur = node;
+      while (cur && (cur.type === "FOB" || cur.type === "MDU")) {
         if (visited.has(cur.id)) {
           issues.push({
             icon: "❌",
             type: "err",
-            msg: `Петля виявлена! Ланцюг через ${fob.name}`,
-            nodeId: fob.id,
+            msg: `Петля виявлена! Ланцюг через ${node.name}`,
+            nodeId: node.id,
           });
           break;
         }
         visited.add(cur.id);
         const inCables = conns.filter(c => c.to === cur && c.type === "cable");
-        const fromFobCables = inCables.filter(c => c.from && c.from.type === "FOB");
-        if (fromFobCables.length === 0) break;
-        cur = /** @type {FOBNode} */ (fromFobCables[0].from);
+        const fromNodes = inCables.filter(c => c.from && (c.from.type === "FOB" || c.from.type === "MDU"));
+        if (fromNodes.length === 0) break;
+        cur = /** @type {FOBNode | MDUNode} */ (fromNodes[0].from);
       }
     });
 
@@ -1119,13 +1212,16 @@ export function showSuggestions() {
     html += `</ul>`;
   }
   html += `</div>`;
-
+  
   document.getElementById("modal-body").innerHTML = html;
-  const h2 = document
-    .getElementById("modal-overlay")
-    .querySelector("h2");
-  if (h2) h2.textContent = "🔍 Перевірка мережі";
-  document.getElementById("modal-overlay")?.classList.add("open");
+  const overlay = document.getElementById("modal-overlay");
+  if (overlay) {
+    const h2 = overlay.querySelector("h2");
+    if (h2) h2.innerHTML = '<i class="fa-solid fa-magnifying-glass"></i> Перевірка мережі';
+    const pngBtn = document.getElementById("btn-export-png");
+    if (pngBtn) pngBtn.style.display = "none";
+    overlay.classList.add("open");
+  }
 }
 
 export function focusNode(id) {
@@ -1295,7 +1391,7 @@ export async function showTopology() {
        }
     }
 
-    const groupCoresToHtml = (coreObjects, prefixStr = "") => {
+        const groupCoresToHtml = (coreObjects, prefixStr = "") => {
         if (coreObjects.length === 0) return "";
         let html = "";
         if (prefixStr) html += `<div style='text-align:center; font-size:11px; margin-bottom:4px; font-weight:600;'>${prefixStr}</div>`;
@@ -1315,7 +1411,8 @@ export async function showTopology() {
                       const sColor = c.sig >= -25 ? "#3fb950" : c.sig >= -28 ? "#d29922" : "#f85149";
                       sigHtml = `<span style='color:${sColor} !important; font-size:9px; margin-left:3px;'>⚡${c.sig.toFixed(1)}</span>`;
                  }
-                 return `<span style='display:inline-block; background:rgba(13,17,23,0.8); border:1px solid #30363d; border-radius:4px; padding:2px 5px; margin:2px; white-space:nowrap; font-size:10px; color:#c9d1d9;'><span style='display:inline-block; width:8px; height:8px; border-radius:50%; background:${dotColor} !important; ${bdr} margin-right:4px; vertical-align:middle;'></span><span style='vertical-align:middle;'>${c.coreIdx+1}</span>${sigHtml}</span>`;
+                 let pStr = c.portStr || "";
+                 return `<span style='display:inline-block; background:rgba(13,17,23,0.8); border:1px solid #30363d; border-radius:4px; padding:2px 5px; margin:2px; white-space:nowrap; font-size:10px; color:#c9d1d9;'><span style='display:inline-block; width:8px; height:8px; border-radius:50%; background:${dotColor} !important; ${bdr} margin-right:4px; vertical-align:middle;'></span><span style='vertical-align:middle;'>${c.coreIdx+1}</span>${pStr}${sigHtml}</span>`;
             }).join("");
             html += `<div style="text-align:center;">${rowHtml}</div>`;
         }
@@ -1364,7 +1461,7 @@ export async function showTopology() {
                           const oltXc = (cable.from.crossConnects || []).find(cx => cx.toType === "CABLE" && cx.toId === cable.id && cx.toCore === coreIdx);
                           if (oltXc) inSig = cable.from.outputPower - cLoss;
                       } else if (cable.from.type === "FOB") {
-                          const upstream = traceOpticalPath(cable.from, "CABLE", cable.id, coreIdx);
+                          const upstream = traceOpticalPath(/** @type {any} */ (cable.from), "CABLE", cable.id, coreIdx);
                           if (upstream !== null) inSig = upstream - cLoss;
                       }
                       coreObjects.push({ coreIdx: coreIdx, sig: inSig });
@@ -1433,11 +1530,7 @@ export async function showTopology() {
         let edgeText = "";
         if (cable && cable.capacity) {
             const cLoss = connKm(cable) * FIBER_DB_KM;
-            let activeCoresHtml = "";
-            const FIBER_COLORS = [
-                "#58a6ff", "#ff9632", "#3fb950", "#b07b46", "#8b949e", "#ffffff",
-                "#f85149", "#000000", "#e3b341", "#bc8cff", "#ff80b5", "#56d364"
-            ];
+            let cObjs = [];
             
             for (let i = 0; i < cable.capacity; i++) {
                let s = null;
@@ -1446,26 +1539,50 @@ export async function showTopology() {
                    const oltXc = (cable.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === cable.id && x.toCore === i);
                    if (oltXc) {
                        s = cable.from.outputPower - cLoss;
-                       portStr = `<span style="color:#8b949e; font-size:9px; margin-right:2px;">(P${parseInt(String(oltXc.fromId))+1})</span>`;
+                       portStr = `<span style="color:#8b949e; font-size:9px; margin-right:2px; margin-left:1px;">(P${parseInt(String(oltXc.fromId))+1})</span>`;
                    }
-               } else if (cable.from.type === "FOB") {
-                   const upstream = traceOpticalPath(cable.from, "CABLE", cable.id, i);
-                   if (upstream !== null) s = upstream - cLoss;
+               } else if (cable.from.type === "FOB" || cable.from.type === "MDU") {
+                   const upstream = traceOpticalPath(/** @type {any} */ (cable.from), "CABLE", cable.id, i);
+                   if (upstream !== null) {
+                       s = upstream - cLoss;
+                       const xc = (cable.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === cable.id && x.toCore === i);
+                       if (xc) {
+                           if (xc.fromType === "SPLITTER") {
+                               let sp = (cable.from.splitters || []).find(spl => spl.id === xc.fromId);
+                               if (!sp && cable.from.type === "MDU") {
+                                   if (cable.from.mainBox && cable.from.mainBox.splitters) sp = cable.from.mainBox.splitters.find(spl => spl.id === xc.fromId);
+                                   if (!sp && cable.from.floorBoxes) {
+                                       for (let fb of cable.from.floorBoxes) {
+                                           if (fb.splitters) {
+                                               sp = fb.splitters.find(spl => spl.id === xc.fromId);
+                                               if (sp) break;
+                                           }
+                                       }
+                                   }
+                               }
+                               let b = xc.fromBranch ? xc.fromBranch : ((xc.fromCore !== undefined && xc.fromCore !== null) ? parseInt(String(xc.fromCore))+1 : "");
+                               if (sp) portStr = `<span style="color:#8b949e; font-size:9px; margin-left:1px;">(${sp.type} ${b})</span>`;
+                               else portStr = `<span style="color:#8b949e; font-size:9px; margin-left:1px;">(Вих ${b})</span>`;
+                           } else if (xc.fromType === "CABLE") {
+                               let pAdd = "";
+                               const origin = getOltPortForPath(/** @type {any} */ (cable.from), "CABLE", String(cable.id), i);
+                               if (origin && typeof origin.port === "number") {
+                                   pAdd = ` (P${origin.port + 1})`;
+                               }
+                               portStr = `<span style="color:#8b949e; font-size:9px; margin-left:1px;">(Тр Ж${parseInt(String(xc.fromCore))+1}${pAdd})</span>`;
+                           }
+                       }
+                   }
                }
                if (s !== null) {
-                   const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
-                   const dotColor = FIBER_COLORS[i % 12];
-                   let bdr = dotColor === "#000000" ? "border: 1px solid #777;" : "border: 1px solid rgba(255,255,255,0.2);";
-                   if (dotColor === "#000000") bdr += " box-shadow: 0 0 2px #fff;";
-                   
-                   activeCoresHtml += `<span class='mm-edge-label-box'><span class='mm-fiber-dot' style='background:${dotColor} !important; ${bdr}'></span><span class='mm-fiber-text'>${i+1}</span>${portStr}<span class='mm-fiber-sig' style='color:${sColor} !important;'>⚡${s.toFixed(1)}</span></span>`;
+                   cObjs.push({ coreIdx: i, sig: s, portStr: portStr });
                }
             }
             const dist = (connKm(cable) * 1000).toFixed(0);
             const loss = cLoss.toFixed(2);
-            let coresDiv = activeCoresHtml ? `<br/><div style='display:flex; flex-wrap:wrap; justify-content:center; max-width:160px; margin-top:4px;'>${activeCoresHtml}</div>` : "";
+            let coresDiv = cObjs.length > 0 ? `<br/>${groupCoresToHtml(cObjs).replace(/\|"/g, '').replace(/"\|/g, '')}` : "";
             let branchLbl = incomingBranchLabel ? `<b style='color:#e3b341;'>${incomingBranchLabel}</b><br/>` : "";
-            edgeText = `|"<div style='text-align:center; font-size:11px;'>${branchLbl}<b style='color:#58a6ff;'>${cable.capacity}F</b> (${dist}м / -${loss}дБ)${coresDiv}</div>"|`;
+            edgeText = `|"<div style='text-align:center; font-size:11px; padding-bottom:4px;'>${branchLbl}<b style='color:#58a6ff;'>${cable.capacity}F</b> (${dist}м / -${loss}дБ)${coresDiv}</div>"|`;
         }
         
         // Draw incoming cable to the entry nodes
@@ -1555,198 +1672,480 @@ function getSpIcon(type, ratio) {
   function renderMermaidMDU(mdu, cable, parentId, incomingCoreNodeId = undefined, incomingBranchLabel = "") {
     const fId = safeId(mdu.id);
     
-    // Correctly fetch entry signal for FTTH / FTTB
-    const sig = calculateMDUSignal(mdu);
-    let sigStr = sig !== null ? `⚡ ${sig.toFixed(1)} дБ` : "No Sig";
-    if (mdu.architecture === "FTTB") {
-        const inCables = conns.filter(c => c.to === mdu && c.type === "cable");
-        if (inCables.length > 0) {
-            const inC = inCables[0];
-            let s = null;
-            if (inC.from.type === "OLT") {
-                s = inC.from.outputPower;
-            } else if (inC.from.type === "FOB") {
-                s = traceOpticalPath(/** @type {FOBNode} */ (inC.from), "CABLE", inC.id, 0);
-            }
-            if (s !== null) sigStr = `⚡ ${(s - connKm(inC) * FIBER_DB_KM).toFixed(1)} дБ`;
-        }
-    }
-
+    const sigStr = calculateMDUSignal(mdu) !== null ? `⚡ ${calculateMDUSignal(mdu).toFixed(1)} дБ` : "No Sig";
+    
     let actOnu = 0;
     if (mdu.architecture === "FTTB") {
         const pen = typeof mdu.penetrationRate === "number" ? mdu.penetrationRate : 100;
         actOnu = Math.ceil(((mdu.floors || 0) * (mdu.entrances || 0) * (mdu.flatsPerFloor || 0)) * (pen / 100));
     } else {
-        const flats = mdu.flats || [];
-        actOnu = flats.length; // Active physical drops linked in crossConnect
+        actOnu = (mdu.flats || []).length;
     }
 
     m += `  subgraph ${fId} ["🏢 ${mdu.name} (${mdu.architecture || 'FTTH'} | ${sigStr})"]\n`;
     m += `    direction TB\n`;
 
-      if (mdu.architecture === "FTTB") {
-          const swNid = `${fId}_switch`;
-          m += `    ${swNid}(["Активний Свіч (${actOnu} Абон)"]):::subs\n`;
-          m += `    click ${swNid} "javascript:window.focusNode('${mdu.id}')"\n`;
-          
-          if (parentId) {
-               const cLoss = connKm(cable) * FIBER_DB_KM;
-               m += `    ${incomingCoreNodeId || parentId} --> |"<div style='font-size:10px;text-align:center;'>${cable.capacity}F<br/>-${cLoss.toFixed(2)}дБ</div>"| ${swNid}\n`;
-          }
-          m += `  end\n`;
-          return;
-      }
+    // 1. TRANSIT CROSS CONNECT AND INTERNAL SPLITTERS
+    const splitters = mdu.splitters || [];
+    const spNodes = {};
+    
+    if (splitters.length === 0) {
+       spNodes["transit"] = `${fId}_transit`;
+       m += `    ${spNodes["transit"]}(["Транзит"]):::fob\n`;
+       m += `    click ${spNodes["transit"]} "javascript:window.focusNode('${mdu.id}')" "Двічі клікніть для переходу на карту"\n`;
+    } else {
+       splitters.forEach(sp => {
+           const spNid = `${fId}_sp_${safeId(sp.id)}`;
+           spNodes[sp.id] = spNid;
+           m += `    ${spNid}(["${getSpIcon(sp.type, sp.ratio)} ${sp.type} ${sp.ratio}"]):::fob\n`;
+           m += `    click ${spNid} "javascript:window.focusNode('${mdu.id}')" "Двічі клікніть для переходу на карту"\n`;
+       });
+       
+       const xc = mdu.crossConnects || [];
+       xc.forEach(x => {
+           if (x.fromType === "SPLITTER" && x.toType === "SPLITTER") {
+               const fromNid = spNodes[x.fromId];
+               const toNid = spNodes[x.toId];
+               if (fromNid && toNid) {
+                   const edgeLbl = x.fromBranch ? x.fromBranch : `${(x.fromCore||0)+1}`;
+                   m += `    ${fromNid} -- "${edgeLbl}" --> ${toNid}\n`;
+               }
+           }
+       });
 
-      // FTTH Internal Rendering
-      const amBox = mdu.mainBox || { splitters: [], crossConnects: [] };
-      const fBoxes = mdu.floorBoxes || [];
-      const spNodes = {};
-      
-      // Generate Splitter Labels for Colors
-      const spLabels = {};
-      const allMduSplitters = [...amBox.splitters];
-      fBoxes.forEach(fb => allMduSplitters.push(...fb.splitters));
-      
-      const spCurrent = {};
-      allMduSplitters.forEach(sp => {
-          const key = `${sp.type}_${sp.ratio}`;
-          if (!spCurrent[key]) spCurrent[key] = 1;
-          else spCurrent[key]++;
-          
-          if (allMduSplitters.filter(s => s.type === sp.type && s.ratio === sp.ratio).length > 1) {
-              spLabels[sp.id] = `${sp.type} ${sp.ratio} #${spCurrent[key]}`;
-          } else {
-              spLabels[sp.id] = `${sp.type} ${sp.ratio}`;
-          }
-      });
-      
-      // --- NEW LOGIC: Pre-calculate flat connections ---
-      const flatConnections = {}; // spId -> array of { flat: N, sig: X }
-      const dFlats = mdu.flats || [];
-      dFlats.forEach(f => {
-         if (f.crossConnect && f.crossConnect.toType === "UNIT" && f.crossConnect.fromType === "SPLITTER") {
-             const spId = f.crossConnect.fromId;
-             if (!flatConnections[spId]) flatConnections[spId] = [];
-             
-             let port = f.crossConnect.fromCore !== undefined ? f.crossConnect.fromCore : (f.crossConnect.fromBranch || "1");
-             let s = typeof getMduSig === "function" ? getMduSig(mdu, "spOut", spId + "|" + port) : null;
-             flatConnections[spId].push({ flat: f.flat, sig: s });
-         }
-      });
-      
-      function getFlatsHtmlForSplitter(spId) {
-          const flats = flatConnections[spId];
-          if (!flats || flats.length === 0) return "";
-          flats.sort((a,b) => a.flat - b.flat);
-          const flatStrings = flats.map(f => `<b>${f.flat}</b>${f.sig !== null ? `(<span style='color:#3fb950'>⚡${f.sig.toFixed(1)}</span>)` : ''}`);
-          const chunks = [];
-          for (let i = 0; i < flatStrings.length; i += 3) {
-              chunks.push(flatStrings.slice(i, i + 3).join(', '));
-          }
-          return `<br/><hr style='margin:4px 0; border:none; border-top:1px solid rgba(255,255,255,0.2);'/>🏠 Кв: <span style='font-size:9px'>${chunks.join('<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;')}</span>`;
-      }
-
-      // Main Box Splitters
-    amBox.splitters.forEach(sp => {
-        const spNid = `${fId}_m_${safeId(sp.id)}`;
-        spNodes[sp.id] = spNid;
-        
-        let s = sigSplitter(mdu, sp.id); // Get input signal if possible
-        let sigText = s !== null ? `<br/><b style='color:#3fb950;font-size:10px'>⚡ ${s.toFixed(1)} дБ</b>` : "";
-        let spLabel = spLabels && spLabels[sp.id] ? spLabels[sp.id] : `${sp.type} ${sp.ratio}`;
-        let hexColor = typeof getSplitterColor === "function" ? getSplitterColor(sp.type, sp.ratio, spLabel) : "#58a6ff";
-        
-        let flatsHtml = getFlatsHtmlForSplitter(sp.id);
-        
-        m += `    ${spNid}(["⬢ Горище: ${spLabel}${sigText}${flatsHtml}"]):::fob\n`;
-        m += `    style ${spNid} stroke:${hexColor},color:${hexColor},stroke-width:2px;\n`;
-    });
-      
-      // Main Box XC
-      amBox.crossConnects.forEach(x => {
-          if (x.fromType === "SPLITTER" && x.toType === "SPLITTER" && spNodes[x.fromId] && spNodes[x.toId]) {
-              m += `    ${spNodes[x.fromId]} -- "${x.fromBranch||x.fromCore||''}" --> ${spNodes[x.toId]}\n`;
-          }
-      });
-
-      // --- GROUP FLOORS BY ENTRANCE ---
-      const entrancesMap = {};
-      fBoxes.forEach(fb => {
-          if (!entrancesMap[fb.entrance]) entrancesMap[fb.entrance] = [];
-          entrancesMap[fb.entrance].push(fb);
-      });
-
-      // Entrances Box Splitters
-      Object.keys(entrancesMap).forEach(entNumStr => {
-          const entNum = parseInt(entNumStr);
-          m += `    subgraph ${fId}_ent_${entNum} ["🚪 Під'їзд ${entNum}"]\n`;
-          m += `      direction TB\n`;
-          
-          entrancesMap[entNumStr].forEach(fb => {
-              fb.splitters.forEach(sp => {
-                  const spNid = `${fId}_f_${safeId(sp.id)}`;
-                  spNodes[sp.id] = spNid;
-                  
-                  let s = sigSplitter(mdu, sp.id); // Get input signal
-                  let sigText = s !== null ? `<br/><b style='color:#3fb950;font-size:10px'>⚡ ${s.toFixed(1)} дБ</b>` : "";
-                  let spLabel = spLabels && spLabels[sp.id] ? spLabels[sp.id] : `${sp.type} ${sp.ratio}`;
-                  let hexColor = typeof getSplitterColor === "function" ? getSplitterColor(sp.type, sp.ratio, spLabel) : "#58a6ff";
-                  
-                  let flatsHtml = getFlatsHtmlForSplitter(sp.id);
-                  
-                  m += `      ${spNid}(["⯁ Пов. ${fb.floor}: ${spLabel}${sigText}${flatsHtml}"]):::fob\n`;
-                  m += `      style ${spNid} stroke:${hexColor},color:${hexColor},stroke-width:2px;\n`;
-              });
-          });
-          m += `    end\n`;
-          
-          entrancesMap[entNumStr].forEach(fb => {
-              fb.crossConnects.forEach(x => {
-                   if (x.toType === "SPLITTER" && spNodes[x.toId] && spNodes[x.fromId]) {
-                       m += `    ${spNodes[x.fromId]} -. "${x.fromBranch||x.fromCore||''}" .-> ${spNodes[x.toId]}\n`;
+       splitters.forEach(sp => {
+           const spNid = spNodes[sp.id];
+           if (sp.type === "FBT") {
+               ["X", "Y"].forEach(branch => {
+                   const isConnected = xc.some(x => x.fromType === "SPLITTER" && x.fromId === sp.id && x.fromBranch === branch);
+                   if (!isConnected) {
+                       const resId = `${spNid}_res_${branch}`;
+                       m += `    ${resId}("Резерв"):::reserve\n`;
+                       m += `    ${spNid} -. "${branch}" .-> ${resId}\n`;
+                       m += `    style ${resId} fill:#161b22,stroke:#30363d,color:#8b949e,stroke-dasharray: 4 4\n`;
                    }
-              });
-          });
-      });
+               });
+           } else if (sp.type === "PLC") {
+               const portsStr = sp.ratio.split("x")[1];
+               const numPorts = parseInt(portsStr);
+               let freeCount = 0;
+               if (!isNaN(numPorts)) {
+                   for (let c = 0; c < numPorts; c++) {
+                       const isConnected = xc.some(x => x.fromType === "SPLITTER" && x.fromId === sp.id && x.fromCore === c);
+                       if (!isConnected) freeCount++;
+                   }
+                   if (freeCount > 0) {
+                       const resId = `${spNid}_res`;
+                       m += `    ${resId}("${freeCount} вільних"):::reserve\n`;
+                       m += `    ${spNid} -.-> ${resId}\n`;
+                       m += `    style ${resId} fill:#161b22,stroke:#30363d,color:#8b949e,stroke-width:1px\n`;
+                   }
+               }
+           }
+       });
+       
+       const hasTransit = xc.some(x => x.fromType === "CABLE" && x.toType === "CABLE");
+       if (hasTransit) {
+           spNodes["transit"] = `${fId}_transit`;
+           m += `    ${spNodes["transit"]}(["Транзит"]):::fob\n`;
+           m += `    click ${spNodes["transit"]} "javascript:window.focusNode('${mdu.id}')" "Двічі клікніть для переходу на карту"\n`;
+       }
+    }
 
-      // Entry cables
-      let entryTargets = []; 
-      if (cable) {
-          const incomingXcs = amBox.crossConnects.filter(x => x.fromType === "CABLE" && String(x.fromId) === String(cable.id));
-          incomingXcs.forEach(x => {
-              if (x.toType === "SPLITTER" && spNodes[x.toId]) {
-                  entryTargets.push({ id: spNodes[x.toId], coreIndex: x.fromCore });
-              }
-          });
-          
-          fBoxes.forEach(fb => {
-             const fbXcs = fb.crossConnects.filter(x => x.fromType === "CABLE" && String(x.fromId) === String(cable.id));
-             fbXcs.forEach(x => {
-                 if (x.toType === "SPLITTER" && spNodes[x.toId]) {
-                      entryTargets.push({ id: spNodes[x.toId], coreIndex: x.fromCore });
+        const groupCoresToHtml = (coreObjects, prefixStr = "") => {
+        if (coreObjects.length === 0) return "";
+        let html = "";
+        if (prefixStr) html += `<div style='text-align:center; font-size:11px; margin-bottom:4px; font-weight:600;'>${prefixStr}</div>`;
+        const CHUNK_SIZE = 4;
+        for (let i = 0; i < coreObjects.length; i += CHUNK_SIZE) {
+            const chunk = coreObjects.slice(i, i + CHUNK_SIZE);
+            const rowHtml = chunk.map(c => {
+                 const FIBER_COLORS = [
+                     "#58a6ff", "#ff9632", "#3fb950", "#b07b46", "#8b949e", "#ffffff",
+                     "#f85149", "#000000", "#e3b341", "#bc8cff", "#ff80b5", "#56d364"
+                 ];
+                 const dotColor = FIBER_COLORS[c.coreIdx % 12];
+                 let bdr = dotColor === "#000000" ? "border: 1px solid #777;" : "border: 1px solid rgba(255,255,255,0.2);";
+                 if (dotColor === "#000000") bdr += " box-shadow: 0 0 2px #fff;";
+                 let sigHtml = "";
+                 if (c.sig !== null && c.sig !== undefined) {
+                      const sColor = c.sig >= -25 ? "#3fb950" : c.sig >= -28 ? "#d29922" : "#f85149";
+                      sigHtml = `<span style='color:${sColor} !important; font-size:9px; margin-left:3px;'>⚡${c.sig.toFixed(1)}</span>`;
                  }
+                 let pStr = c.portStr || "";
+                 return `<span style='display:inline-block; background:rgba(13,17,23,0.8); border:1px solid #30363d; border-radius:4px; padding:2px 5px; margin:2px; white-space:nowrap; font-size:10px; color:#c9d1d9;'><span style='display:inline-block; width:8px; height:8px; border-radius:50%; background:${dotColor} !important; ${bdr} margin-right:4px; vertical-align:middle;'></span><span style='vertical-align:middle;'>${c.coreIdx+1}</span>${pStr}${sigHtml}</span>`;
+            }).join("");
+            html += `<div style="text-align:center;">${rowHtml}</div>`;
+        }
+        return `|"<div style='min-width:60px; padding:2px;'>${html}</div>"|`;
+    };
+
+    let entryTargets = []; 
+    const xcIn = mdu.crossConnects || [];
+    if (cable) {
+        const incomingXcs = xcIn.filter(x => x.fromType === "CABLE" && x.fromId === cable.id);
+        incomingXcs.forEach(x => {
+            if (x.toType === "SPLITTER" && spNodes[x.toId]) {
+                entryTargets.push({ id: spNodes[x.toId], coreIndex: x.fromCore });
+            } else if (x.toType === "CABLE" && spNodes["transit"]) {
+                entryTargets.push({ id: spNodes["transit"], coreIndex: x.fromCore });
+            }
+        });
+    }
+
+    let entryGroups = {};
+    entryTargets.forEach(t => {
+        if (!entryGroups[t.id]) entryGroups[t.id] = [];
+        entryGroups[t.id].push(t.coreIndex);
+    });
+
+    let entryNodeIds = Object.keys(entryGroups);
+    if (entryNodeIds.length === 0) {
+        if (splitters.length > 0) entryNodeIds.push(spNodes[splitters[0].id]);
+        else if (spNodes["transit"]) entryNodeIds.push(spNodes["transit"]);
+        else entryNodeIds.push(`${fId}_internal_in`); // Fallback
+    }
+
+    let routingInNodeId = null;
+    if (cable && entryNodeIds.length >= 1) { // Force routing node for MDU to split nicely
+        routingInNodeId = `${fId}_in_${safeId(String(cable.id))}`;
+        m += `    ${routingInNodeId}(("Вхід")):::fob\n`;
+        m += `    click ${routingInNodeId} "javascript:window.focusNode('${mdu.id}')" "Двічі клікніть для переходу на карту"\n`;
+        for (let targetId of entryNodeIds) {
+             let coreObjects = [];
+             if (entryGroups[targetId]) {
+                  entryGroups[targetId].forEach(coreIdx => {
+                      const cLoss = connKm(cable) * FIBER_DB_KM;
+                      let inSig = null;
+                      if (cable.from.type === "OLT") {
+                          const oltXc = (cable.from.crossConnects || []).find(cx => cx.toType === "CABLE" && cx.toId === cable.id && cx.toCore === coreIdx);
+                          if (oltXc) inSig = cable.from.outputPower - cLoss;
+                      } else if (cable.from.type === "FOB" || cable.from.type === "MDU") {
+                          const upstream = traceOpticalPath(/** @type {any} */ (cable.from), "CABLE", cable.id, coreIdx);
+                          if (upstream !== null) inSig = upstream - cLoss;
+                      }
+                      coreObjects.push({ coreIdx: coreIdx, sig: inSig });
+                  });
+             }
+             let lblStr = groupCoresToHtml(coreObjects);
+             if(!targetId.endsWith("_internal_in")) {
+                 m += `    ${routingInNodeId} -.-> ${lblStr} ${targetId}\n`;
+             }
+        }
+    }
+
+    // 2. FTTB OR FTTH LOGIC
+    if (mdu.architecture === "FTTB") {
+        const swNid = `${fId}_switch`;
+        m += `    ${swNid}(["Активний Свіч (${actOnu} Абон)"]):::subs\n`;
+        m += `    click ${swNid} "javascript:window.focusNode('${mdu.id}')"\n`;
+        
+        // Find LOCAL uplinks
+        const localXcs = (mdu.crossConnects || []).filter(x => x.toType === "LOCAL");
+        if (localXcs.length > 0) {
+            localXcs.forEach(xc => {
+                if (xc.fromType === "SPLITTER" && spNodes[xc.fromId]) {
+                    const edgeLbl = xc.fromBranch ? xc.fromBranch : `${(xc.fromCore||0)+1}`;
+                    m += `    ${spNodes[xc.fromId]} -- "${edgeLbl}" --> ${swNid}\n`;
+                } else if (xc.fromType === "CABLE" && routingInNodeId) {
+                    m += `    ${routingInNodeId} -. "Жила ${(xc.fromCore||0)+1}" .-> ${swNid}\n`;
+                }
+            });
+        } else {
+            // Default connection if no explicit LOCAL mappings exist, but routing in exists (fallback to default FTTB mapping)
+            if (routingInNodeId) {
+                m += `    ${routingInNodeId} -. "Усі живлення" .-> ${swNid}\n`;
+            }
+        }
+    } else {
+        // FTTH Internal Rendering
+        const amBox = mdu.mainBox || { splitters: [], crossConnects: [] };
+        const fBoxes = mdu.floorBoxes || [];
+        const mduSpNodes = {};
+        
+        const mduSpLabels = {};
+        const allMduSplitters = [...amBox.splitters];
+        fBoxes.forEach(fb => allMduSplitters.push(...fb.splitters));
+        
+        const mduSpCurrent = {};
+        allMduSplitters.forEach(sp => {
+            const key = `${sp.type}_${sp.ratio}`;
+            if (!mduSpCurrent[key]) mduSpCurrent[key] = 1;
+            else mduSpCurrent[key]++;
+            
+            if (allMduSplitters.filter(s => s.type === sp.type && s.ratio === sp.ratio).length > 1) {
+                mduSpLabels[sp.id] = `${sp.type} ${sp.ratio} #${mduSpCurrent[key]}`;
+            } else {
+                mduSpLabels[sp.id] = `${sp.type} ${sp.ratio}`;
+            }
+        });
+        
+        const flatConnections = {}; 
+        const dFlats = mdu.flats || [];
+        dFlats.forEach(f => {
+           if (f.crossConnect && f.crossConnect.toType === "UNIT" && f.crossConnect.fromType === "SPLITTER") {
+               const spId = f.crossConnect.fromId;
+               if (!flatConnections[spId]) flatConnections[spId] = [];
+               
+               let port = f.crossConnect.fromCore !== undefined ? f.crossConnect.fromCore : (f.crossConnect.fromBranch || "1");
+               let s = typeof getMduSig === "function" ? getMduSig(mdu, "spOut", spId + "|" + port) : null;
+               flatConnections[spId].push({ flat: f.flat, sig: s });
+           }
+        });
+        
+        function getFlatsHtmlForSplitter(spId) {
+            const flats = flatConnections[spId];
+            if (!flats || flats.length === 0) return "";
+            flats.sort((a,b) => a.flat - b.flat);
+            const flatStrings = flats.map(f => `<b>${f.flat}</b>${f.sig !== null ? `(<span style='color:#3fb950'>⚡${f.sig.toFixed(1)}</span>)` : ''}`);
+            const chunks = [];
+            for (let i = 0; i < flatStrings.length; i += 3) {
+                chunks.push(flatStrings.slice(i, i + 3).join(', '));
+            }
+            return `<br/><hr style='margin:4px 0; border:none; border-top:1px solid rgba(255,255,255,0.2);'/>🏠 Кв: <span style='font-size:9px'>${chunks.join('<br/>&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;&nbsp;')}</span>`;
+        }
+
+        amBox.splitters.forEach(sp => {
+            const spNid = `${fId}_m_${safeId(sp.id)}`;
+            mduSpNodes[sp.id] = spNid;
+            
+            let s = sigSplitter(mdu, sp.id); 
+            let sigText = s !== null ? `<br/><b style='color:#3fb950;font-size:10px'>⚡ ${s.toFixed(1)} дБ</b>` : "";
+            let spLabel = mduSpLabels[sp.id];
+            let hexColor = typeof getSplitterColor === "function" ? getSplitterColor(sp.type, sp.ratio, spLabel) : "#58a6ff";
+            
+            let flatsHtml = getFlatsHtmlForSplitter(sp.id);
+            
+            m += `    ${spNid}(["⬢ Горище: ${spLabel}${sigText}${flatsHtml}"]):::fob\n`;
+            m += `    style ${spNid} stroke:${hexColor},color:${hexColor},stroke-width:2px;\n`;
+        });
+        
+        amBox.crossConnects.forEach(x => {
+            if (x.fromType === "SPLITTER" && x.toType === "SPLITTER" && mduSpNodes[x.fromId] && mduSpNodes[x.toId]) {
+                m += `    ${mduSpNodes[x.fromId]} -- "${x.fromBranch||x.fromCore||''}" --> ${mduSpNodes[x.toId]}\n`;
+            }
+        });
+
+        const entrancesMap = {};
+        fBoxes.forEach(fb => {
+            if (!entrancesMap[fb.entrance]) entrancesMap[fb.entrance] = [];
+            entrancesMap[fb.entrance].push(fb);
+        });
+
+        Object.keys(entrancesMap).forEach(entNumStr => {
+            const entNum = parseInt(entNumStr);
+            m += `    subgraph ${fId}_ent_${entNum} ["🚪 Під'їзд ${entNum}"]\n`;
+            m += `      direction TB\n`;
+            
+            entrancesMap[entNumStr].forEach(fb => {
+                fb.splitters.forEach(sp => {
+                    const spNid = `${fId}_f_${safeId(sp.id)}`;
+                    mduSpNodes[sp.id] = spNid;
+                    
+                    let s = sigSplitter(mdu, sp.id); 
+                    let sigText = s !== null ? `<br/><b style='color:#3fb950;font-size:10px'>⚡ ${s.toFixed(1)} дБ</b>` : "";
+                    let spLabel = mduSpLabels[sp.id];
+                    let hexColor = typeof getSplitterColor === "function" ? getSplitterColor(sp.type, sp.ratio, spLabel) : "#58a6ff";
+                    
+                    let flatsHtml = getFlatsHtmlForSplitter(sp.id);
+                    
+                    m += `      ${spNid}(["⯁ Пов. ${fb.floor}: ${spLabel}${sigText}${flatsHtml}"]):::fob\n`;
+                    m += `      style ${spNid} stroke:${hexColor},color:${hexColor},stroke-width:2px;\n`;
+                });
+            });
+            m += `    end\n`;
+            
+            entrancesMap[entNumStr].forEach(fb => {
+                fb.crossConnects.forEach(x => {
+                     if (x.toType === "SPLITTER" && mduSpNodes[x.toId] && mduSpNodes[x.fromId]) {
+                         m += `    ${mduSpNodes[x.fromId]} -. "${x.fromBranch||x.fromCore||''}" .-> ${mduSpNodes[x.toId]}\n`;
+                     }
+                });
+            });
+        });
+
+        // Link FTTH inputs to upstream sources (Transit splitters or Transit cables)
+        let hasInternalFTTHLinks = false;
+        if (cable) {
+            const incomingXcs = amBox.crossConnects.filter(x => x.fromType === "CABLE" && String(x.fromId) === String(cable.id));
+            incomingXcs.forEach(x => {
+                if (x.toType === "SPLITTER" && mduSpNodes[x.toId] && routingInNodeId) {
+                    m += `    ${routingInNodeId} -. "Жила ${x.fromCore+1}" .-> ${mduSpNodes[x.toId]}\n`;
+                    hasInternalFTTHLinks = true;
+                }
+            });
+            fBoxes.forEach(fb => {
+               const fbXcs = fb.crossConnects.filter(x => x.fromType === "CABLE" && String(x.fromId) === String(cable.id));
+               fbXcs.forEach(x => {
+                   if (x.toType === "SPLITTER" && mduSpNodes[x.toId] && routingInNodeId) {
+                        m += `    ${routingInNodeId} -. "Жила ${x.fromCore+1}" .-> ${mduSpNodes[x.toId]}\n`;
+                        hasInternalFTTHLinks = true;
+                   }
+               });
+            });
+        }
+        
+        // Link Transit Splitters outputs to FTTH inputs
+        amBox.crossConnects.forEach(x => {
+             if (x.fromType === "SPLITTER" && spNodes[x.fromId] && x.toType === "SPLITTER" && mduSpNodes[x.toId]) {
+                 m += `    ${spNodes[x.fromId]} -. "Вихід ${x.fromBranch||x.fromCore||''}" .-> ${mduSpNodes[x.toId]}\n`;
+                 hasInternalFTTHLinks = true;
+             }
+        });
+        fBoxes.forEach(fb => {
+             fb.crossConnects.forEach(x => {
+                  if (x.fromType === "SPLITTER" && spNodes[x.fromId] && x.toType === "SPLITTER" && mduSpNodes[x.toId]) {
+                      m += `    ${spNodes[x.fromId]} -. "Вихід ${x.fromBranch||x.fromCore||''}" .-> ${mduSpNodes[x.toId]}\n`;
+                      hasInternalFTTHLinks = true;
+                  }
              });
-          });
-      }
+        });
 
-      if (parentId) {
-          const cLoss = connKm(cable) * FIBER_DB_KM;
-          let routingInNodeId = `${fId}_in_${safeId(String(cable.id))}`;
-          m += `    ${routingInNodeId}(("Вхід кабелю")):::fob\n`;
-          m += `    ${incomingCoreNodeId || parentId} --> |"<div style='font-size:10px;text-align:center;'>${cable.capacity}F<br/>-${cLoss.toFixed(2)}дБ</div>"| ${routingInNodeId}\n`;
-          
-          entryTargets.forEach(t => {
-              m += `    ${routingInNodeId} -. "Жила ${t.coreIndex+1}" .-> ${t.id}\n`;
-          });
-          
-          if(entryTargets.length === 0 && Object.keys(spNodes).length > 0) {
-              m += `    ${routingInNodeId} -.-> ${Object.values(spNodes)[0]}\n`;
-          }
-      }
-      
-      m += `  end\n`;
-  }
+        // Default direct connection
+        if(!hasInternalFTTHLinks && Object.keys(mduSpNodes).length > 0 && routingInNodeId) {
+            m += `    ${routingInNodeId} -.-> ${Object.values(mduSpNodes)[0]}\n`;
+        }
+    }
 
+    // 3. OUTGOING CABLES (TRANSIT)
+    const downCables = conns.filter(c => c.from === mdu && c.type === "cable");
+    let outCableNodes = {}; 
+    let outCableLabels = {}; 
+    
+    downCables.forEach(dc => {
+        const dcXcs = (mdu.crossConnects || []).filter(x => x.toType === "CABLE" && x.toId === dc.id);
+        
+        let sourceTargets = [];
+        dcXcs.forEach(xc => {
+            const outSig = traceOpticalPath(mdu, "CABLE", dc.id, xc.toCore);
+            let prefix = "";
+            if (xc.fromType === "SPLITTER" && spNodes[xc.fromId]) {
+                 if (xc.fromBranch) prefix = `<b style='color:#e3b341;'>${xc.fromBranch}</b>`;
+                 sourceTargets.push({ id: spNodes[xc.fromId], prefix: prefix, coreIdx: xc.toCore, sig: outSig });
+            } else if (xc.fromType === "CABLE" && spNodes["transit"]) {
+                 sourceTargets.push({ id: spNodes["transit"], prefix: "", coreIdx: xc.toCore, sig: outSig });
+            }
+        });
+
+        let sourceGroups = {};
+        sourceTargets.forEach(t => {
+            if (!sourceGroups[t.id]) sourceGroups[t.id] = { prefix: "", cores: [] };
+            if (t.prefix && !sourceGroups[t.id].prefix) sourceGroups[t.id].prefix = t.prefix;
+            sourceGroups[t.id].cores.push({ coreIdx: t.coreIdx, sig: t.sig });
+        });
+
+        const sourceIds = Object.keys(sourceGroups);
+        let outNodeId = fId;
+        
+        if (sourceIds.length === 1) {
+            outNodeId = sourceIds[0];
+            outCableLabels[dc.id] = sourceGroups[outNodeId].prefix.replace(/<[^>]+>/g, '');
+        } else if (sourceIds.length > 1) {
+            outNodeId = `${fId}_out_${safeId(String(dc.id))}`;
+            m += `    ${outNodeId}(("Вихід")):::fob\n`;
+            m += `    click ${outNodeId} "javascript:window.focusNode('${mdu.id}')" "Двічі клікніть для переходу на карту"\n`;
+            for (let srcId of sourceIds) {
+                let sGroup = sourceGroups[srcId];
+                let lblStr = groupCoresToHtml(sGroup.cores, sGroup.prefix);
+                m += `    ${srcId} -.-> ${lblStr} ${outNodeId}\n`;
+            }
+            outCableLabels[dc.id] = "";
+        } else if (routingInNodeId) {
+            outNodeId = routingInNodeId; // Simple pass through
+        } else if (spNodes["transit"]) {
+            outNodeId = spNodes["transit"];
+        } else if (splitters.length > 0) {
+            outNodeId = spNodes[splitters[splitters.length-1].id];
+        } else {
+            outNodeId = `${fId}_internal_in`;
+            m += `    ${outNodeId}(("Джерело")):::fob\n`;
+        }
+        outCableNodes[dc.id] = outNodeId;
+    });
+
+    m += `  end\n`;
+
+    // Parent Connection
+    if (parentId) {
+        let edgeText = "";
+        if (cable && cable.capacity) {
+            const cLoss = connKm(cable) * FIBER_DB_KM;
+            let cObjs = [];
+            
+            for (let i = 0; i < cable.capacity; i++) {
+               let s = null;
+               let portStr = "";
+               if (cable.from.type === "OLT") {
+                   const oltXc = (cable.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === cable.id && x.toCore === i);
+                   if (oltXc) {
+                       s = cable.from.outputPower - cLoss;
+                       portStr = `<span style="color:#8b949e; font-size:9px; margin-right:2px; margin-left:1px;">(P${parseInt(String(oltXc.fromId))+1})</span>`;
+                   }
+               } else if (cable.from.type === "FOB" || cable.from.type === "MDU") {
+                   const upstream = traceOpticalPath(/** @type {any} */ (cable.from), "CABLE", cable.id, i);
+                   if (upstream !== null) {
+                       s = upstream - cLoss;
+                       const xc = (cable.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === cable.id && x.toCore === i);
+                       if (xc) {
+                           if (xc.fromType === "SPLITTER") {
+                               let sp = (cable.from.splitters || []).find(spl => spl.id === xc.fromId);
+                               if (!sp && cable.from.type === "MDU") {
+                                   if (cable.from.mainBox && cable.from.mainBox.splitters) sp = cable.from.mainBox.splitters.find(spl => spl.id === xc.fromId);
+                                   if (!sp && cable.from.floorBoxes) {
+                                       for (let fb of cable.from.floorBoxes) {
+                                           if (fb.splitters) {
+                                               sp = fb.splitters.find(spl => spl.id === xc.fromId);
+                                               if (sp) break;
+                                           }
+                                       }
+                                   }
+                               }
+                               let b = xc.fromBranch ? xc.fromBranch : ((xc.fromCore !== undefined && xc.fromCore !== null) ? parseInt(String(xc.fromCore))+1 : "");
+                               if (sp) portStr = `<span style="color:#8b949e; font-size:9px; margin-left:1px;">(${sp.type} ${b})</span>`;
+                               else portStr = `<span style="color:#8b949e; font-size:9px; margin-left:1px;">(Вих ${b})</span>`;
+                           } else if (xc.fromType === "CABLE") {
+                               let pAdd = "";
+                               const origin = getOltPortForPath(/** @type {any} */ (cable.from), "CABLE", cable.id, i);
+                               if (origin && typeof origin.port === "number") {
+                                   pAdd = ` (P${origin.port + 1})`;
+                               }
+                               portStr = `<span style="color:#8b949e; font-size:9px; margin-left:1px;">(Тр Ж${parseInt(String(xc.fromCore))+1}${pAdd})</span>`;
+                           }
+                       }
+                   }
+               }
+               if (s !== null) {
+                   cObjs.push({ coreIdx: i, sig: s, portStr: portStr });
+               }
+            }
+            const dist = (connKm(cable) * 1000).toFixed(0);
+            const loss = cLoss.toFixed(2);
+            let coresDiv = cObjs.length > 0 ? `<br/>${groupCoresToHtml(cObjs).replace(/\|"/g, '').replace(/"\|/g, '')}` : "";
+            let branchLbl = incomingBranchLabel ? `<b style='color:#e3b341;'>${incomingBranchLabel}</b><br/>` : "";
+            edgeText = `|"<div style='text-align:center; font-size:11px; padding-bottom:4px;'>${branchLbl}<b style='color:#58a6ff;'>${cable.capacity}F</b> (${dist}м / -${loss}дБ)${coresDiv}</div>"|`;
+        }
+        
+        const actualParent = incomingCoreNodeId || parentId;
+        if (routingInNodeId) {
+            m += `  ${actualParent} --> ${edgeText} ${routingInNodeId}\n`;
+        } else {
+            entryNodeIds.forEach(en => {
+                m += `  ${actualParent} --> ${edgeText} ${en}\n`;
+            });
+        }
+    }
+
+    // 4. PROCESS DOWNSTREAM CABLES
+    downCables.forEach(dc => {
+      let outNodeId = outCableNodes[dc.id];
+      let outBranchLabel = outCableLabels[dc.id] || "";
+      const targetNode = dc.to;
+      if (targetNode) {
+          if (targetNode.type === "FOB") renderMermaidFob(/** @type {FOBNode} */ (targetNode), dc, fId, outNodeId, outBranchLabel);
+          else if (targetNode.type === "MDU") renderMermaidMDU(/** @type {MDUNode} */ (targetNode), dc, fId, outNodeId, outBranchLabel);
+      }
+    });
+}
   // Iterate OLTs
   olts.forEach(olt => {
       const oltId = safeId(olt.id);
@@ -1888,21 +2287,32 @@ function getScenarioLoss(selectedSplitter, originalLoss) {
 export function showScenarioCompare() {
   const current = [];
   
-  nodes.filter(n => n.type === "FOB").forEach((/** @type {FOBNode} */ fob) => {
-    const splitters = fob.splitters || [];
-    let spList = [...splitters];
-    if (fob.fbtType && !spList.some(s => s.id === "legacy_fbt")) {
-        spList.push({ id: "legacy_fbt", type: "FBT", ratio: fob.fbtType });
-    }
-    if (fob.plcType && !spList.some(s => s.id === "legacy_plc")) {
-        spList.push({ id: "legacy_plc", type: "PLC", ratio: fob.plcType });
+  nodes.filter(n => n.type === "FOB" || n.type === "MDU").forEach((/** @type {any} */ node) => {
+    let splittersGroups = [];
+    
+    if (node.type === "FOB") {
+        let spList = [...(node.splitters || [])];
+        if (node.fbtType && !spList.some(s => s.id === "legacy_fbt")) {
+            spList.push({ id: "legacy_fbt", type: "FBT", ratio: node.fbtType });
+        }
+        if (node.plcType && !spList.some(s => s.id === "legacy_plc")) {
+            spList.push({ id: "legacy_plc", type: "PLC", ratio: node.plcType });
+        }
+        if (spList.length > 0) splittersGroups.push({ name: node.name, list: spList });
+    } else if (node.type === "MDU") {
+        if (node.splitters && node.splitters.length > 0) {
+            splittersGroups.push({ name: `${node.name} (Вхід)`, list: node.splitters });
+        }
+        if (node.mainBox && node.mainBox.splitters && node.mainBox.splitters.length > 0) {
+            splittersGroups.push({ name: `${node.name} (Гол. коробка)`, list: node.mainBox.splitters });
+        }
     }
     
-    if (spList.length === 0) return;
+    if (splittersGroups.length === 0) return;
     
     let oltName = "?";
     let oltPort = null;
-    let climb = fob;
+    let climb = node;
     const visited = new Set();
     while (climb && climb.inputConn && !visited.has(climb.id)) {
        visited.add(climb.id);
@@ -1912,34 +2322,42 @@ export function showScenarioCompare() {
           if (xc) oltPort = parseInt(String(xc.fromId)) + 1;
           break;
        }
-       climb = /** @type {FOBNode} */ (climb.inputConn.from);
+       climb = climb.inputConn.from;
     }
 
-    spList.forEach((sp, idx) => {
-       const sigInSp = hasOLTPath(fob) ? sigIn(fob) : null;
-       
-       let origLoss = 0;
-       if (sp.type === "PLC") origLoss = (PLC_LOSSES[sp.ratio] || 0) + MECH;
-       if (sp.type === "FBT") origLoss = FBT_LOSSES[sp.ratio] ? FBT_LOSSES[sp.ratio].x + MECH : 0;
-       
-       const sigOutSp = sigInSp !== null ? sigInSp - origLoss : null;
-       
-       let label = `${sp.type} ${sp.ratio}`;
-       if (spList.filter(s => s.type === sp.type && s.ratio === sp.ratio).length > 1) {
-           label += ` #${idx+1}`;
-       }
+    splittersGroups.forEach(group => {
+       group.list.forEach((sp, idx) => {
+          let sigInSp = null;
+          if (typeof traceOpticalPath === "function") {
+              sigInSp = traceOpticalPath(node, "SPLITTER", sp.id, undefined);
+          }
+          if (sigInSp === null && node.type === "FOB") {
+              sigInSp = hasOLTPath(node) ? sigIn(node) : null;
+          }
+          
+          let origLoss = 0;
+          if (sp.type === "PLC") origLoss = (PLC_LOSSES[sp.ratio] || 0) + MECH;
+          if (sp.type === "FBT") origLoss = FBT_LOSSES[sp.ratio] ? FBT_LOSSES[sp.ratio].x + MECH : 0;
+          
+          const sigOutSp = sigInSp !== null ? sigInSp - origLoss : null;
+          
+          let label = `${sp.type} ${sp.ratio}`;
+          if (group.list.filter(s => s.type === sp.type && s.ratio === sp.ratio).length > 1) {
+              label += ` #${idx+1}`;
+          }
 
-       current.push({
-         fobId: fob.id,
-         spId: sp.id,
-         name: fob.name,
-         splitter: label,
-         spType: sp.type,
-         sigIn: sigInSp,
-         sigOut: sigOutSp,
-         origLoss: origLoss,
-         oltName: oltName,
-         oltPort: oltPort,
+          current.push({
+            fobId: node.id,
+            spId: sp.id,
+            name: group.name,
+            splitter: label,
+            spType: sp.type,
+            sigIn: sigInSp,
+            sigOut: sigOutSp,
+            origLoss: origLoss,
+            oltName: oltName,
+            oltPort: oltPort,
+          });
        });
     });
   });
@@ -2213,66 +2631,93 @@ export function switchOnboardingTab(index) {
 export function updateValidationBadge() {
   let count = 0;
 
-  // Disconnected FOBs
-  nodes
-    .filter((n) => n.type === "FOB")
-    .forEach((fob) => {
-      const inCables = conns.filter(c => c.to === fob && c.type === "cable");
-      if (inCables.length === 0) count++;
-    });
+  try {
+      nodes
+        .filter((n) => n.type === "FOB" || n.type === "MDU")
+        .forEach((node) => {
+          const inCables = conns.filter(c => c.to === node && c.type === "cable");
+          if (inCables.length === 0) count++;
+        });
 
-  // Disconnected ONUs & MDUs
-  nodes
-    .filter((n) => n.type === "ONU" || n.type === "MDU")
-    .forEach((onu) => {
-      const hasConn = conns.some((c) => c.to === onu && (c.type === "patchcord" || (onu.type === "MDU" && c.type === "cable")));
-      if (!hasConn) count++;
-    });
+      nodes
+        .filter((n) => n.type === "ONU")
+        .forEach((onu) => {
+          const hasConn = conns.some((c) => c.to === onu && c.type === "patchcord");
+          if (!hasConn) count++;
+        });
 
-  // Weak signals
-  nodes
-    .filter((n) => n.type === "FOB")
-    .forEach((/** @type {FOBNode} */ fob) => {
-      const inCables = conns.filter(c => c.to === fob && c.type === "cable");
-      const hasSplitters = (fob.splitters && fob.splitters.length > 0) || fob.fbtType || fob.plcType;
-      if (inCables.length > 0 && hasSplitters) {
-        const sig = sigONU(fob);
-        if (sig !== null && sig < ONU_MIN) count++;
-      }
-    });
+      nodes
+        .filter((n) => n.type === "FOB")
+        .forEach((fob) => {
+          const inCables = conns.filter(c => c.to === fob && c.type === "cable");
+          const hasSplitters = (fob.splitters && fob.splitters.length > 0) || fob.fbtType || fob.plcType;
+          if (inCables.length > 0 && hasSplitters) {
+            const sig = sigONU(fob);
+            if (sig === null || sig < ONU_MIN) count++;
+          }
+        });
 
-  // Port overloads
-  nodes
-    .filter((n) => n.type === "OLT")
-    .forEach((olt) => {
-      for (let i = 0; i < olt.ports; i++) {
-        const c = cntONUport(olt, i);
-        const max = olt.maxOnuPerPort || 64;
-        if (c > max) count++;
-      }
-    });
+      nodes
+        .filter((n) => n.type === "MDU")
+        .forEach((mdu) => {
+          const inCables = conns.filter(c => c.to === mdu && c.type === "cable");
+          if (inCables.length === 0) return;
+          
+          if (mdu.architecture === "FTTB") {
+              const localXcs = (mdu.crossConnects || []).filter(x => x.toType === "LOCAL");
+              if (localXcs.length === 0) {
+                  count++;
+              } else {
+                  const sig = traceOpticalPath(/** @type {any} */ (mdu), "LOCAL", "self", 0);
+                  if (sig === null || sig < ONU_MIN) {
+                      count++;
+                  }
+              }
+          } else {
+              const flats = mdu.flats || [];
+              let crit = false;
+              flats.forEach(f => {
+                  if (f.crossConnect && f.crossConnect.toType === "UNIT" && f.connect) {
+                      const s = typeof getMduSig === "function" ? getMduSig(mdu, "flat", f.flat) : null;
+                      if (s === null || s < ONU_MIN) crit = true;
+                  }
+              });
+              if (crit) count++;
+          }
+        });
 
-  // Long cables
-  count += conns.filter((c) => c.type === "cable" && connKm(c) > 5).length;
+      nodes
+        .filter((n) => n.type === "OLT")
+        .forEach((olt) => {
+          for (let i = 0; i < olt.ports; i++) {
+            const c = cntONUport(olt, i);
+            const max = olt.maxOnuPerPort || 64;
+            if (c > max) count++;
+          }
+        });
 
-  // Loops (FOB chains)
-  nodes
-    .filter((n) => n.type === "FOB")
-    .forEach((fob) => {
-      const visited = new Set();
-      let cur = fob;
-      while (cur && cur.type === "FOB") {
-        if (visited.has(cur.id)) {
-          count++;
-          break;
-        }
-        visited.add(cur.id);
-        const inCables = conns.filter(c => c.to === cur && c.type === "cable");
-        const fromFobCables = inCables.filter(c => c.from && c.from.type === "FOB");
-        if (fromFobCables.length === 0) break;
-        cur = /** @type {FOBNode} */ (fromFobCables[0].from);
-      }
-    });
+      count += conns.filter((c) => c.type === "cable" && connKm(c) > 5).length;
+
+      nodes
+        .filter((n) => n.type === "FOB" || n.type === "MDU")
+        .forEach((node) => {
+          const visited = new Set();
+          let cur = node;
+          while (cur && (cur.type === "FOB" || cur.type === "MDU")) {
+            if (visited.has(cur.id)) {
+              count++;
+              break;
+            }
+            visited.add(cur.id);
+            const inCables = conns.filter(c => c.to === cur && c.type === "cable");
+            const fromNodes = inCables.filter(c => c.from && (c.from.type === "FOB" || c.from.type === "MDU"));
+            if (fromNodes.length === 0) break;
+            cur = /** @type {FOBNode | MDUNode} */ (fromNodes[0].from);
+          }
+        });
+  } catch (e) {
+      console.error("Badge val error:", e);
+  }
 
   const badge = document.getElementById("badge-validation");
   if (badge) {

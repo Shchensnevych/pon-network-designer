@@ -552,6 +552,9 @@ export function addNode(type, latlng) {
     n.floors = 5;
     n.entrances = 2;
     n.flatsPerFloor = 4;
+    n.inputConn = null;
+    n.crossConnects = [];
+    n.splitters = [];
     n.marker = L.marker(latlng, {
       icon: iconMDU,
       draggable: true,
@@ -809,12 +812,12 @@ export function redo() {
 function addConn(from, to, type) {
   // Basic Checks
   if (type === "cable") {
-    if (!["OLT", "FOB"].includes(from.type)) {
-      alert("Магістраль: OLT/FOB → FOB/MDU");
+    if (!["OLT", "FOB", "MDU"].includes(from.type)) {
+      alert("Магістральний кабель можна прокласти від:\n• OLT\n• Муфти / FOB\n• MDU (транзит)\n\nДо: Муфти / FOB / MDU");
       return;
     }
     if (to.type !== "FOB" && to.type !== "MDU") {
-      alert("Магістраль має йти до FOB або MDU!");
+      alert("Магістральний кабель має йти до Муфти, FOB або MDU!");
       return;
     }
     if (from === to) {
@@ -833,7 +836,7 @@ function addConn(from, to, type) {
       return;
     }
 
-    // FOB -> FOB Rules
+    // FOB/MDU -> FOB/MDU Rules
     const chainColor = getChainColor(from);
     promptCableCapacity(from, to, type, chainColor, () => {
        selectTool("select");
@@ -841,8 +844,8 @@ function addConn(from, to, type) {
     });
     return;
   } else if (type === "patchcord") {
-    if (from.type !== "FOB" || (to.type !== "ONU" && to.type !== "MDU")) {
-      alert("Патчкорд: FOB → ONU/MDU");
+    if ((from.type !== "FOB" && from.type !== "MDU") || (to.type !== "ONU" && to.type !== "MDU")) {
+      alert("Патчкорд можна прокласти від Муфти/FOB/MDU до ONU або MDU");
       return;
     }
     createConnection(from, to, type, "#ffd700");
@@ -992,7 +995,7 @@ function updateConnLabel(c) {
           if (c.from.type === "OLT") {
               const oltXc = (c.from.crossConnects || []).find(/** @type {any} */(x) => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
               if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
-          } else if (c.from.type === "FOB") {
+          } else if (c.from.type === "FOB" || c.from.type === "MDU") {
               const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
               if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
           }
@@ -1191,7 +1194,7 @@ function buildNodeLabelContent(n) {
       }
       if (n.architecture === "FTTB") {
           const totalAbon = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
-          const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 50;
+          const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 100;
           const totalSubs = Math.ceil(totalAbon * (pen / 100));
           L2 += `<br><span class="lbl-dim">👥 Аб: <b style="color:#e3b341">${totalSubs}</b> / ${totalAbon} (${pen}%)</span>`;
       } else {
@@ -1842,7 +1845,7 @@ function buildTooltip(n) {
       t += `<div style="margin-top:4px; padding-top:4px; border-top:1px dashed #444c56;">`;
       if (n.architecture === "FTTB") {
           const totalAbon = (n.floors || 0) * (n.entrances || 0) * (n.flatsPerFloor || 0);
-          const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 50;
+          const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 100;
           const totalSubs = Math.ceil(totalAbon * (pen / 100));
           t += `👥 Абонентів (розрах.): <span style="color:#e3b341">${totalSubs}</span> / ${totalAbon} (${pen}%)<br>`;
       } else {
@@ -2120,7 +2123,7 @@ function showProps(n) {
     h += `<div style="margin-bottom:8px">Кв. на поверсі: <input type="number" value="${n.flatsPerFloor}" min="1" max="20" style="width:55px" onchange="updNode('${n.id}','flatsPerFloor', parseInt(this.value))"></div>`;
     h += `<div style="font-size:11px; color:#c9d1d9; font-weight:bold; margin-bottom:10px;">Всього квартир: <span style="color:#e3b341">${totalAbon}</span></div>`;
     const arch = n.architecture || "FTTH";
-    const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 50;
+    const pen = typeof n.penetrationRate === "number" ? n.penetrationRate : 100;
     const activeAbon = Math.ceil(totalAbon * (pen / 100));
 
     h += `<div style="margin-top:10px;margin-bottom:6px;border-top:1px solid #30363d;padding-top:10px;">
@@ -2133,6 +2136,8 @@ function showProps(n) {
     </div>`;
 
     if (arch === "FTTB") {
+        h += `<button class="btn" style="margin-top:10px;margin-bottom:10px;width:100%;background:#8957e5;color:#ffffff;border:1px solid #a371f7;padding:6px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#a371f7';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#8957e5';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openCrossConnect('${n.id}')">🪛 Касета (Зварювання)</button>`;
+
         h += `<div style="margin-bottom:8px">
           <label style="display:block;margin-bottom:4px">Діючі підключення (штук / відсоток):</label>
           <div style="display:flex; justify-content:space-between; gap:10px; align-items:center;">
@@ -2169,8 +2174,8 @@ function showProps(n) {
                     if (c.from.type === "OLT") {
                         const xc = (c.from.crossConnects || []).find(x => x.toType === c.type.toUpperCase() && x.toId === c.id && x.toCore === i);
                         if (xc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
-                    } else if (c.from.type === "FOB") {
-                        const upstream = traceOpticalPath(c.from, c.type.toUpperCase(), c.id, i);
+                    } else if (c.from.type === "FOB" || c.from.type === "MDU") {
+                        const upstream = traceOpticalPath(/** @type {any} */ (c.from), c.type.toUpperCase(), c.id, i);
                         if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
                     }
                     if (s !== null) {
@@ -2202,6 +2207,55 @@ function showProps(n) {
     } else {
       h += `<div class="warn-pill" style="margin-top:10px">Не підключено до PON</div>`;
     }
+
+    // --- Connected nodes block (same as FOB) ---
+    const connectedNodes = conns.filter(c => c.from === n).map(c => c.to);
+    if (connectedNodes.length > 0) {
+        h += `<div style="background:#21262d; border:1px solid #30363d; border-radius:6px; padding:6px; margin-top:10px;">`;
+        h += `<div style="color:#8b949e; font-size:10px; font-weight:bold; letter-spacing:1px; margin-bottom:8px; display:flex; align-items:center; justify-content:space-between; text-transform:uppercase;">
+                <span style="display:flex; align-items:center; gap:6px;"><i class="fa-solid fa-network-wired" style="font-size:11px;"></i> Підключені вузли</span>
+                <span style="background:#0d1117; padding:2px 6px; border-radius:10px; font-size:9px;">${connectedNodes.length}</span>
+              </div>`;
+        h += `<div class="mini-scroll" style="display:flex; flex-direction:column; gap:4px; max-height:220px; overflow-y:auto; padding-right:4px;">`;
+        
+        connectedNodes.forEach(toNode => {
+            let toSig = null;
+            if (toNode.type === "ONU") toSig = sigAtONU(toNode);
+            else if (toNode.type === "MDU") toSig = calculateMDUSignal(toNode);
+            else if (toNode.type === "FOB") toSig = sigIn(toNode);
+            else toSig = null;
+            
+            let tagHtml = "";
+            let dotColor = "#8b949e";
+            
+            if (toSig !== null) {
+                if (toSig >= -25) { 
+                    tagHtml = `<span style="border:1px solid #1c4528; background:#102216; color:#3fb950; font-size:10px; padding:2px 4px; border-radius:3px; font-weight:bold;">OK</span>`; 
+                    dotColor = "#3fb950";
+                } else if (toSig >= -28.5) {
+                    tagHtml = `<span style="border:1px solid #6b5314; background:#2c2108; color:#d29922; font-size:10px; padding:2px 4px; border-radius:3px; font-weight:bold;">Межа</span>`;
+                    dotColor = "#d29922";
+                } else {
+                    tagHtml = `<span style="border:1px solid #6e2723; background:#2e1114; color:#f85149; font-size:10px; padding:2px 4px; border-radius:3px; font-weight:bold;">Крит.</span>`;
+                    dotColor = "#f85149";
+                }
+            } else {
+                tagHtml = `<span style="border:1px solid #30363d; background:#161b22; color:#8b949e; font-size:10px; padding:2px 4px; border-radius:3px; font-weight:bold;">N/A</span>`;
+            }
+            
+            const toSigStr = toSig !== null ? `${toSig.toFixed(2)} дБ` : `---`;
+            h += `<div style="display:flex; justify-content:space-between; align-items:center; background:#161b22; border:1px solid #30363d; padding:4px 6px; border-radius:4px;">
+                <div style="display:flex; align-items:center; gap:6px; white-space:nowrap; overflow:hidden;">
+                    <div style="width:8px; height:8px; border-radius:50%; background:${dotColor}; flex-shrink:0;"></div>
+                    <span style="color:#c9d1d9; font-size:12px; font-weight:bold; overflow:hidden; text-overflow:ellipsis;">${toNode.name}</span>
+                    <span style="color:#8b949e; font-size:12px;">·</span>
+                    <span style="color:#8b949e; font-size:12px;">${toSigStr}</span>
+                </div>
+                ${tagHtml}
+            </div>`;
+        });
+        h += `</div></div>`;
+    }
   }
 
   h += `<button class="btn" style="margin-top:15px;width:100%;background:#da3633;color:#ffffff;border:1px solid #f85149;padding:6px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#f85149';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#da3633';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="deleteNodeById('${n.id}')">🗑️ Видалити</button></div>`;
@@ -2220,7 +2274,10 @@ function updNode(id, prop, val) {
   n[prop] = val;
   if (prop === "name") updateNodeLabel(n);
   if (prop === "outputPower") nodes.forEach((x) => updateNodeLabel(x)); // Ensure label changes if node properties change
-  if (["architecture", "floors", "entrances", "flatsPerFloor"].includes(prop)) showProps(n); // Refresh panel for MDU geometry changes
+  if (["architecture", "floors", "entrances", "flatsPerFloor", "penetrationRate"].includes(prop)) {
+    showProps(n); // Refresh panel for MDU geometry changes
+    nodes.forEach((x) => updateNodeLabel(x)); // Update all labels including OLT port counts
+  }
   updateNodeLabel(n);
   saveState(); // This saveState is already present, no need to duplicate
   updateStats();
@@ -2257,7 +2314,7 @@ function updNode(id, prop, val) {
  */
 export function addSplitter(id, type, ratio) {
   const n = nodes.find(x => x.id === id);
-  if (!n || n.type !== "FOB") return;
+  if (!n || (n.type !== "FOB" && n.type !== "MDU")) return;
   if (!n.splitters) n.splitters = [];
   
   const modal = document.getElementById("cross-connect-modal");
@@ -2279,13 +2336,13 @@ export function addSplitter(id, type, ratio) {
 }
 
 /**
- * Removes a splitter from a FOB node
+ * Removes a splitter from a FOB/MDU node
  * @param {string} nodeId 
  * @param {string} splitterId 
  */
 export function removeSplitter(nodeId, splitterId) {
   const n = nodes.find(x => x.id === nodeId);
-  if (!n || n.type !== "FOB" || !n.splitters) return;
+  if (!n || (n.type !== "FOB" && n.type !== "MDU") || !n.splitters) return;
   
   const modal = document.getElementById("cross-connect-modal");
   if (modal && modal.style.display === "block") {
@@ -2365,7 +2422,7 @@ function deleteNode(n) {
     if (nodes[i] === n) nodes.splice(i, 1);
   }
   nodes.forEach((x) => {
-    if (x.type === "FOB") x.inputConn = conns.find((c) => c.to === x && c.type === "cable") || null;
+    if (x.type === "FOB" || x.type === "MDU") x.inputConn = conns.find((c) => c.to === x && c.type === "cable") || null;
   });
   selNode = null;
   showProps(null);
@@ -2529,7 +2586,7 @@ function deleteConn(c) {
   for (let i = conns.length - 1; i >= 0; i--) {
     if (conns[i] === c) conns.splice(i, 1);
   }
-  if (c.type === "cable" && c.to?.type === "FOB") c.to.inputConn = null;
+  if (c.type === "cable" && (c.to?.type === "FOB" || c.to?.type === "MDU")) c.to.inputConn = null;
   updateStats();
   nodes.forEach((x) => updateNodeLabel(x));
   if (selNode) showProps(selNode);
@@ -2625,6 +2682,7 @@ window.refreshNetworkUI = () => {
 };
 
 window.updNode = updNode;
+window.showProps = showProps;
 window.addSplitter = addSplitter;
 window.removeSplitter = removeSplitter;
 window.selectNodeById = (id) => {
@@ -2670,6 +2728,8 @@ window.toggleMduUplink = function(nodeId, key, isChecked) {
     }
     
     updateStats();
+    nodes.forEach(x => updateNodeLabel(x)); // Update OLT counts on the map tooltip instantly
+    if (typeof window.refreshNetworkUI === "function") window.refreshNetworkUI();
     showProps(mdu);
     
     // Live update OLT stats if there's any active OLT
