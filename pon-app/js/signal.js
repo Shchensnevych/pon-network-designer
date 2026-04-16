@@ -318,6 +318,31 @@ export function connKm(c) {
 }
 
 /**
+ * Helpers to flatten MDU components (Attic, Floors) into a single logical array for tracing.
+ */
+function getAllFobCrossConnects(fob) {
+    let xc = fob.crossConnects ? [...fob.crossConnects] : [];
+    if (fob.type === "MDU") {
+        if (fob.mainBox && fob.mainBox.crossConnects) xc.push(...fob.mainBox.crossConnects);
+        if (fob.floorBoxes) fob.floorBoxes.forEach(fb => {
+             if (fb.crossConnects) xc.push(...fb.crossConnects);
+        });
+    }
+    return xc;
+}
+
+function getAllFobSplitters(fob) {
+    let sp = fob.splitters ? [...fob.splitters] : [];
+    if (fob.type === "MDU") {
+        if (fob.mainBox && fob.mainBox.splitters) sp.push(...fob.mainBox.splitters);
+        if (fob.floorBoxes) fob.floorBoxes.forEach(fb => {
+             if (fb.splitters) sp.push(...fb.splitters);
+        });
+    }
+    return sp;
+}
+
+/**
  * Signal level at FOB input (dBm).
  * @param {FOBNode} fob
  * @returns {number}
@@ -346,7 +371,7 @@ export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
     visited.add(stepKey);
 
     // If we're tracing from a patchcord, we don't need a core match
-    const xc = (fob.crossConnects || []).find(x => {
+    const xc = getAllFobCrossConnects(fob).find(x => {
         if (x.toType !== type || String(x.toId) !== String(id)) return false;
         if (type === "PATCHCORD" || type === "LOCAL" || core === undefined) return true;
         return x.toCore === core || x.toBranch === String(core) || String(x.toCore) === String(core);
@@ -354,7 +379,7 @@ export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
     if (!xc) return null; // Path physically broken
 
     if (xc.fromType === "CABLE") {
-      const inCable = conns.find(c => c.id === xc.fromId);
+      const inCable = conns.find(c => String(c.id) === String(xc.fromId));
       if (!inCable) return null;
       
       accumulatedLoss += MECH; // Splice loss inside FOB
@@ -375,7 +400,7 @@ export function traceOpticalPath(currentFob, targetType, targetId, targetCore) {
       }
 
     } else if (xc.fromType === "SPLITTER") {
-      const splitters = fob.splitters || [];
+      const splitters = getAllFobSplitters(fob);
       const sp = splitters.find(s => s.id === xc.fromId) || 
                  (xc.fromId === "legacy_fbt" ? { type: "FBT", ratio: fob.fbtType } : 
                   xc.fromId === "legacy_plc" ? { type: "PLC", ratio: fob.plcType } : null);
@@ -717,19 +742,19 @@ export function getOltPortForPath(currentFob, targetType, targetId, targetCore) 
     if (visited.has(stepKey)) return null;
     visited.add(stepKey);
 
-    const xc = (fob.crossConnects || []).find(
+    const xc = getAllFobCrossConnects(fob).find(
       x => x.toType === type && String(x.toId) === String(id) && 
            (type === "PATCHCORD" || type === "LOCAL" || core === undefined || x.toCore === core || x.toBranch === core)
     );
     if (!xc) return null;
 
     if (xc.fromType === "CABLE") {
-      const inCable = conns.find(c => c.id === xc.fromId);
+      const inCable = conns.find(c => String(c.id) === String(xc.fromId));
       if (!inCable) return null;
       
       if (inCable.from.type === "OLT") {
         const olt = inCable.from;
-        const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === inCable.id && x.toCore === xc.fromCore);
+        const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && String(x.toId) === String(inCable.id) && x.toCore === xc.fromCore);
         if (!oltXc) return null;
         return { olt, port: parseInt(String(oltXc.fromId)) };
       } else if (inCable.from.type === "FOB" || inCable.from.type === "MDU") {
@@ -760,11 +785,11 @@ export function getMDUFlatOltPort(mdu, flatNum) {
   // Trace back through MDU internal splitters
   for (let i = 0; i < 5; i++) { // Max depth protection
       if (currentXc.fromType === "CABLE" || currentXc.fromType === "PATCHCORD") {
-          const inConn = conns.find(c => c.id === currentXc.fromId);
+          const inConn = conns.find(c => String(c.id) === String(currentXc.fromId));
           if (!inConn) return null;
           
           if (inConn.from.type === "OLT") {
-              const oltXc = (inConn.from.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === inConn.id && x.toCore === currentXc.fromCore);
+              const oltXc = (inConn.from.crossConnects || []).find(x => x.toType === "CABLE" && String(x.toId) === String(inConn.id) && x.toCore === currentXc.fromCore);
               if (oltXc) return { olt: inConn.from, port: parseInt(String(oltXc.fromId)) };
               return null;
           } else if (inConn.from.type === "FOB" || inConn.from.type === "MDU") {

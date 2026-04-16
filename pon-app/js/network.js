@@ -2559,6 +2559,16 @@ function deleteConn(c) {
   saveState();
   if (c._distTooltip) map.removeLayer(c._distTooltip);
   map.removeLayer(c.polyline);
+  
+  nodes.forEach(n => {
+      const mn = /** @type {any} */ (n);
+      if (mn.crossConnects) mn.crossConnects = mn.crossConnects.filter(x => x.fromId !== c.id && x.toId !== c.id);
+      if (mn.mainBox && mn.mainBox.crossConnects) mn.mainBox.crossConnects = mn.mainBox.crossConnects.filter(x => x.fromId !== c.id && x.toId !== c.id);
+      if (mn.floorBoxes) mn.floorBoxes.forEach(fb => {
+          if (fb.crossConnects) fb.crossConnects = fb.crossConnects.filter(x => x.fromId !== c.id && x.toId !== c.id);
+      });
+  });
+
   for (let i = conns.length - 1; i >= 0; i--) {
     if (conns[i] === c) conns.splice(i, 1);
   }
@@ -2645,6 +2655,8 @@ export function updateStats() {
   }
   updateCableColors();
   refreshSignalAnim();
+  // Refresh OLT and MDU labels/popups so subscriber counts are current
+  nodes.filter(n => n.type === "OLT" || n.type === "MDU").forEach(n => updateNodeLabel(n));
   // Lazy import to avoid circular dependency with ui.js
   import("./ui.js").then((ui) => ui.updateValidationBadge());
 }

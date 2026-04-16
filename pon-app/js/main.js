@@ -58,7 +58,8 @@ document.addEventListener("DOMContentLoaded", () => {
     if (e.key === "Escape") {
       const modals = [
         "cross-connect-modal", "network-modal", "exportModal", 
-        "node-modal", "conn-modal", "help-modal", "settings-modal", "onboarding-modal"
+        "node-modal", "conn-modal", "help-modal", "settings-modal", "onboarding-modal",
+        "mdu-topology-modal"
       ];
       modals.forEach(id => {
           const m = document.getElementById(id);
@@ -105,6 +106,7 @@ document.addEventListener("DOMContentLoaded", () => {
   window.closeHelp = closeHelp;
   window.switchOnboardingTab = switchOnboardingTab;
   window.openMDUInternalTopology = openMDUInternalTopology;
+  window.updateStats = updateStats;
 
   // Export / Import
   window.exportToJSON = () => {

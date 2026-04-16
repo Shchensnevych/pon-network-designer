@@ -147,6 +147,7 @@ declare global {
     updateTooltipConfig: Function;
     renderSplitterProgressBar: Function;
     switchMDUTab: Function;
+    toggleMDUTransit: Function;
   }
 
   // ═══════════════════════════════════════════════
@@ -369,6 +370,7 @@ declare global {
     addMDUSplitter: (id: string, loc: string, ent?: number) => void;
     removeMDUSplitter: (id: string, loc: string, spId: string, fl?: number, ent?: number) => void;
     switchMDUTab: (ent: number) => void;
+    toggleMDUTransit: () => void;
   }
 }
 

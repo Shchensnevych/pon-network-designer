@@ -300,9 +300,18 @@ export function openCrossConnect(nodeId) {
     const node = nodes.find(n => n.id === nodeId);
     if (!node || (node.type !== "FOB" && node.type !== "MDU")) return;
 
+    // FTTH MDU uses its own internal topology modal
+    if (node.type === "MDU" && node.architecture === "FTTH") {
+        if (typeof window.openMDUInternalTopology === "function") {
+            window.openMDUInternalTopology(nodeId, { expandTransit: true });
+        }
+        return;
+    }
+
     const modal = createModalContainer();
     const titlePrefix = node.type === "MDU" ? "🪛 Транзитний крос MDU" : "🪛 Касета (Зварювання)";
-    document.getElementById("cc-modal-title").innerText = `${titlePrefix}: ${node.name}`;
+    const suffix = node.type === "MDU" ? ` (${node.architecture || "FTTB"})` : "";
+    document.getElementById("cc-modal-title").innerText = `${titlePrefix}: ${node.name}${suffix}`;
     document.getElementById("cc-modal-title").style.color = "#c084fc";
     
     const body = document.getElementById("cc-modal-body");
@@ -333,32 +342,34 @@ function getIncomingCorePath(targetFob, cableId, coreIndex) {
             return `від OLT ${olt.name} (немає кросу)`;
         }
         
-        const prevFob = inCable.from;
-        if (prevFob.type !== "FOB" && prevFob.type !== "MDU") break;
+        const prevInFob = inCable.from;
+        if (prevInFob.type !== "FOB" && prevInFob.type !== "MDU") break;
         
-        const xc = (prevFob.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === currentCableId && x.toCore === currentCore);
+        const ftthXc = prevInFob.type === "MDU" ? (prevInFob.mainBox?.crossConnects || []) : [];
+        const xcList = [...(prevInFob.crossConnects || []), ...ftthXc];
+        const xc = xcList.find(x => x.toType === "CABLE" && String(x.toId) === String(currentCableId) && x.toCore === currentCore);
         
         if (xc) {
             if (xc.fromType === "SPLITTER") {
                 // It comes from a splitter in the previous FOB
                 let spName = xc.fromId;
-                const sp = (/** @type {any} */ (prevFob).splitters || []).find(s => s.id === xc.fromId);
+                const sp = (/** @type {any} */ (prevInFob).splitters || []).find(s => s.id === xc.fromId);
                 if (sp) spName = `${sp.type} ${sp.ratio}`;
-                else if (xc.fromId === "legacy_fbt") spName = `FBT ${/** @type {any} */ (prevFob).fbtType}`;
-                else if (xc.fromId === "legacy_plc") spName = `PLC ${/** @type {any} */ (prevFob).plcType}`;
+                else if (xc.fromId === "legacy_fbt") spName = `FBT ${/** @type {any} */ (prevInFob).fbtType}`;
+                else if (xc.fromId === "legacy_plc") spName = `PLC ${/** @type {any} */ (prevInFob).plcType}`;
                 
                 const branchLbl = xc.fromBranch ? `(Гілка ${xc.fromBranch})` : `(Вихід ${parseInt(String(xc.fromCore||0))+1})`;
-                return `від ${prevFob.name} 👉 ${spName} ${branchLbl}`;
+                return `від ${prevInFob.name} 👉 ${spName} ${branchLbl}`;
             } else if (xc.fromType === "CABLE") {
                 // It's a transit cable, continue tracing backward
-                currentFob = prevFob;
+                currentFob = prevInFob;
                 currentCableId = xc.fromId;
                 currentCore = xc.fromCore;
             } else {
-                return `від ${prevFob.name}`;
+                return `від ${prevInFob.name}`;
             }
         } else {
-            return `від ${prevFob.name} (немає кросу)`;
+            return `від ${prevInFob.name} (немає кросу)`;
         }
     }
     return "";

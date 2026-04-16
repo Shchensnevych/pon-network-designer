@@ -1,6 +1,6 @@
 import { nodes, conns } from "./state.js";
 import { FIBER_DB_KM } from "./config.js";
-import { traceOpticalPath, sigSplitter, getMduSig, connKm } from "./signal.js";
+import { traceOpticalPath, sigSplitter, getMduSig, connKm, getOltPortForPath } from "./signal.js";
 
 // ═══════════════════════════════════════════════
 //  FIBER STANDARDS
@@ -28,44 +28,67 @@ function getIncomingCorePath(targetMdu, cableId, coreIndex) {
     let currentCableId = cableId;
     let currentCore = coreIndex;
 
+    let originPrefix = "";
+    let traceDetails = "";
     while (currentFob) {
         const inCable = conns.find(c => c.id === currentCableId);
         if (!inCable) break;
         
+        if (!originPrefix) {
+            const origin = getOltPortForPath(/** @type {any} */ (inCable.from), "CABLE", currentCableId, currentCore);
+            if (origin && origin.olt) {
+                originPrefix = `від OLT ${origin.olt.name} - PON ${origin.port + 1}`;
+            }
+        }
+        
         if (inCable.from.type === "OLT") {
             const olt = inCable.from;
             const oltXc = (olt.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === currentCableId && x.toCore === currentCore);
-            if (oltXc) return `OLT ${olt.name} - PON ${parseInt(String(oltXc.fromId)) + 1}`;
-            return `OLT ${olt.name} (без кросу)`;
+            if (!originPrefix) {
+                if (oltXc) return `від OLT ${olt.name} - PON ${parseInt(String(oltXc.fromId)) + 1}`;
+                return `від OLT ${olt.name} (без кросу)`;
+            }
+            break;
         }
         
-        const prevFob = inCable.from;
-        if (prevFob.type !== "FOB") break;
+        const prevInFob = /** @type {any} */ (inCable.from);
+        if (prevInFob.type !== "FOB" && prevInFob.type !== "MDU") break;
         
-        const xc = (prevFob.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === currentCableId && x.toCore === currentCore);
+        const ftthXc = prevInFob.type === "MDU" ? (prevInFob.mainBox?.crossConnects || []) : [];
+        const xcList = [...(prevInFob.crossConnects || []), ...ftthXc];
+        const xc = xcList.find(x => x.toType === "CABLE" && String(x.toId) === String(currentCableId) && x.toCore === currentCore);
         
         if (xc) {
             if (xc.fromType === "SPLITTER") {
                 let spName = xc.fromId;
-                const sp = (prevFob.splitters || []).find(s => s.id === xc.fromId);
+                const sp = (prevInFob.splitters || []).find(s => s.id === xc.fromId) || 
+                           (prevInFob.mainBox?.splitters || []).find(s => s.id === xc.fromId);
                 if (sp) spName = `${sp.type} ${sp.ratio}`;
-                else if (xc.fromId === "legacy_fbt") spName = `FBT ${prevFob.fbtType}`;
-                else if (xc.fromId === "legacy_plc") spName = `PLC ${prevFob.plcType}`;
+                else if (xc.fromId === "legacy_fbt") spName = `FBT ${prevInFob.fbtType}`;
+                else if (xc.fromId === "legacy_plc") spName = `PLC ${prevInFob.plcType}`;
                 
-                const branchLbl = xc.fromBranch ? `(X${xc.fromBranch})` : `(Out ${parseInt(String(xc.fromCore||0))+1})`;
-                return `${prevFob.name} 👉 ${spName} ${branchLbl}`;
+                const branchLbl = xc.fromBranch ? `(Вихід ${xc.fromBranch})` : `(Out ${parseInt(String(xc.fromCore||0))+1})`;
+                traceDetails = `від ${prevInFob.name} 👉 ${spName} ${branchLbl}`;
+                break;
             } else if (xc.fromType === "CABLE") {
-                currentFob = prevFob;
+                currentFob = prevInFob;
                 currentCableId = xc.fromId;
                 currentCore = xc.fromCore;
             } else {
-                return `${prevFob.name}`;
+                traceDetails = `від ${prevInFob.name}`;
+                break;
             }
         } else {
-            return `${prevFob.name} (без кросу)`;
+            traceDetails = `від ${prevInFob.name}`;
+            break;
         }
     }
-    return "";
+    
+    if (originPrefix && traceDetails) {
+        if (!traceDetails.includes("OLT")) return `${traceDetails} | ${originPrefix}`;
+        return traceDetails;
+    }
+    return traceDetails || originPrefix || "";
 }
 
 export function getSplitterColor(type, ratio, label) {
@@ -176,7 +199,7 @@ let currentMDUId = null;
 //  MAIN RENDERER
 // ═══════════════════════════════════════════════
 
-export function openMDUInternalTopology(nodeId) {
+export function openMDUInternalTopology(nodeId, { expandTransit = false } = {}) {
   const node = nodes.find(n => n.id === nodeId);
   if (!node || node.type !== "MDU") return;
   
@@ -194,11 +217,26 @@ export function openMDUInternalTopology(nodeId) {
   document.getElementById("mdu-modal-save").onclick = () => {
       saveMDUState(node);
       closeMDUModal();
-      if (typeof window.saveState === "function") window.saveState();
-      if (typeof window.updateStats === "function") window.updateStats();
+      if (typeof window["saveState"] === "function") window["saveState"]();
+      if (typeof window["updateCableColors"] === "function") window["updateCableColors"]();
+      if (typeof window["refreshSignalAnim"] === "function") window["refreshSignalAnim"]();
+      if (typeof window["updateNodeLabel"] === "function" && typeof window["nodes"] !== "undefined") {
+          window["nodes"].forEach(x => window["updateNodeLabel"](x));
+      }
+      if (typeof window["updateStats"] === "function") window["updateStats"]();
   };
   
   modal.style.display = "block";
+
+  // Auto-expand transit section when opening via cable connect
+  if (expandTransit) {
+    const body = document.getElementById("mdu-transit-body");
+    const arrow = document.getElementById("mdu-transit-arrow");
+    const badges = document.getElementById("mdu-transit-badges");
+    if (body) { body.style.display = "flex"; }
+    if (arrow) { arrow.textContent = "▼"; }
+    if (badges) { badges.style.display = "none"; }
+  }
 }
 
 function renderMDUUI(node) {
@@ -208,8 +246,8 @@ function renderMDUUI(node) {
     let sourceOptions = `<option value="">--- Не підключено ---</option>`;
     
     // Top: INCOMING (Full Width, Compact Grid)
-    let inHtml = `<div style="border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; margin-bottom: 15px; max-height: 180px; overflow-y: auto;">
-        <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; font-size:14px; text-align:center;">📥 Входи (IN)</h3>`;
+    let inHtml = `<div style="border: 1px solid #30363d; border-radius: 6px; padding: 6px 8px; background: #161b22; max-height: 140px; overflow-y: auto;">
+        <h3 style="margin-top:0; margin-bottom:6px; color: #8b949e; font-size:13px; text-align:center;">📥 Входи (IN)</h3>`;
     
     inConns.forEach(c => {
         const cores = c.capacity || 1;
@@ -234,7 +272,37 @@ function renderMDUUI(node) {
                     const pathStr = getIncomingCorePath(node, c.id, i);
                     const pathLabel = pathStr ? ` [${pathStr}]` : ``;
                     
-                    sourceOptions += `<option value="CABLE|${c.id}|${i}" style="color:#58a6ff" data-color="#58a6ff">◼ Вхід: ${c.from.name} - Жила ${i+1}${sigStr}${pathLabel}</option>`;
+                    let busyTag = "";
+                    let isBusy = false;
+                    const mainXc = (node.mainBox?.crossConnects || []).find(x => x.fromType === "CABLE" && x.fromId === c.id && x.fromCore === i);
+                    if (mainXc) {
+                        isBusy = true;
+                        if (mainXc.toType === "SPLITTER") {
+                           const sp = (node.mainBox?.splitters || []).find(s => s.id === mainXc.toId);
+                           busyTag = sp ? ` [Зайнято: ${sp.type} ${sp.ratio}]` : ` [Зайнято: Сплітер]`;
+                        } else if (mainXc.toType === "CABLE") {
+                           const outC = conns.find(cf => cf.id === mainXc.toId);
+                           busyTag = outC && outC.to ? ` [Транзит: ${outC.to.name}]` : ` [Транзит]`;
+                        }
+                    } else {
+                        for (let fb of (node.floorBoxes || [])) {
+                            const fbXc = (fb.crossConnects || []).find(x => x.fromType === "CABLE" && x.fromId === c.id && x.fromCore === i);
+                            if (fbXc) {
+                                isBusy = true;
+                                if (fbXc.toType === "SPLITTER") {
+                                    const sp = (fb.splitters || []).find(s => s.id === fbXc.toId);
+                                    busyTag = sp ? ` [Зайнято: ${sp.type} ${sp.ratio}]` : ` [Зайнято: Сплітер Пов. ${fb.floor}]`;
+                                } else {
+                                    busyTag = ` [Зайнято: Пов. ${fb.floor}]`;
+                                }
+                                break;
+                            }
+                        }
+                    }
+                    
+                    const optColor = isBusy ? "#f85149" : "#58a6ff";
+                    const basetext = `◼ Вхід: ${c.from.name} - Жила ${i+1}${sigStr}${pathLabel}`;
+                    sourceOptions += `<option value="CABLE|${c.id}|${i}" style="color:${optColor}" data-color="#58a6ff" data-basetext="${basetext}">${basetext}${busyTag}</option>`;
                     
                     let coreSigHtml = "";
                     if (s !== null) {
@@ -267,7 +335,8 @@ function renderMDUUI(node) {
                     sigStr = ` ⚡${s.toFixed(1)}дБ`;
                 }
             }
-            sourceOptions += `<option value="PATCHCORD|${c.id}|0" style="color:#e3b341" data-color="#e3b341">● Вхід: Патчкорд від ${c.from.name}${sigStr}</option>`;
+            const basetext = `● Вхід: Патчкорд від ${c.from.name}${sigStr}`;
+            sourceOptions += `<option value="PATCHCORD|${c.id}|0" style="color:#e3b341" data-color="#e3b341" data-basetext="${basetext}">${basetext}</option>`;
             
             inHtml += `<div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:4px 8px; font-size:11px; grid-column: 1 / -1;">
                 <div style="display:flex; align-items:center;">
@@ -282,13 +351,13 @@ function renderMDUUI(node) {
     inHtml += `</div>`;
     
     // Split Wrapper for Middle & Bottom
-    let bottomWrapperStart = `<div style="display: flex; gap: 15px; flex: 1; overflow: hidden; min-height: 0;">`;
+    let bottomWrapperStart = `<div style="display: flex; gap: 8px; flex: 1; overflow: hidden; min-height: 0;">`;
 
     // Center: Attic (Main Box)
-    let atticHtml = `<div style="flex: 1.5; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y: auto;">
-        <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">🏢 Горище (Головні дільники)</h3>`;
+    let atticHtml = `<div style="flex: 1.5; border: 1px solid #30363d; border-radius: 6px; padding: 6px 8px; background: #161b22; overflow-y: auto;">
+        <h3 style="margin-top:0; margin-bottom:6px; color: #8b949e; text-align:center; font-size:13px;">🏢 Горище (Головні дільники)</h3>`;
         
-    atticHtml += `<div style="margin-bottom:10px; display:flex; gap:5px;">
+    atticHtml += `<div style="margin-bottom:6px; display:flex; gap:5px;">
         <select id="mdu-attic-sp-type" style="background:#0d1117; color:#c9d1d9; border:1px solid #30363d; font-size:12px; padding:4px;">
             <option value="PLC 1x2">PLC 1x2</option>
             <option value="PLC 1x4">PLC 1x4</option>
@@ -325,27 +394,85 @@ function renderMDUUI(node) {
 
     // Make attic splitters available as sources
     node.mainBox.splitters.forEach(sp => {
-        const label = spLabels[sp.id];
-        const color = getSplitterColor(sp.type, sp.ratio, label);
-        const icon = getSplitterIcon(sp.type, sp.ratio, "main");
+        const spLbl = spLabels[sp.id];
+        const spColor = getSplitterColor(sp.type, sp.ratio, spLbl);
+        const spIcon = getSplitterIcon(sp.type, sp.ratio, "main");
         
-        if (sp.type === "PLC") {
-            const ratio = parseInt(sp.ratio.split('x')[1]) || 2;
-            for(let i=1; i<=ratio; i++) {
+        if (sp.type === "FBT") {
+            ["X", "Y"].forEach(br => {
+                let sStr = "";
+                const s = getMduSig(node, "spOut", sp.id + "|" + br);
+                if (s !== null) sStr = ` ⚡${s.toFixed(1)}дБ`;
+                const basetext = `${spIcon} Горище: ${spLbl} (${br})`;
+                
+                let isBusy = false;
+                let busyTag = "";
+                const xc = (node.mainBox?.crossConnects || []).find(x => x.fromType === "SPLITTER" && x.fromId === sp.id && x.fromBranch === br);
+                if (xc) {
+                    isBusy = true;
+                    if (xc.toType === "SPLITTER") {
+                        const targetSp = (node.mainBox?.splitters || []).find(ts => ts.id === xc.toId);
+                        busyTag = targetSp ? ` [Зайнято: ${targetSp.type} ${targetSp.ratio}]` : ` [Зайнято: Сплітер]`;
+                    } else if (xc.toType === "CABLE") {
+                        const outC = conns.find(cf => cf.id === xc.toId);
+                        busyTag = outC && outC.to ? ` [Транзит: ${outC.to.name}]` : ` [Транзит]`;
+                    }
+                } else {
+                    for (let fb of (node.floorBoxes || [])) {
+                        const fbXc = (fb.crossConnects || []).find(x => x.fromType === "SPLITTER" && x.fromId === sp.id && x.fromBranch === br);
+                        if (fbXc) {
+                            isBusy = true;
+                            if (fbXc.toType === "SPLITTER") {
+                                const targetSp = (fb.splitters || []).find(ts => ts.id === fbXc.toId);
+                                busyTag = targetSp ? ` [Зайнято: ${targetSp.type} ${targetSp.ratio}]` : ` [Зайнято: Сплітер Пов. ${fb.floor}]`;
+                            } else {
+                                busyTag = ` [Зайнято: Пов. ${fb.floor}]`;
+                            }
+                            break;
+                        }
+                    }
+                }
+                const optColor = isBusy ? "#f85149" : spColor;
+                sourceOptions += `<option value="SPLITTER|${sp.id}|${br}" style="color:${optColor}" data-color="${optColor}" data-basetext="${basetext}">${basetext}${sStr}${busyTag}</option>`;
+            });
+        } else {
+            const outs = parseInt(sp.ratio.split("x")[1]) || 2;
+            for (let i = 1; i <= outs; i++) {
+                let sStr = "";
                 const s = getMduSig(node, "spOut", sp.id + "|" + i);
-                const sStr = s !== null ? ` ⚡${s.toFixed(1)}дБ` : "";
-                const basetext = `${icon} Горище: ${label} (Вихід ${i})`;
-                sourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${color}" data-color="${color}" data-basetext="${basetext}">${basetext}${sStr}</option>`;
+                if (s !== null) sStr = ` ⚡${s.toFixed(1)}дБ`;
+                const basetext = `${spIcon} Горище: ${spLbl} (Вихід ${i})`;
+                
+                let isBusy = false;
+                let busyTag = "";
+                const xc = (node.mainBox?.crossConnects || []).find(x => x.fromType === "SPLITTER" && x.fromId === sp.id && x.fromBranch == i); // using == to match string vs int
+                if (xc) {
+                    isBusy = true;
+                    if (xc.toType === "SPLITTER") {
+                        const targetSp = (node.mainBox?.splitters || []).find(ts => ts.id === xc.toId);
+                        busyTag = targetSp ? ` [Зайнято: ${targetSp.type} ${targetSp.ratio}]` : ` [Зайнято: Сплітер]`;
+                    } else if (xc.toType === "CABLE") {
+                        const outC = conns.find(cf => cf.id === xc.toId);
+                        busyTag = outC && outC.to ? ` [Транзит: ${outC.to.name}]` : ` [Транзит]`;
+                    }
+                } else {
+                    for (let fb of (node.floorBoxes || [])) {
+                        const fbXc = (fb.crossConnects || []).find(x => x.fromType === "SPLITTER" && x.fromId === sp.id && x.fromBranch == i);
+                        if (fbXc) {
+                            isBusy = true;
+                            if (fbXc.toType === "SPLITTER") {
+                                const targetSp = (fb.splitters || []).find(ts => ts.id === fbXc.toId);
+                                busyTag = targetSp ? ` [Зайнято: ${targetSp.type} ${targetSp.ratio}]` : ` [Зайнято: Сплітер Пов. ${fb.floor}]`;
+                            } else {
+                                busyTag = ` [Зайнято: Пов. ${fb.floor}]`;
+                            }
+                            break;
+                        }
+                    }
+                }
+                const optColor = isBusy ? "#f85149" : spColor;
+                sourceOptions += `<option value="SPLITTER|${sp.id}|${i}" style="color:${optColor}" data-color="${optColor}" data-basetext="${basetext}">${basetext}${sStr}${busyTag}</option>`;
             }
-        } else if (sp.type === "FBT") {
-            const sx = getMduSig(node, "spOut", sp.id + "|X");
-            const sy = getMduSig(node, "spOut", sp.id + "|Y");
-            const sxStr = sx !== null ? ` ⚡${sx.toFixed(1)}дБ` : "";
-            const syStr = sy !== null ? ` ⚡${sy.toFixed(1)}дБ` : "";
-            const baseX = `${icon} Горище: ${label} (X)`;
-            const baseY = `${icon} Горище: ${label} (Y)`;
-            sourceOptions += `<option value="SPLITTER|${sp.id}|X" style="color:${color}" data-color="${color}" data-basetext="${baseX}">${baseX}${sxStr}</option>`;
-            sourceOptions += `<option value="SPLITTER|${sp.id}|Y" style="color:${color}" data-color="${color}" data-basetext="${baseY}">${baseY}${syStr}</option>`;
         }
     });
 
@@ -382,9 +509,69 @@ function renderMDUUI(node) {
     });
     atticHtml += `</div>`;
 
+    // -------------------------------------------------------------
+    // TRANSIT: Outbound Cables section (Транзит виходів) — COLLAPSIBLE, ABOVE 2-COL
+    // -------------------------------------------------------------
+    const outConns = conns.filter(c => c.from === node && c.type === "cable");
+    let transitHtml = "";
+    if (outConns.length > 0) {
+        // Build status badges for collapsed view
+        let badgeHtml = "";
+        outConns.forEach(c => {
+            const cores = c.capacity || 1;
+            let connectedCount = 0;
+            for (let i = 0; i < cores; i++) {
+                const xc = (node.mainBox?.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
+                if (xc) connectedCount++;
+            }
+            const allConnected = connectedCount === cores;
+            const badgeColor = allConnected ? "#2ea043" : connectedCount > 0 ? "#d29922" : "#484f58";
+            const statusIcon = allConnected ? "✅" : connectedCount > 0 ? "⚠️" : "⬜";
+            badgeHtml += `<span style="display:inline-flex; align-items:center; gap:4px; background:${badgeColor}22; border:1px solid ${badgeColor}; border-radius:12px; padding:2px 8px; font-size:10px; color:#c9d1d9; margin:2px;">${statusIcon} ${c.to.name} <b>${connectedCount}/${cores}</b></span>`;
+        });
+
+        transitHtml = `<div id="mdu-transit-section" style="border: 1px solid #30363d; border-radius: 6px; background: #161b22; margin-bottom:0; overflow:hidden;">
+            <div onclick="window.toggleMDUTransit && window.toggleMDUTransit()" style="display:flex; justify-content:space-between; align-items:center; padding:8px 12px; cursor:pointer; user-select:none; background:#161b22; border-bottom:1px solid #30363d;">
+                <h3 style="margin:0; color: #8b949e; font-size:13px;">📤 Магістральні виходи (OUT)</h3>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    <span id="mdu-transit-badges" style="display:inline;">${badgeHtml}</span>
+                    <span id="mdu-transit-arrow" style="color:#8b949e; font-size:14px; transition:transform 0.2s;">▶</span>
+                </div>
+            </div>
+            <div id="mdu-transit-body" style="padding:6px; display:none; flex-wrap:wrap; gap:8px;">`;
+        
+        outConns.forEach(c => {
+            const cores = c.capacity || 1;
+            transitHtml += `<div style="flex:1; min-width:200px; background:#21262d; border-radius:4px; border:1px solid #30363d; overflow:hidden;">
+                <div style="font-weight:bold; color:#58a6ff; font-size:11px; text-align:center; padding: 3px; background: #30363d;">До: ${c.to.name} <span style="background:#8957e5; color:white; padding:1px 6px; border-radius:8px; font-size:10px; margin-left:4px;">Транзит</span> <span style="color:#8b949e; font-size:10px;">Жил: ${cores}</span></div>
+                <div style="padding:4px;">`;
+                
+            for (let i = 0; i < cores; i++) {
+                const xc = (node.mainBox?.crossConnects || []).find(x => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
+                const selVal = xc ? `${xc.fromType}|${xc.fromId}|${xc.fromCore !== undefined ? xc.fromCore : (xc.fromBranch || "")}` : "";
+                
+                let sOpt = sourceOptions;
+                if (selVal) {
+                    sOpt = sOpt.replace(`value="${selVal}"`, `value="${selVal}" selected`);
+                } else {
+                    sOpt = sOpt.replace(`<option value="">`, `<option value="" selected>`);
+                }
+                
+                transitHtml += `<div style="display:flex; justify-content:space-between; align-items:center; background:#0d1117; padding:4px 8px; font-size:11px; margin-bottom:2px; border:1px solid rgba(255,255,255,0.05); border-radius:3px;">
+                    <div style="display:flex; align-items:center; flex-shrink:0;">${getFiberDotHtml(i)} Жила ${i+1} 👉 </div>
+                    <select class="mdu-cross-select mdu-cross-out" data-id="${c.id}" data-core="${i}" style="width:100%; background:#161b22; color:#c9d1d9; border:1px solid #30363d; font-size:11px; padding:2px; margin-left:6px;" onchange="window.checkMDUPorts(this, '${node.id}')">
+                        ${sOpt}
+                    </select>
+                </div>`;
+            }
+            transitHtml += `</div></div>`;
+        });
+        transitHtml += `</div></div>`;
+    }
+
     // Right: Floors (Secondary Boxes)
-    let floorHtml = `<div style="flex: 1.5; border: 1px solid #30363d; border-radius: 6px; padding: 10px; background: #161b22; overflow-y: auto;">
-        <h3 style="margin-top:0; margin-bottom:10px; color: #8b949e; text-align:center; font-size:14px;">🚪 Поверхи (Вторинні дільники)</h3>`;
+    let floorHtml = `<div style="flex: 1.5; border: 1px solid #30363d; border-radius: 6px; padding: 6px 8px; background: #161b22; overflow-y: auto;">
+        <h3 style="margin-top:0; margin-bottom:6px; color: #8b949e; text-align:center; font-size:13px;">🚪 Поверхи (Вторинні дільники)</h3>`;
 
     // Pre-build Flat Source Options
     let flatSourceOptions = sourceOptions;
@@ -563,8 +750,9 @@ function renderMDUUI(node) {
     let bottomWrapperEnd = `</div>`;
 
     const body = document.getElementById("mdu-modal-body");
-    body.innerHTML = `<div style="display:flex; flex-direction:column; gap:15px; height: 100%; overflow:hidden;">
+    body.innerHTML = `<div style="display:flex; flex-direction:column; gap:8px; height: 100%; overflow:hidden;">
         ${inHtml}
+        ${transitHtml}
         ${bottomWrapperStart}
             ${atticHtml}
             ${floorHtml}
@@ -593,6 +781,25 @@ function saveMDUState(node) {
                 fromBranch: parts[0]==="SPLITTER" ? parts[2] : undefined,
                 toType: "SPLITTER",
                 toId: element.dataset.id
+            });
+        }
+    });
+
+    // Collect from OUT Transits
+    const outSelects = document.querySelectorAll(".mdu-cross-out");
+    outSelects.forEach(sel => {
+        const element = /** @type {HTMLSelectElement} */ (sel);
+        if(element.value) {
+            const parts = element.value.split("|"); // e.g. CABLE|1234|0 or SPLITTER|sp1|X
+            node.mainBox.crossConnects.push({
+                id: "xc_o_" + Date.now() + Math.random().toString(36).substr(2, 4),
+                fromType: parts[0] === "CABLE" ? "CABLE" : "SPLITTER",
+                fromId:  parts[0] === "PATCHCORD" ? "PATCHCORD" : parts[1], // In rare cases if patched
+                fromCore: parts[0]==="CABLE" || parts[0]==="PATCHCORD" ? parseInt(parts[2]) : undefined,
+                fromBranch: parts[0]==="SPLITTER" ? parts[2] : undefined,
+                toType: "CABLE",
+                toId: element.dataset.id,
+                toCore: parseInt(element.dataset.core)
             });
         }
     });
@@ -740,6 +947,17 @@ export function initMDUWindowCommands() {
         }
         renderMDUUI(node);
     };
+
+    window.toggleMDUTransit = () => {
+        const body = document.getElementById("mdu-transit-body");
+        const arrow = document.getElementById("mdu-transit-arrow");
+        const badges = document.getElementById("mdu-transit-badges");
+        if (!body) return;
+        const isOpen = body.style.display !== "none";
+        body.style.display = isOpen ? "none" : "flex";
+        if (arrow) arrow.textContent = isOpen ? "▶" : "▼";
+        if (badges) badges.style.display = isOpen ? "inline" : "none";
+    };
 }
 
 window.checkMDUPorts = function(selectElement, nodeId = null) {
@@ -886,4 +1104,7 @@ window.checkMDUPorts = function(selectElement, nodeId = null) {
             if (el) el.textContent = connectedCount.toString();
         }
     }
+
+    // 4. Refresh global OLT stats so subscriber counters update in real-time
+    if (typeof window.updateStats === "function") window.updateStats();
 };
