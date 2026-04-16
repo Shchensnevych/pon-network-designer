@@ -37,7 +37,7 @@ import {
   freeCablePorts, freePatchPorts,
   fobPortStatus, connKm, sigIn, 
   hasOLTPath, sigAtONU, sigONU, sigFBT, sigSplitter,
-  cntONUport, cntSubsPort, updateCableColors, traceOpticalPath, calculateMDUSignal
+  cntONUport, cntSubsPort, updateCableColors, traceOpticalPath, calculateMDUSignal, getOltPortForPath
 } from "./signal.js";
 
 // Signal path highlighting & animation — extracted to signal-path.js
@@ -552,6 +552,7 @@ export function addNode(type, latlng) {
     n.floors = 5;
     n.entrances = 2;
     n.flatsPerFloor = 4;
+    n.architecture = "FTTB";
     n.inputConn = null;
     n.crossConnects = [];
     n.splitters = [];
@@ -964,7 +965,7 @@ function updateConnLabel(c) {
   if (c.type === "cable") {
       let totalLength = dist;
       let currNode = c.from;
-      while (currNode && currNode.type === "FOB") {
+      while (currNode && (currNode.type === "FOB" || currNode.type === "MDU")) {
           const upCable = conns.find(pc => pc.to === currNode && pc.type === "cable");
           if (!upCable) break;
           totalLength += connKm(upCable) * 1000;
@@ -992,12 +993,20 @@ function updateConnLabel(c) {
       
       for (let i = 0; i < c.capacity; i++) {
           let s = null;
+          let pStr = "";
           if (c.from.type === "OLT") {
               const oltXc = (c.from.crossConnects || []).find(/** @type {any} */(x) => x.toType === "CABLE" && x.toId === c.id && x.toCore === i);
-              if (oltXc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
+              if (oltXc) {
+                  s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
+                  pStr = ` (${parseInt(String(oltXc.fromId))+1})`;
+              }
           } else if (c.from.type === "FOB" || c.from.type === "MDU") {
               const upstream = traceOpticalPath(c.from, "CABLE", c.id, i);
               if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
+              const origin = getOltPortForPath(/** @type {any} */ (c.from), "CABLE", c.id, i);
+              if (origin && origin.olt && typeof origin.port === "number") {
+                  pStr = ` (P${origin.port + 1})`;
+              }
           }
           if (s !== null) {
               const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
@@ -1006,7 +1015,7 @@ function updateConnLabel(c) {
               
               activeCores.push(`<div style="display:inline-flex; align-items:center; font-size:9px; margin:0px; padding:1px 3px; background:rgba(255,255,255,0.05); border-radius:2px; line-height:1;">
                   <span style="display:inline-block; width:5px; height:5px; border-radius:50%; background:${dotColor}; ${bdr} margin-right:2px;"></span>
-                  <span style="color:#c9d1d9; margin-right:2px;">${i+1}</span>
+                  <span style="color:#c9d1d9; margin-right:2px;">${i+1}${pStr}</span>
                   <span style="color:${sColor}; font-weight:bold;">⚡${s.toFixed(1)} дБ</span>
               </div>`);
           }
@@ -2154,49 +2163,6 @@ function showProps(n) {
              </div>
           </div>
         </div>`;
-
-        // --- NEW: Uplink Fiber Selection ---
-        h += `<div style="margin-top:10px; border-top:1px solid #30363d; padding-top:10px;">
-                <label style="display:block;margin-bottom:6px;color:#c9d1d9;">🔌 Підключені Uplink-жили:</label>`;
-        
-        const mduConns = conns.filter(c => c.to === n && (c.type === "cable" || c.type === "patchcord"));
-        if (mduConns.length === 0) {
-            h += `<div style="font-size:11px;color:#8b949e;text-align:center;">Немає підключень</div>`;
-        } else {
-            mduConns.forEach(c => {
-                const cores = c.capacity || 1;
-                for(let i=0; i<cores; i++) {
-                    const key = `${c.type.toUpperCase()}|${c.id}|${c.type==="patchcord"?0:i}`;
-                    const isChecked = !n.uplinks || n.uplinks.includes(key);
-                    
-                    let sigStr = "";
-                    let s = null;
-                    if (c.from.type === "OLT") {
-                        const xc = (c.from.crossConnects || []).find(x => x.toType === c.type.toUpperCase() && x.toId === c.id && x.toCore === i);
-                        if (xc) s = c.from.outputPower - (connKm(c) * FIBER_DB_KM);
-                    } else if (c.from.type === "FOB" || c.from.type === "MDU") {
-                        const upstream = traceOpticalPath(/** @type {any} */ (c.from), c.type.toUpperCase(), c.id, i);
-                        if (upstream !== null) s = upstream - (connKm(c) * FIBER_DB_KM);
-                    }
-                    if (s !== null) {
-                        const sColor = s >= -25 ? "#3fb950" : s >= -28 ? "#d29922" : "#f85149";
-                        sigStr = `<span style="color:${sColor}; font-weight:bold; font-size:10px;">⚡ ${s.toFixed(1)} дБ</span>`;
-                    } else {
-                        sigStr = `<span style="color:#8b949e; font-size:10px;">(вимкнено)</span>`;
-                    }
-                    
-                    const lbl = c.type === "patchcord" ? "Патчкорд" : `Жила ${i+1}`;
-                    h += `<div style="display:flex; align-items:center; justify-content:space-between; background:#21262d; border:1px solid rgba(255,255,255,0.05); border-radius:4px; padding:4px 8px; margin-bottom:4px;">
-                            <label style="display:flex; align-items:center; gap:8px; cursor:pointer; font-size:11px; margin:0;">
-                                <input type="checkbox" ${isChecked ? "checked" : ""} onchange="window.toggleMduUplink('${n.id}', '${key}', this.checked)">
-                                <span>${lbl} <span style="color:#8b949e;">(від ${c.from.name})</span></span>
-                            </label>
-                            ${sigStr}
-                          </div>`;
-                }
-            });
-        }
-        h += `</div>`;
     } else {
        h += `<button class="btn" style="margin-top:10px;width:100%;background:#238636;color:#ffffff;border:1px solid #2ea043;padding:6px;border-radius:6px;font-weight:bold;cursor:pointer;box-shadow:0 2px 4px rgba(0,0,0,0.2);transition:all 0.2s;" onmouseover="this.style.background='#2ea043';this.style.boxShadow='0 4px 8px rgba(0,0,0,0.3)';" onmouseout="this.style.background='#238636';this.style.boxShadow='0 2px 4px rgba(0,0,0,0.2)';" onclick="window.openMDUInternalTopology && window.openMDUInternalTopology('${n.id}')">⚙️ Схема під'їзду (FTTH)</button>`;
     }
@@ -2424,8 +2390,18 @@ function deleteNode(n) {
   nodes.forEach((x) => {
     if (x.type === "FOB" || x.type === "MDU") x.inputConn = conns.find((c) => c.to === x && c.type === "cable") || null;
   });
-  selNode = null;
-  showProps(null);
+  
+  if (selNode === n) {
+      selNode = null;
+      showProps(null);
+  } else if (selNode) {
+      showProps(selNode);
+  }
+
+  layoutONUTooltips();
+  nodes.forEach((x) => updateNodeLabel(x));
+  updateCableColors();
+  updateTooltipsVisibility();
   updateStats();
 }
 
@@ -2587,8 +2563,12 @@ function deleteConn(c) {
     if (conns[i] === c) conns.splice(i, 1);
   }
   if (c.type === "cable" && (c.to?.type === "FOB" || c.to?.type === "MDU")) c.to.inputConn = null;
-  updateStats();
+  
+  layoutONUTooltips();
   nodes.forEach((x) => updateNodeLabel(x));
+  updateCableColors();
+  updateTooltipsVisibility();
+  updateStats();
   if (selNode) showProps(selNode);
 }
 
@@ -2707,33 +2687,4 @@ window.finishOLT = finishOLT;
 window.reassignBranch = reassignBranch;
 window.searchLocation = searchLocation;
 
-window.toggleMduUplink = function(nodeId, key, isChecked) {
-    const mdu = /** @type {MDUNode} */ (nodes.find(x => x.id === nodeId));
-    if (!mdu || mdu.type !== "MDU") return;
-    
-    saveState();
-    if (!mdu.uplinks) {
-        mdu.uplinks = [];
-        const mduConns = conns.filter(c => c.to === mdu && (c.type === "cable" || c.type === "patchcord"));
-        mduConns.forEach(c => {
-            const cores = c.capacity || 1;
-            for(let i=0; i<cores; i++) mdu.uplinks.push(`${c.type.toUpperCase()}|${c.id}|${c.type==="patchcord"?0:i}`);
-        });
-    }
-    
-    if (isChecked) {
-        if (!mdu.uplinks.includes(key)) mdu.uplinks.push(key);
-    } else {
-        mdu.uplinks = mdu.uplinks.filter(k => k !== key);
-    }
-    
-    updateStats();
-    nodes.forEach(x => updateNodeLabel(x)); // Update OLT counts on the map tooltip instantly
-    if (typeof window.refreshNetworkUI === "function") window.refreshNetworkUI();
-    showProps(mdu);
-    
-    // Live update OLT stats if there's any active OLT
-    nodes.filter(x => x.type === "OLT").forEach(o => {
-        if (typeof window.updateOltStatsUI === "function") window.updateOltStatsUI(o);
-    });
-};
+// toggleMduUplink code removed

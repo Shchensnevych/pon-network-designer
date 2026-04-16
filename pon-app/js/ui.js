@@ -1457,14 +1457,22 @@ export async function showTopology() {
                   entryGroups[targetId].forEach(coreIdx => {
                       const cLoss = connKm(cable) * FIBER_DB_KM;
                       let inSig = null;
+                      let pStr = "";
                       if (cable.from.type === "OLT") {
                           const oltXc = (cable.from.crossConnects || []).find(cx => cx.toType === "CABLE" && cx.toId === cable.id && cx.toCore === coreIdx);
-                          if (oltXc) inSig = cable.from.outputPower - cLoss;
-                      } else if (cable.from.type === "FOB") {
+                          if (oltXc) {
+                              inSig = cable.from.outputPower - cLoss;
+                              pStr = `(P${parseInt(String(oltXc.fromId))+1})`;
+                          }
+                      } else if (cable.from.type === "FOB" || cable.from.type === "MDU") {
                           const upstream = traceOpticalPath(/** @type {any} */ (cable.from), "CABLE", cable.id, coreIdx);
                           if (upstream !== null) inSig = upstream - cLoss;
+                          const origin = getOltPortForPath(/** @type {any} */ (cable.from), "CABLE", cable.id, coreIdx);
+                          if (origin && origin.olt) {
+                              pStr = `(P${origin.port + 1})`;
+                          }
                       }
-                      coreObjects.push({ coreIdx: coreIdx, sig: inSig });
+                      coreObjects.push({ coreIdx: coreIdx, sig: inSig, portStr: pStr });
                   });
              }
              let lblStr = groupCoresToHtml(coreObjects);
@@ -1817,14 +1825,22 @@ function getSpIcon(type, ratio) {
                   entryGroups[targetId].forEach(coreIdx => {
                       const cLoss = connKm(cable) * FIBER_DB_KM;
                       let inSig = null;
+                      let pStr = "";
                       if (cable.from.type === "OLT") {
                           const oltXc = (cable.from.crossConnects || []).find(cx => cx.toType === "CABLE" && cx.toId === cable.id && cx.toCore === coreIdx);
-                          if (oltXc) inSig = cable.from.outputPower - cLoss;
+                          if (oltXc) {
+                              inSig = cable.from.outputPower - cLoss;
+                              pStr = `(P${parseInt(String(oltXc.fromId))+1})`;
+                          }
                       } else if (cable.from.type === "FOB" || cable.from.type === "MDU") {
                           const upstream = traceOpticalPath(/** @type {any} */ (cable.from), "CABLE", cable.id, coreIdx);
                           if (upstream !== null) inSig = upstream - cLoss;
+                          const origin = getOltPortForPath(/** @type {any} */ (cable.from), "CABLE", cable.id, coreIdx);
+                          if (origin && origin.olt) {
+                              pStr = `(P${origin.port + 1})`;
+                          }
                       }
-                      coreObjects.push({ coreIdx: coreIdx, sig: inSig });
+                      coreObjects.push({ coreIdx: coreIdx, sig: inSig, portStr: pStr });
                   });
              }
              let lblStr = groupCoresToHtml(coreObjects);
@@ -1848,7 +1864,41 @@ function getSpIcon(type, ratio) {
                     const edgeLbl = xc.fromBranch ? xc.fromBranch : `${(xc.fromCore||0)+1}`;
                     m += `    ${spNodes[xc.fromId]} -- "${edgeLbl}" --> ${swNid}\n`;
                 } else if (xc.fromType === "CABLE" && routingInNodeId) {
-                    m += `    ${routingInNodeId} -. "Жила ${(xc.fromCore||0)+1}" .-> ${swNid}\n`;
+                    let originStr = "";
+                    const inc = conns.find(c => c.id === xc.fromId);
+                    const origin = getOltPortForPath(mdu, "LOCAL", "self", 0);
+
+                    const prevName = (inc && inc.from) ? inc.from.name : null;
+                    const oltName = (origin && origin.olt) ? origin.olt.name : null;
+                    const ponPort = (origin && origin.olt) ? origin.port + 1 : null;
+
+                    if (prevName && ponPort) {
+                        originStr = (prevName === oltName) ? `<br/>[від OLT ${oltName} - PON ${ponPort}]` : `<br/>[від ${prevName} • PON ${ponPort}]`;
+                    } else if (ponPort) {
+                        originStr = `<br/>[від OLT ${oltName} - PON ${ponPort}]`;
+                    } else if (prevName) {
+                        originStr = `<br/>[від ${prevName}]`;
+                    }
+
+                    m += `    ${routingInNodeId} -. "Жила ${(xc.fromCore||0)+1}${originStr}" .-> ${swNid}\n`;
+                } else if (xc.fromType === "PATCHCORD" && routingInNodeId) {
+                    let originStr = "";
+                    const inc = conns.find(c => c.id === xc.fromId);
+                    const origin = getOltPortForPath(mdu, "LOCAL", "self", 0);
+
+                    const prevName = (inc && inc.from) ? inc.from.name : null;
+                    const oltName = (origin && origin.olt) ? origin.olt.name : null;
+                    const ponPort = (origin && origin.olt) ? origin.port + 1 : null;
+
+                    if (prevName && ponPort) {
+                        originStr = (prevName === oltName) ? `<br/>[від OLT ${oltName} - PON ${ponPort}]` : `<br/>[від ${prevName} • PON ${ponPort}]`;
+                    } else if (ponPort) {
+                        originStr = `<br/>[від OLT ${oltName} - PON ${ponPort}]`;
+                    } else if (prevName) {
+                        originStr = `<br/>[від ${prevName}]`;
+                    }
+
+                    m += `    ${routingInNodeId} -. "Патчкорд${originStr}" .-> ${swNid}\n`;
                 }
             });
         } else {
